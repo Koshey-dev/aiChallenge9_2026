@@ -10,9 +10,19 @@ API_KEY = os.environ["GEMINI_API_KEY"]
 URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
 MODEL = "gemini-3.5-flash-lite"
 
-print(f"Чат с моделью {MODEL}")
-print(f"Запросы идут по REST API: POST {URL}")
-print("Пустая строка или exit — выход.\n")
+BOLD = "\033[1m"
+CYAN = "\033[96m"
+DIM = "\033[2m"
+RESET = "\033[0m"
+
+title = f"  ЧАТ С МОДЕЛЬЮ {MODEL.upper()}  "
+border = "═" * len(title)
+
+print(f"\n{BOLD}{CYAN}╔{border}╗")
+print(f"║{title}║")
+print(f"╚{border}╝{RESET}")
+print(f"{DIM}Запросы идут по REST API: POST {URL}")
+print(f"Пустая строка или exit — выход.{RESET}\n")
 
 messages = []
 
