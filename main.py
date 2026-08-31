@@ -8,7 +8,7 @@ load_dotenv()
 
 API_KEY = os.environ["GEMINI_API_KEY"]
 URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
-MODEL = "gemini-3.5-flash"
+MODEL = "gemini-3.5-flash-lite"
 
 print(f"Чат с моделью {MODEL}")
 print(f"Запросы идут по REST API: POST {URL}")
