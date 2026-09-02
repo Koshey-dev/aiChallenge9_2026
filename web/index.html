@@ -1,0 +1,397 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Четыре способа рассуждения</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧠</text></svg>">
+<style>
+  :root {
+    --bg: #101118;
+    --card: #181a24;
+    --line: #262936;
+    --text: #e8e9ef;
+    --dim: #8b8fa3;
+    --accent: #7dd3a0;
+    --warn: #e8b573;
+    --bad: #e88b8b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px 28px 48px;
+    background: var(--bg); color: var(--text);
+    font: 17px/1.55 system-ui, "Segoe UI", sans-serif;
+  }
+  h1 { font-size: 24px; margin: 0 0 4px; }
+  .sub { color: var(--dim); font-size: 15px; margin: 0 0 20px; }
+  .sub code { color: var(--accent); }
+
+  .controls { display: grid; gap: 12px; margin-bottom: 22px; }
+  .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  label { color: var(--dim); font-size: 14px; }
+  textarea, input, select {
+    background: var(--card); color: var(--text);
+    border: 1px solid var(--line); border-radius: 8px;
+    padding: 10px 12px; font: inherit; font-size: 16px;
+  }
+  textarea { width: 100%; min-height: 72px; resize: vertical; }
+  input#key { width: 340px; font-size: 14px; }
+  select { min-width: 240px; }
+  .hint { color: var(--dim); font-size: 13px; }
+
+  button {
+    background: var(--card); color: var(--text);
+    border: 1px solid var(--line); border-radius: 8px;
+    padding: 9px 16px; font: inherit; font-size: 15px; cursor: pointer;
+  }
+  button:hover:not(:disabled) { border-color: var(--accent); }
+  button:disabled { opacity: .45; cursor: default; }
+  button.main { background: var(--accent); color: #10231a; border-color: var(--accent); font-weight: 600; }
+
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .panel {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 12px; padding: 16px; display: flex; flex-direction: column;
+  }
+  .panel.busy { border-color: var(--accent); }
+  .panel.wide { grid-column: 1 / -1; margin-top: 16px; }
+  .panel h2 { font-size: 17px; margin: 0 0 2px; }
+  .panel .note { color: var(--dim); font-size: 13px; margin: 0 0 10px; }
+
+  .stage { color: var(--accent); font-size: 13px; min-height: 18px; margin-bottom: 8px; }
+  .grid > .panel:not(.wide) { height: 560px; }
+  .body {
+    white-space: pre-wrap; font-size: 15px;
+    overflow-y: auto; flex: 1; min-height: 0;
+  }
+  .framed {
+    border: 1px dashed var(--warn); border-radius: 8px; flex: none;
+    padding: 10px; margin-bottom: 10px; background: #1d1a15;
+  }
+  .framed .tag { color: var(--warn); font-size: 12px; display: block; margin-bottom: 6px; }
+  .framed .body { flex: none; height: 150px; color: #d8cbb4; font-size: 14px; }
+
+  .roles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .role { border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
+  .role h3 { margin: 0 0 4px; font-size: 15px; color: var(--accent); }
+  .role .instruction { color: var(--dim); font-size: 12.5px; margin-bottom: 8px;
+                       max-height: 84px; overflow-y: auto; }
+  .role .body { flex: none; height: 300px; }
+  .solver .body { flex: none; height: 240px; }
+  .solver { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 12px; }
+  .solver h3 { margin: 0 0 6px; font-size: 15px; color: var(--warn); }
+
+  .metrics { color: var(--dim); font-size: 13px; margin-top: 10px;
+             border-top: 1px solid var(--line); padding-top: 8px;
+             font-family: ui-monospace, Consolas, monospace; min-height: 20px; }
+  .err { color: var(--bad); }
+
+  .summary { margin-top: 22px; background: var(--card);
+             border: 1px solid var(--line); border-radius: 12px; padding: 18px; }
+  .summary h2 { margin: 0 0 14px; font-size: 19px; }
+  .tag { display: inline-block; font-size: 12px; letter-spacing: .04em;
+         text-transform: uppercase; color: var(--dim);
+         border: 1px solid var(--line); border-radius: 20px;
+         padding: 2px 10px; margin-bottom: 10px; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px;
+          font-family: ui-monospace, Consolas, monospace; }
+  th, td { text-align: right; padding: 6px 10px; border-bottom: 1px solid var(--line); }
+  th:first-child, td:first-child { text-align: left; }
+  th { color: var(--dim); font-weight: 500; }
+  tr.total td { border-bottom: none; border-top: 1px solid var(--line); color: var(--accent); }
+  .fine { color: var(--dim); font-size: 12.5px; margin: 8px 0 0; }
+  .verdict { margin-top: 20px; }
+  .verdict .body { max-height: none; }
+</style>
+</head>
+<body>
+
+<h1>Одна задача, четыре способа рассуждения</h1>
+<p class="sub">Модель <code id="model">…</code> · <span id="price">…</span> · запросы идут по REST к OpenAI-совместимому эндпоинту Gemini</p>
+
+<div class="controls">
+  <textarea id="task" placeholder="Напишите задачу — логическую, алгоритмическую или аналитическую"></textarea>
+  <div class="row">
+    <label for="preset">Готовые задачи</label>
+    <select id="preset"><option value="">— выбрать —</option></select>
+    <label for="key">Свой API-ключ</label>
+    <input id="key" type="password" placeholder="пусто — используется ключ сервера" autocomplete="off">
+    <span class="hint">ключ нигде не сохраняется</span>
+  </div>
+  <div class="row">
+    <button class="main" id="all">Запустить всё</button>
+    <button data-run="1">1 — прямой</button>
+    <button data-run="2">2 — пошагово</button>
+    <button data-run="3">3 — свой промпт</button>
+    <button data-run="4">4 — эксперты</button>
+    <button id="judge">Пересчитать вердикт</button>
+  </div>
+</div>
+
+<div class="grid">
+  <section class="panel" id="p1">
+    <h2>1 — Прямой ответ</h2>
+    <p class="note">Только задача. Никаких инструкций.</p>
+    <div class="stage"></div>
+    <div class="body" data-target="main"></div>
+    <div class="metrics"></div>
+  </section>
+
+  <section class="panel" id="p2">
+    <h2>2 — Пошагово</h2>
+    <p class="note">В промпте требование рассуждать по шагам.</p>
+    <div class="stage"></div>
+    <div class="body" data-target="main"></div>
+    <div class="metrics"></div>
+  </section>
+
+  <section class="panel" id="p3">
+    <h2>3 — Свой промпт</h2>
+    <p class="note">Модель сначала пишет промпт себе, потом решает по нему.</p>
+    <div class="stage"></div>
+    <div class="framed">
+      <span class="tag">промпт, который модель написала себе</span>
+      <div class="body" data-target="prompt"></div>
+    </div>
+    <div class="body" data-target="main"></div>
+    <div class="metrics"></div>
+  </section>
+
+  <section class="panel wide" id="p4">
+    <h2>4 — Группа экспертов</h2>
+    <p class="note">Первый запрос сочиняет инструкции трём ролям, дальше роли работают
+      параллельно и не видят друг друга, решала сводит их ответы.</p>
+    <div class="stage"></div>
+    <div class="roles"></div>
+    <div class="solver">
+      <h3>Решала</h3>
+      <div class="body" data-target="solver"></div>
+    </div>
+    <div class="metrics"></div>
+  </section>
+</div>
+
+<section class="summary">
+  <h2>Сводка</h2>
+  <span class="tag">измерено</span>
+  <table id="table">
+    <thead><tr>
+      <th>способ</th><th>время</th><th>символов</th>
+      <th>токенов</th><th>запросов</th><th>стоимость</th>
+    </tr></thead>
+    <tbody></tbody>
+  </table>
+  <p class="fine">Расчёт по тарифу Standard для указанной модели. На бесплатном тарифе
+    фактическая стоимость — ноль.</p>
+  <div class="verdict">
+    <span class="tag">вердикт модели</span>
+    <div class="stage"></div>
+    <div class="body"></div>
+  </div>
+</section>
+
+<script>
+const NAMES = {
+  1: "1 — прямой", 2: "2 — пошагово",
+  3: "3 — свой промпт", 4: "4 — эксперты", s: "сводка",
+};
+const answers = {};
+const stats = {};
+
+const $ = (sel, root = document) => root.querySelector(sel);
+const panel = n => $("#p" + n);
+
+fetch("/api/config").then(r => r.json()).then(cfg => {
+  $("#model").textContent = cfg.model;
+  $("#price").textContent = cfg.price
+    ? `$${cfg.price.input} / $${cfg.price.output} за 1M токенов (вход / выход)`
+    : "цена неизвестна";
+  const select = $("#preset");
+  cfg.presets.forEach(p => {
+    const option = document.createElement("option");
+    option.value = p.task;
+    option.textContent = p.type;
+    select.append(option);
+  });
+  if (!cfg.server_key) {
+    $("#key").placeholder = "ключа на сервере нет — введите свой";
+  }
+});
+
+$("#preset").addEventListener("change", event => {
+  if (event.target.value) $("#task").value = event.target.value;
+});
+
+function target(n, name) {
+  const root = panel(n);
+  if (name.startsWith("role")) return $(`.role[data-i="${name.slice(4)}"] .body`, root);
+  return $(`.body[data-target="${name}"]`, root);
+}
+
+function append(node, text, cls) {
+  if (!node) return;
+  if (cls) {
+    const span = document.createElement("span");
+    span.className = cls;
+    span.textContent = text;
+    node.append(span);
+  } else {
+    node.append(text);
+  }
+  node.scrollTop = node.scrollHeight;
+}
+
+function reset(n) {
+  const root = panel(n);
+  root.classList.add("busy");
+  $(".stage", root).textContent = "";
+  $(".metrics", root).textContent = "";
+  root.querySelectorAll(".body").forEach(b => (b.textContent = ""));
+  const roles = $(".roles", root);
+  if (roles) roles.textContent = "";
+  delete answers[n];
+  delete stats[n];
+}
+
+function addRole(n, event) {
+  const box = document.createElement("div");
+  box.className = "role";
+  box.dataset.i = event.i;
+  box.innerHTML = "<h3></h3><div class='instruction'></div><div class='body'></div>";
+  $("h3", box).textContent = event.name;
+  $(".instruction", box).textContent = event.instruction;
+  $(".roles", panel(n)).append(box);
+}
+
+function money(value) {
+  return value === null || value === undefined ? "—" : "$" + value.toFixed(4);
+}
+
+function drawTable() {
+  const rows = [];
+  let seconds = 0, chars = 0, tokens = 0, requests = 0, cost = 0, known = true;
+
+  for (const key of [1, 2, 3, 4, "s"]) {
+    const m = stats[key];
+    if (!m) continue;
+    rows.push(`<tr><td>${NAMES[key]}</td><td>${m.seconds} с</td><td>${m.chars}</td>
+      <td>${m.tokens}</td><td>${m.requests}</td><td>${money(m.cost)}</td></tr>`);
+    seconds = Math.max(seconds, m.seconds);
+    chars += m.chars; tokens += m.tokens; requests += m.requests;
+    if (m.cost === null) known = false; else cost += m.cost;
+  }
+  if (rows.length > 1) {
+    rows.push(`<tr class="total"><td>итого</td><td>—</td><td>${chars}</td>
+      <td>${tokens}</td><td>${requests}</td><td>${known ? money(cost) : "—"}</td></tr>`);
+  }
+  $("#table tbody").innerHTML = rows.join("");
+}
+
+async function stream(url, payload, handle) {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) throw new Error("HTTP " + response.status);
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let cut;
+    while ((cut = buffer.indexOf("\n")) >= 0) {
+      const raw = buffer.slice(0, cut);
+      buffer = buffer.slice(cut + 1);
+      if (raw.trim()) handle(JSON.parse(raw));
+    }
+  }
+}
+
+async function runMethod(n) {
+  const task = $("#task").value.trim();
+  if (!task) { alert("Сначала напишите задачу"); return; }
+  reset(n);
+  const root = panel(n);
+
+  try {
+    await stream("/api/run/" + n, { task, key: $("#key").value }, event => {
+      if (event.t === "stage") $(".stage", root).textContent = event.text;
+      else if (event.t === "role") addRole(n, event);
+      else if (event.t === "delta") append(target(n, event.target), event.text);
+      else if (event.t === "retry")
+        $(".stage", root).textContent = `лимит ${event.code}, повтор через ${event.after} с`;
+      else if (event.t === "error") append(target(n, event.target), event.message, "err");
+      else if (event.t === "done") {
+        answers[n] = event.answer;
+        stats[n] = event.metrics;
+        const m = event.metrics;
+        $(".metrics", root).textContent =
+          `${m.seconds} с · ${m.chars} симв. · ${m.tokens} ток. · ${m.requests} запр. · ${money(m.cost)}`;
+        $(".stage", root).textContent = "";
+        drawTable();
+      }
+    });
+  } catch (error) {
+    $(".stage", root).innerHTML = `<span class="err">сбой: ${error.message}</span>`;
+  } finally {
+    root.classList.remove("busy");
+  }
+}
+
+async function runSummary() {
+  const task = $("#task").value.trim();
+  const ready = Object.keys(answers).length;
+  if (!task || !ready) return;
+
+  const box = $(".verdict .body");
+  const stage = $(".verdict .stage");
+  box.textContent = "";
+  stage.textContent = "сравниваю ответы";
+  delete stats.s;
+
+  try {
+    await stream("/api/summary", { task, answers, key: $("#key").value }, event => {
+      if (event.t === "delta") append(box, event.text);
+      else if (event.t === "retry")
+        stage.textContent = `лимит ${event.code}, повтор через ${event.after} с`;
+      else if (event.t === "error") append(box, event.message, "err");
+      else if (event.t === "done") { stats.s = event.metrics; drawTable(); }
+    });
+  } finally {
+    stage.textContent = "";
+  }
+}
+
+function lock(on) {
+  document.querySelectorAll("button").forEach(b => (b.disabled = on));
+}
+
+document.querySelectorAll("[data-run]").forEach(button => {
+  button.addEventListener("click", async () => {
+    lock(true);
+    await runMethod(Number(button.dataset.run));
+    lock(false);
+  });
+});
+
+$("#all").addEventListener("click", async () => {
+  lock(true);
+  $(".verdict .body").textContent = "";
+  await Promise.all([1, 2, 3, 4].map(runMethod));
+  await runSummary();
+  lock(false);
+});
+
+$("#judge").addEventListener("click", async () => {
+  lock(true);
+  await runSummary();
+  lock(false);
+});
+</script>
+</body>
+</html>
