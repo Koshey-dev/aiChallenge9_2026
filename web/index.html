@@ -81,6 +81,14 @@
   .solver { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 12px; }
   .solver h3 { margin: 0 0 6px; font-size: 15px; color: var(--warn); }
 
+  .body b.head { display: block; margin: 10px 0 2px; }
+  .body code { background: #22252f; border-radius: 4px; padding: 1px 5px;
+               font-family: ui-monospace, Consolas, monospace; font-size: 13.5px; }
+  .body pre.code { background: #22252f; border-radius: 6px; padding: 8px 10px;
+                   margin: 8px 0; overflow-x: auto; white-space: pre;
+                   font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+  .body hr { border: none; border-top: 1px solid var(--line); margin: 10px 0; }
+
   .metrics { color: var(--dim); font-size: 13px; margin-top: 10px;
              border-top: 1px solid var(--line); padding-top: 8px;
              font-family: ui-monospace, Consolas, monospace; min-height: 20px; }
@@ -228,16 +236,44 @@ function target(n, name) {
   return $(`.body[data-target="${name}"]`, root);
 }
 
-function append(node, text, cls) {
+function escapeHtml(text) {
+  return text.replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+}
+
+// Разметка, которую реально пишет модель. Блоки кода вынимаются первыми,
+// чтобы внутри них ничего не подменялось.
+function markdown(raw) {
+  const blocks = [];
+  let text = escapeHtml(raw).replace(/```[\w-]*\n?([\s\S]*?)```/g, (_, code) => {
+    blocks.push(code.replace(/\n$/, ""));
+    return `\uE000${blocks.length - 1}\uE000`;
+  });
+
+  text = text
+    .replace(/`([^`\n]+)`/g, "<code>$1</code>")
+    .replace(/^\s*[-—]{3,}\s*$/gm, "<hr>")
+    .replace(/^#{1,6}\s+(.+)$/gm, "<b class='head'>$1</b>")
+    .replace(/\*\*([^*\n]+)\*\*/g, "<b>$1</b>")
+    .replace(/^(\s*)[*-]\s+/gm, "$1• ")
+    // курсив только вплотную к тексту, иначе «2 * 3 * 4» превратится в разметку
+    .replace(/\*(\S[^*\n]*?\S|\S)\*/g, "<i>$1</i>");
+
+  return text.replace(/\uE000(\d+)\uE000/g, (_, i) => `<pre class="code">${blocks[i]}</pre>`);
+}
+
+function append(node, text) {
   if (!node) return;
-  if (cls) {
-    const span = document.createElement("span");
-    span.className = cls;
-    span.textContent = text;
-    node.append(span);
-  } else {
-    node.append(text);
-  }
+  node.raw = (node.raw || "") + text;
+  node.innerHTML = markdown(node.raw);
+  node.scrollTop = node.scrollHeight;
+}
+
+function fail(node, text) {
+  if (!node) return;
+  const span = document.createElement("span");
+  span.className = "err";
+  span.textContent = text;
+  node.append(span);
   node.scrollTop = node.scrollHeight;
 }
 
@@ -246,7 +282,7 @@ function reset(n) {
   root.classList.add("busy");
   $(".stage", root).textContent = "";
   $(".metrics", root).textContent = "";
-  root.querySelectorAll(".body").forEach(b => (b.textContent = ""));
+  root.querySelectorAll(".body").forEach(b => { b.textContent = ""; b.raw = ""; });
   const roles = $(".roles", root);
   if (roles) roles.textContent = "";
   delete answers[n];
@@ -325,7 +361,7 @@ async function runMethod(n) {
       else if (event.t === "delta") append(target(n, event.target), event.text);
       else if (event.t === "retry")
         $(".stage", root).textContent = `лимит ${event.code}, повтор через ${event.after} с`;
-      else if (event.t === "error") append(target(n, event.target), event.message, "err");
+      else if (event.t === "error") fail(target(n, event.target), event.message);
       else if (event.t === "done") {
         answers[n] = event.answer;
         stats[n] = event.metrics;
@@ -351,6 +387,7 @@ async function runSummary() {
   const box = $(".verdict .body");
   const stage = $(".verdict .stage");
   box.textContent = "";
+  box.raw = "";
   stage.textContent = "сравниваю ответы";
   delete stats.s;
 
@@ -359,7 +396,7 @@ async function runSummary() {
       if (event.t === "delta") append(box, event.text);
       else if (event.t === "retry")
         stage.textContent = `лимит ${event.code}, повтор через ${event.after} с`;
-      else if (event.t === "error") append(box, event.message, "err");
+      else if (event.t === "error") fail(box, event.message);
       else if (event.t === "done") { stats.s = event.metrics; drawTable(); }
     });
   } finally {
@@ -382,6 +419,7 @@ document.querySelectorAll("[data-run]").forEach(button => {
 $("#all").addEventListener("click", async () => {
   lock(true);
   $(".verdict .body").textContent = "";
+  $(".verdict .body").raw = "";
   await Promise.all([1, 2, 3, 4].map(runMethod));
   await runSummary();
   lock(false);
