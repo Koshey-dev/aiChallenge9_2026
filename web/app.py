@@ -16,6 +16,11 @@ URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
 MODEL = "gemini-3.5-flash-lite"
 SERVER_KEY = os.environ.get("GEMINI_API_KEY", "")
 
+# Google отдаёт 400 «User location is not supported», если запрос пришёл из закрытой
+# страны. На сервере запросы к модели идут через локальный SOCKS-прокси, локально
+# переменной нет и всё ходит напрямую.
+PROXY = os.environ.get("LLM_PROXY") or None
+
 # Прайс Google за 1M токенов, тариф Standard, сентябрь 2026.
 # Поменяли MODEL — проверьте, что она есть здесь, иначе стоимость не посчитается.
 PRICES = {
@@ -327,7 +332,8 @@ def streamer(builder):
         metrics = new_metrics()
         collect = []
         started = time.monotonic()
-        async with httpx.AsyncClient(timeout=180, default_encoding="utf-8") as client:
+        async with httpx.AsyncClient(timeout=180, default_encoding="utf-8",
+                                     proxy=PROXY) as client:
             async for event in builder(client, metrics, collect):
                 yield line(event)
         answer = "".join(collect).strip()
