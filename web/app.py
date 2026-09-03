@@ -1,4 +1,6 @@
 import asyncio
+import difflib
+import itertools
 import json
 import os
 import time
@@ -105,6 +107,26 @@ SOLVER = (
     "Затем отдельным абзацем окончательный ответ."
 )
 
+TEMPERATURES = [0, 0.7, 1.2]
+RUNS = 5
+# Бесплатный тариф даёт 15 запросов в минуту на модель, поэтому запросы
+# разводятся по времени: старт не чаще одного раза в PACE секунд.
+PACE = 4.2
+
+TASKS = {
+    "factual": "В каком году человек впервые вышел в открытый космос? "
+               "Ответь одним предложением.",
+    "creative": "Придумай название для AI Advent Challenge #9 для продвижения "
+                "на билбордах города. Одна строка, только название.",
+}
+
+TEMP_JUDGE = (
+    "Тебе дают один и тот же запрос, выполненный на трёх температурах по пять раз. "
+    "Скажи, чем группы отличаются между собой, где ответы разнообразнее, а где "
+    "однообразнее, и какая температура уместнее для задач такого типа. "
+    "Содержание ответов не пересказывай. Уложись в 5-7 предложений."
+)
+
 JUDGE = (
     "Сравни четыре ответа на одну задачу, полученные разными способами. "
     "Скажи, чем они отличаются по полноте, структуре и уверенности "
@@ -124,6 +146,17 @@ class RunIn(BaseModel):
 class SummaryIn(BaseModel):
     task: str
     answers: dict[str, str]
+    key: str | None = None
+
+
+class TemperatureIn(BaseModel):
+    task: str
+    key: str | None = None
+
+
+class VerdictIn(BaseModel):
+    task: str
+    groups: dict[str, list[str]]
     key: str | None = None
 
 
@@ -327,6 +360,54 @@ async def method_4(client, key, task, metrics, collect):
 METHODS = {1: method_1, 2: method_2, 3: method_3, 4: method_4}
 
 
+def diversity(answers):
+    """Разнообразие группы ответов: сколько разных и насколько похожи друг на друга."""
+    pairs = list(itertools.combinations(answers, 2))
+    similarity = 1.0
+    if pairs:
+        similarity = sum(
+            difflib.SequenceMatcher(None, a, b).ratio() for a, b in pairs
+        ) / len(pairs)
+    return {"unique": len(set(answers)), "similarity": round(similarity, 2)}
+
+
+# Момент последнего запроса со страницы температур. Общий, а не локальный для задачи:
+# иначе на стыке двух задач отсчёт начинается заново и минутный лимит трещит.
+last_paced = 0.0
+
+
+async def temperature_run(client, key, task, metrics, collect):
+    global last_paced
+
+    for temperature in TEMPERATURES:
+        answers = []
+        for run in range(RUNS):
+            wait = PACE - (time.monotonic() - last_paced)
+            if wait > 0:
+                yield {"t": "pause", "left": round(wait, 1)}
+                await asyncio.sleep(wait)
+            last_paced = time.monotonic()
+
+            target = f"t{temperature}r{run}"
+            yield {"t": "card", "temp": temperature, "run": run, "target": target}
+
+            text = []
+            broken = False
+            async for event in call(client, key, chat(task), target,
+                                    metrics, text, temperature=temperature):
+                if event["t"] == "error":
+                    broken = True
+                yield event
+
+            answer = "".join(text).strip()
+            collect.extend(text)
+            if answer and not broken:
+                answers.append(answer)
+
+        yield {"t": "stats", "temp": temperature, "ok": len(answers),
+               "runs": RUNS, **diversity(answers)}
+
+
 def streamer(builder):
     async def run():
         metrics = new_metrics()
@@ -348,6 +429,11 @@ def index():
     return FileResponse(HERE / "index.html")
 
 
+@app.get("/temperature")
+def temperature_page():
+    return FileResponse(HERE / "temperature.html")
+
+
 @app.get("/api/config")
 def config():
     price = PRICES.get(MODEL)
@@ -356,6 +442,9 @@ def config():
         "price": {"input": price[0], "output": price[1]} if price else None,
         "presets": PRESETS,
         "server_key": bool(SERVER_KEY),
+        "tasks": TASKS,
+        "temperatures": TEMPERATURES,
+        "runs": RUNS,
     }
 
 
@@ -380,5 +469,37 @@ def summary(body: SummaryIn):
 
     def builder(client, metrics, collect):
         return call(client, key, chat(task, JUDGE), "main", metrics, collect)
+
+    return streamer(builder)
+
+
+@app.post("/api/temperature")
+def run_temperature(body: TemperatureIn):
+    key = (body.key or "").strip() or SERVER_KEY
+    return streamer(
+        lambda client, metrics, collect: temperature_run(client, key, body.task,
+                                                         metrics, collect)
+    )
+
+
+@app.post("/api/verdict")
+def verdict(body: VerdictIn):
+    key = (body.key or "").strip() or SERVER_KEY
+    groups = "\n\n".join(
+        f"temperature = {temperature}:\n" + "\n".join(f"- {a}" for a in answers)
+        for temperature, answers in body.groups.items()
+    )
+    task = f"Запрос:\n{body.task}\n\nОтветы по группам:\n{groups}"
+
+    async def builder(client, metrics, collect):
+        global last_paced
+        wait = PACE - (time.monotonic() - last_paced)
+        if wait > 0:
+            yield {"t": "pause", "left": round(wait, 1)}
+            await asyncio.sleep(wait)
+        last_paced = time.monotonic()
+        async for event in call(client, key, chat(task, TEMP_JUDGE), "main",
+                                metrics, collect):
+            yield event
 
     return streamer(builder)
