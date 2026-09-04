@@ -49,6 +49,14 @@
   button.main { background: var(--accent); color: #10231a;
                 border-color: var(--accent); font-weight: 600; }
 
+  a.btn {
+    margin-left: auto; text-decoration: none; color: var(--text);
+    background: var(--card); border: 1px solid var(--line); border-radius: 8px;
+    padding: 9px 16px; font-size: 15px;
+  }
+  a.btn + a.btn { margin-left: 0; }
+  a.btn:hover { border-color: var(--accent); }
+
   .block { margin-bottom: 26px; }
   .block h2 { font-size: 19px; margin: 0 0 4px; }
   .block .note { color: var(--dim); font-size: 14px; margin: 0 0 12px; max-width: 78ch; }
@@ -120,13 +128,14 @@
 
 <h1>Одна задача, шесть моделей, три прогона</h1>
 <p class="sub">Две шкалы «слабая — средняя — сильная»: открытые веса на Groq и лесенка
-  по прайсу у Google ·
-  <a href="/">к способам рассуждения</a> · <a href="/temperature">к температуре</a></p>
+  по прайсу у Google</p>
 
 <div class="controls">
   <div class="row">
     <button class="main" id="run">Запустить</button>
     <span class="hint" id="plan">…</span>
+    <a class="btn" href="/">Способы рассуждения</a>
+    <a class="btn" href="/temperature">Сравнение температур</a>
   </div>
   <textarea id="task"></textarea>
   <div class="row" id="presets"></div>

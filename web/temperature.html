@@ -49,6 +49,14 @@
   button.main { background: var(--accent); color: #10231a;
                 border-color: var(--accent); font-weight: 600; }
 
+  a.btn {
+    margin-left: auto; text-decoration: none; color: var(--text);
+    background: var(--card); border: 1px solid var(--line); border-radius: 8px;
+    padding: 9px 16px; font-size: 15px;
+  }
+  a.btn + a.btn { margin-left: 0; }
+  a.btn:hover { border-color: var(--accent); }
+
   .block { margin-bottom: 26px; }
   .block h2 { font-size: 19px; margin: 0 0 8px; }
   .stage { color: var(--accent); font-size: 13px; min-height: 18px; margin: 8px 0; }
@@ -104,13 +112,16 @@
 
 <h1>Одна задача, три температуры, пять прогонов</h1>
 <p class="sub">Модель <code id="model">…</code> · <span id="price">…</span> ·
-  <a href="/">к способам рассуждения</a> · <a href="/models">к сравнению моделей</a></p>
+  <a href="/">к способам рассуждения</a></p>
 
 <div class="controls">
   <div class="row">
     <button class="main" id="all">Запустить всё</button>
     <button data-task="factual">Фактическая</button>
     <button data-task="creative">Творческая</button>
+    <a class="btn" href="/models">Сравнение моделей</a>
+  </div>
+  <div class="row">
     <label for="key">Свой API-ключ</label>
     <input id="key" type="password" placeholder="пусто — используется ключ сервера" autocomplete="off">
     <span class="hint">ключ нигде не сохраняется</span>
