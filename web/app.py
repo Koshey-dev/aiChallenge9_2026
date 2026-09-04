@@ -12,11 +12,14 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
+from models import MAX_TOKENS, MODELS, MODEL_TASKS, RUNS_PER_MODEL, SCALES, URLS, cost_of
+
 load_dotenv()
 
 URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
 MODEL = "gemini-3.5-flash-lite"
 SERVER_KEY = os.environ.get("GEMINI_API_KEY", "")
+GROQ_KEY = os.environ.get("GROQ_API_KEY", "")
 
 # Google отдаёт 400 «User location is not supported», если запрос пришёл из закрытой
 # страны. На сервере запросы к модели идут через локальный SOCKS-прокси, локально
@@ -160,6 +163,12 @@ class VerdictIn(BaseModel):
     key: str | None = None
 
 
+class ModelsIn(BaseModel):
+    task: str
+    key: str | None = None
+    groq_key: str | None = None
+
+
 def new_metrics():
     return {"requests": 0, "prompt_tokens": 0, "completion_tokens": 0}
 
@@ -167,9 +176,11 @@ def new_metrics():
 def finish(metrics, started, chars):
     tokens_in = metrics["prompt_tokens"]
     tokens_out = metrics["completion_tokens"]
+    # Страница сравнения моделей считает стоимость сама: в одном прогоне там шесть
+    # разных прайсов, и общий MODEL к ним отношения не имеет.
+    cost = metrics.get("cost")
     price = PRICES.get(MODEL)
-    cost = None
-    if price:
+    if cost is None and price:
         cost = tokens_in / 1e6 * price[0] + tokens_out / 1e6 * price[1]
     return {
         "seconds": round(time.monotonic() - started, 1),
@@ -192,8 +203,12 @@ def chat(task, system=None):
     return messages
 
 
-async def call(client, key, messages, target, metrics, collect, **knobs):
-    """Один потоковый запрос. Отдаёт события браузеру, копит метрики и текст."""
+async def call(client, key, messages, target, metrics, collect, url=URL, **knobs):
+    """Один потоковый запрос. Отдаёт события браузеру, копит метрики и текст.
+
+    `url` и `model` в `knobs` меняются только на странице сравнения моделей:
+    там каждый запрос уходит своей модели, а половина — вообще другому провайдеру.
+    """
     payload = {
         "model": MODEL,
         "messages": messages,
@@ -206,7 +221,7 @@ async def call(client, key, messages, target, metrics, collect, **knobs):
 
     for attempt in range(3):
         try:
-            async with client.stream("POST", URL, headers=headers, json=payload) as response:
+            async with client.stream("POST", url, headers=headers, json=payload) as response:
                 if response.status_code in (429, 503) and attempt < 2:
                     await response.aread()
                     pause = 2 * (attempt + 1)
@@ -408,6 +423,116 @@ async def temperature_run(client, key, task, metrics, collect):
                "runs": RUNS, **diversity(answers)}
 
 
+def average(values):
+    return round(sum(values) / len(values), 2) if values else None
+
+
+async def model_runs(client, keys, model, task, total, collect):
+    """Прогоны одной модели подряд. Счётчики у каждого прогона свои: две шкалы
+    идут параллельно, и на общем словаре разницы «до и после» перемешались бы."""
+    provider = model["provider"]
+    every = []
+    clean = []
+
+    for run in range(RUNS_PER_MODEL):
+        target = f"{model['key']}r{run}"
+        yield {"t": "card", "model": model["key"], "run": run, "target": target}
+
+        spent = new_metrics()
+        text = []
+        started = time.monotonic()
+        first = None
+        retries = 0
+        broken = False
+
+        async for event in call(client, keys[provider], chat(task), target,
+                                spent, text, url=URLS[provider],
+                                model=model["id"], max_tokens=MAX_TOKENS):
+            if event["t"] == "delta" and first is None:
+                first = time.monotonic() - started
+            elif event["t"] == "retry":
+                retries += 1
+            elif event["t"] == "error":
+                broken = True
+            yield event
+
+        seconds = time.monotonic() - started
+        tokens_in = spent["prompt_tokens"]
+        tokens_out = spent["completion_tokens"]
+        cost = cost_of(model, tokens_in, tokens_out) if tokens_out else None
+
+        total["requests"] += spent["requests"]
+        total["prompt_tokens"] += tokens_in
+        total["completion_tokens"] += tokens_out
+        total["cost"] += cost or 0.0
+        collect.extend(text)
+
+        # Скорость сквозная: токены выхода на всё время запроса. Отделить генерацию
+        # от ожидания по клиенту нельзя — ответ приходит двумя-тремя крупными кусками,
+        # и «время после первого токена» вырождается в доли секунды. Деление на них
+        # давало 7795 токенов/с, чего не бывает.
+        tps = round(tokens_out / seconds, 1) if tokens_out and seconds > 0 else None
+
+        measured = {
+            "seconds": round(seconds, 1),
+            "ttft": round(first, 2) if first is not None else None,
+            "tokens_in": tokens_in,
+            "tokens_out": tokens_out,
+            "tps": tps,
+            "cost": cost,
+        }
+        yield {"t": "run", "model": model["key"], "run": run,
+               "retries": retries, **measured}
+
+        every.append(measured)
+        # Повтор по лимиту растягивает время в разы, поэтому в средние такой прогон
+        # не идёт. На стоимость повтор не влияет — она считается по всем прогонам.
+        if not broken and not retries:
+            clean.append(measured)
+
+    yield {
+        "t": "model_stats",
+        "model": model["key"],
+        "ok": len(clean),
+        "runs": RUNS_PER_MODEL,
+        "ttft": average([m["ttft"] for m in clean if m["ttft"] is not None]),
+        "seconds": average([m["seconds"] for m in clean]),
+        "tps": average([m["tps"] for m in clean if m["tps"] is not None]),
+        "tokens_out": average([m["tokens_out"] for m in clean]),
+        "cost": cost_of(model, sum(m["tokens_in"] for m in every),
+                        sum(m["tokens_out"] for m in every)),
+    }
+
+
+async def models_run(client, keys, task, total, collect):
+    """Две шкалы идут параллельно, внутри шкалы модели — по очереди.
+
+    Параллельно только между провайдерами: внутри одной шкалы одновременные запросы
+    делят очередь провайдера, и замер времени перестал бы что-либо значить.
+    """
+    total["cost"] = 0.0
+    groups = {}
+    for model in MODELS:
+        groups.setdefault(model["scale"], []).append(model)
+
+    async def scale(models):
+        for model in models:
+            async for event in model_runs(client, keys, model, task, total, collect):
+                yield event
+
+    queue = asyncio.Queue()
+    workers = [asyncio.create_task(drain(scale(models), queue))
+               for models in groups.values()]
+    left = len(workers)
+    while left:
+        event = await queue.get()
+        if event is None:
+            left -= 1
+            continue
+        yield event
+    await asyncio.gather(*workers)
+
+
 def streamer(builder):
     async def run():
         metrics = new_metrics()
@@ -432,6 +557,36 @@ def index():
 @app.get("/temperature")
 def temperature_page():
     return FileResponse(HERE / "temperature.html")
+
+
+@app.get("/models")
+def models_page():
+    return FileResponse(HERE / "models.html")
+
+
+@app.get("/api/models-config")
+def models_config():
+    return {
+        "models": MODELS,
+        "scales": SCALES,
+        "tasks": MODEL_TASKS,
+        "runs": RUNS_PER_MODEL,
+        "max_tokens": MAX_TOKENS,
+        "server_key": bool(SERVER_KEY),
+        "server_groq_key": bool(GROQ_KEY),
+    }
+
+
+@app.post("/api/models-run")
+def run_models(body: ModelsIn):
+    keys = {
+        "gemini": (body.key or "").strip() or SERVER_KEY,
+        "groq": (body.groq_key or "").strip() or GROQ_KEY,
+    }
+    return streamer(
+        lambda client, metrics, collect: models_run(client, keys, body.task,
+                                                    metrics, collect)
+    )
 
 
 @app.get("/api/config")
