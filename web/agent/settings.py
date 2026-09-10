@@ -22,7 +22,11 @@ BLOCKS = [
             {"key": "temperature", "label": "Температура", "type": "number",
              "default": 0.3, "hint": "0 — предсказуемо, выше 1 — разнообразнее"},
             {"key": "max_tokens", "label": "Предел токенов ответа", "type": "number",
-             "default": 800},
+             "default": 1500},
+            {"key": "thinking", "label": "Рассуждение модели (DeepSeek)", "type": "bool",
+             "default": False,
+             "hint": "включено — рассуждение съедает предел токенов раньше ответа, "
+                     "поднимайте предел до 6000 и выше"},
         ],
     },
     {

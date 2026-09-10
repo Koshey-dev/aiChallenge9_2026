@@ -59,13 +59,23 @@ class Agent:
                      settings={"role": task["prompt"], "memory": 0,
                                "crew": False, "judge": False, "log": False})
 
+    def quirks(self):
+        """Поля, которых нет в общем OpenAI-протоколе. Уходят только тому провайдеру,
+        который их понимает: у DeepSeek рассуждение включено по умолчанию и съедает
+        предел токенов раньше, чем начнётся ответ."""
+        if not self.settings["model"].startswith("deepseek"):
+            return {}
+        state = "enabled" if self.settings["thinking"] else "disabled"
+        return {"thinking": {"type": state}}
+
     async def answer(self, client, messages):
         """Один потоковый вызов модели с настройками коробки."""
         async for piece in stream_chat(client, url=self.url, key=self.key,
                                        model=self.settings["model"], messages=messages,
                                        usage=self.usage,
                                        temperature=float(self.settings["temperature"]),
-                                       max_tokens=int(self.settings["max_tokens"])):
+                                       max_tokens=int(self.settings["max_tokens"]),
+                                       **self.quirks()):
             yield piece
 
     async def team_up(self, client, question, tasks):
@@ -118,7 +128,7 @@ class Agent:
             tasks = await crew.plan(client, url=self.url, key=self.key,
                                     model=self.settings["model"], question=question,
                                     limit=int(self.settings["crew_max"]),
-                                    usage=self.usage)
+                                    usage=self.usage, **self.quirks())
             yield self.note(f"планировщик: агентов — {len(tasks)}" if tasks
                             else "планировщик: хватит одного агента")
 
@@ -155,7 +165,7 @@ class Agent:
             verdict = await judge.review(client, url=self.url, key=self.key,
                                          model=self.settings["model"],
                                          question=question, answer=clean,
-                                         usage=self.usage)
+                                         usage=self.usage, **self.quirks())
             hit = "ответ по делу" if verdict["answered"] else "ответ мимо вопроса"
             yield self.note(f"судья: {hit}, риск выдумки — {verdict['risk']}")
             yield {"t": "judge", **verdict}

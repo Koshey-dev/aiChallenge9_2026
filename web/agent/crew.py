@@ -55,14 +55,15 @@ def looks_like_crew(text):
     return bool(HINTS.search(text))
 
 
-async def plan(client, *, url, key, model, question, limit, usage):
+async def plan(client, *, url, key, model, question, limit, usage, **knobs):
     """Решает, звать ли бригаду, и режет задачу на части. Список обрезан до `limit`."""
     messages = [
         {"role": "system", "content": f"{PLANNER}\nБольше {limit} частей не предлагай."},
         {"role": "user", "content": question},
     ]
     answer = await json_chat(client, url=url, key=key, model=model, messages=messages,
-                             schema=SCHEMA, name="plan", usage=usage, temperature=0)
+                             schema=SCHEMA, name="plan", usage=usage, temperature=0,
+                             **knobs)
     tasks = answer.get("tasks") or []
     if answer.get("mode") != "crew" or not tasks:
         return []

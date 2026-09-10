@@ -84,15 +84,31 @@ async def stream_chat(client, *, url, key, model, messages, usage, **knobs):
     raise AgentError("провайдер не отвечает: лимит запросов")
 
 
+def loads(text):
+    """Разбор JSON из ответа модели. Блок кода вокруг снимается: в режиме
+    `json_object` часть провайдеров оборачивает ответ в ```json."""
+    clean = text.strip()
+    if clean.startswith("```"):
+        clean = clean.split("\n", 1)[-1].rsplit("```", 1)[0]
+    return json.loads(clean)
+
+
 async def json_chat(client, *, url, key, model, messages, schema, name, usage, **knobs):
-    """Непотоковый запрос со схемой ответа: результат нужен целиком до следующего шага."""
+    """Непотоковый запрос с ответом-объектом: результат нужен целиком до следующего шага.
+
+    Схема уходит текстом, а не полем `json_schema`: строгие схемы поддерживает не
+    каждый OpenAI-совместимый провайдер (DeepSeek отвечает на них
+    `This response_format type is unavailable now`), а `json_object` — все.
+    """
+    guide = (f"Верни только JSON по схеме «{name}», без пояснений и без блока кода:\n"
+             + json.dumps(schema, ensure_ascii=False))
+    last = messages[-1]
+    messages = [*messages[:-1],
+                {**last, "content": last["content"] + "\n\n" + guide}]
     payload = {
         "model": model,
         "messages": messages,
-        "response_format": {
-            "type": "json_schema",
-            "json_schema": {"name": name, "schema": schema},
-        },
+        "response_format": {"type": "json_object"},
         **knobs,
     }
     try:
@@ -106,4 +122,7 @@ async def json_chat(client, *, url, key, model, messages, schema, name, usage, *
     data = response.json()
     spent = data.get("usage") or {}
     _add(usage, spent.get("prompt_tokens", 0), spent.get("completion_tokens", 0))
-    return json.loads(data["choices"][0]["message"]["content"])
+    try:
+        return loads(data["choices"][0]["message"]["content"])
+    except ValueError as error:
+        raise AgentError(f"модель вернула не JSON: {error}") from error

@@ -22,14 +22,24 @@ MODEL = "gemini-3.5-flash-lite"
 SERVER_KEY = os.environ.get("GEMINI_API_KEY", "")
 GROQ_KEY = os.environ.get("GROQ_API_KEY", "")
 
+# Вторая неделя сидит на другом провайдере: агент ходит в DeepSeek, страницы
+# первой недели остаются на Gemini.
+AGENT_URL = "https://api.deepseek.com/chat/completions"
+AGENT_MODEL = "deepseek-flash"
+AGENT_KEY = os.environ.get("DEEPSEEK_API_KEY", "")
+
 # Google отдаёт 400 «User location is not supported», если запрос пришёл из закрытой
 # страны. На сервере запросы к модели идут через локальный SOCKS-прокси, локально
 # переменной нет и всё ходит напрямую.
 PROXY = os.environ.get("LLM_PROXY") or None
 
-# Прайс Google за 1M токенов, тариф Standard, сентябрь 2026.
+# Прайс за 1M токенов, сентябрь 2026. У DeepSeek указан пиковый тариф — вне пиковых
+# часов (01:00-04:00 и 06:00-10:00 UTC по будням) он вдвое ниже, поэтому расчёт
+# в стенде — верхняя оценка. У Google тариф Standard.
 # Поменяли MODEL — проверьте, что она есть здесь, иначе стоимость не посчитается.
 PRICES = {
+    "deepseek-flash": (0.30, 1.20),
+    "deepseek-v4-pro": (1.32, 3.96),
     "gemini-3.8-flash": (0.75, 3.75),
     "gemini-3.7-flash": (0.75, 3.75),
     "gemini-3.6-flash": (0.75, 3.75),
@@ -608,10 +618,11 @@ AGENTS: dict[str, Agent] = {}
 
 @app.post("/api/agent")
 def agent_chat(body: AgentIn):
-    key = (body.key or "").strip() or SERVER_KEY
+    key = (body.key or "").strip() or AGENT_KEY
     agent = AGENTS.get(body.session)
     if agent is None:
-        agent = AGENTS[body.session] = Agent(key, url=URL, model=MODEL, prices=PRICES)
+        agent = AGENTS[body.session] = Agent(key, url=AGENT_URL, model=AGENT_MODEL,
+                                             prices=PRICES)
     # ключ и настройки приходят с каждой репликой: агент переживёт смену любого
     agent.key = key
     agent.configure(body.settings)
@@ -647,7 +658,8 @@ def config():
         "tasks": TASKS,
         "temperatures": TEMPERATURES,
         "runs": RUNS,
-        "agent": {"blocks": blocks(MODEL)},
+        "agent": {"blocks": blocks(AGENT_MODEL), "model": AGENT_MODEL,
+                  "server_key": bool(AGENT_KEY)},
     }
 
 

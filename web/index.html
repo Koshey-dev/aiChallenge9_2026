@@ -308,7 +308,10 @@ const panel = n => $("#p" + n);
 
 fetch("/api/config").then(r => r.json()).then(cfg => {
   $("#model").textContent = cfg.model;
-  $("#model2").textContent = cfg.model;
+  $("#model2").textContent = cfg.agent.model;
+  if (!cfg.agent.server_key) {
+    $("#agentKey").placeholder = "ключа на сервере нет — введите свой";
+  }
   setupSettings(cfg.agent.blocks);
   $("#price").textContent = cfg.price
     ? `$${cfg.price.input} / $${cfg.price.output} за 1M токенов (вход / выход)`
@@ -322,7 +325,6 @@ fetch("/api/config").then(r => r.json()).then(cfg => {
   });
   if (!cfg.server_key) {
     $("#key").placeholder = "ключа на сервере нет — введите свой";
-    $("#agentKey").placeholder = "ключа на сервере нет — введите свой";
   }
 });
 
