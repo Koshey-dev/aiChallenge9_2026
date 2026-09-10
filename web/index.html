@@ -259,7 +259,8 @@
 
 <h1>Агент: роль, память, ответ по REST</h1>
 <p class="sub">Модель <code id="model2">…</code> ·
-  историю диалога держит объект агента на сервере, браузер шлёт только новую реплику</p>
+  историю диалога держит агент на сервере и складывает в SQLite —
+  перезапуск службы диалог переживает</p>
 
 <details class="persona">
   <summary>Роль агента — системный промпт, который уходит в каждый запрос</summary>
@@ -550,11 +551,13 @@ document.querySelectorAll(".tab").forEach(tab => {
 });
 showPane(location.hash === "#week2" ? "week2" : "week1");
 
-// Идентификатор диалога: по нему сервер находит объект агента с историей.
-const session = sessionStorage.getItem("agent") || (crypto.randomUUID
+// Идентификатор диалога: по нему сервер находит агента с историей. Лежит
+// в localStorage, а не в sessionStorage: диалог должен пережить и закрытую
+// вкладку, и перезапуск службы.
+const session = localStorage.getItem("agent") || (crypto.randomUUID
   ? crypto.randomUUID()
   : "s" + Date.now() + Math.random().toString(36).slice(2));
-sessionStorage.setItem("agent", session);
+localStorage.setItem("agent", session);
 
 function forget() {
   return fetch("/api/agent/reset", {
@@ -564,8 +567,28 @@ function forget() {
   });
 }
 
-// экран пустой — пусть и память агента будет пустой
-forget();
+// Страница открылась — забираем диалог с сервера и отрисовываем заново:
+// пустой экран при живой памяти агента врал бы о том, что тот помнит.
+async function restore() {
+  const response = await fetch("/api/agent/history", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ session }),
+  });
+  if (!response.ok) return;
+
+  const data = await response.json();
+  if (!data.messages.length) return;
+
+  data.messages.forEach(message => {
+    if (message.role === "user") bubble("me", message.content);
+    else append(bubble("bot", ""), message.content);
+  });
+  logLine(`диалог восстановлен: реплик ${data.metrics.turns}`);
+  agentMetrics(data.metrics);
+}
+
+restore().catch(() => logLine("сервер не ответил — диалог не восстановлен"));
 
 function bubble(who, text) {
   const box = document.createElement("div");

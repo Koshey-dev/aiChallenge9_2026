@@ -17,7 +17,8 @@ class Agent:
     """Коробка вокруг модели: роль, память, политики, судья, бригада, журнал.
 
     Живёт между запросами: браузер присылает только новую реплику, историю
-    и счётчики агент держит у себя.
+    и счётчики агент держит у себя. Где они лежат между перезапусками, коробка
+    не знает: она отдаёт состояние в `state()` и принимает обратно в `restore()`.
     """
 
     def __init__(self, key, *, url, model, prices=None, settings=None):
@@ -43,6 +44,21 @@ class Agent:
     def remembered(self):
         window = max(0, int(self.settings["memory"]))
         return self.history[-window:] if window else []
+
+    def state(self):
+        """Всё, что стоит пережить перезапуск: история диалога и счётчики.
+
+        Настройки сюда не идут — они приходят из браузера с каждой репликой,
+        и хранить их вторым экземпляром значит рано или поздно разойтись с ним.
+        """
+        return {"history": self.history, "usage": self.usage}
+
+    def restore(self, state):
+        """Поднять диалог из сохранённого состояния — как будто не выключались."""
+        saved = state.get("usage") or {}
+        self.history = list(state.get("history") or [])
+        self.usage = {field: int(saved.get(field, 0)) for field in new_usage()}
+        self.before = dict(self.usage)
 
     def note(self, text):
         self.log.append(text)

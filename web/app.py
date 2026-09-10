@@ -12,6 +12,7 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
+import store
 from agent import Agent, AgentError, blocks
 from models import MAX_TOKENS, MODELS, MODEL_TASKS, RUNS_PER_MODEL, SCALES, URLS, cost_of
 
@@ -613,18 +614,28 @@ def run_models(body: ModelsIn):
 
 # Агенты живут между запросами: браузер присылает только новую реплику,
 # историю диалога держит агент на сервере. Ключ — идентификатор вкладки.
+# Словарь живёт в памяти процесса, поэтому после каждой реплики диалог уходит
+# в SQLite: перезапуск службы словарь стирает, а базу нет.
 AGENTS: dict[str, Agent] = {}
+
+
+def agent_for(session):
+    """Агент диалога: живой из словаря, а если его там нет — поднятый из базы."""
+    agent = AGENTS.get(session)
+    if agent is None:
+        agent = AGENTS[session] = Agent(AGENT_KEY, url=AGENT_URL, model=AGENT_MODEL,
+                                        prices=PRICES)
+        saved = store.load(session)
+        if saved:
+            agent.restore(saved)
+    return agent
 
 
 @app.post("/api/agent")
 def agent_chat(body: AgentIn):
-    key = (body.key or "").strip() or AGENT_KEY
-    agent = AGENTS.get(body.session)
-    if agent is None:
-        agent = AGENTS[body.session] = Agent(key, url=AGENT_URL, model=AGENT_MODEL,
-                                             prices=PRICES)
+    agent = agent_for(body.session)
     # ключ и настройки приходят с каждой репликой: агент переживёт смену любого
-    agent.key = key
+    agent.key = (body.key or "").strip() or AGENT_KEY
     agent.configure(body.settings)
 
     async def run():
@@ -636,6 +647,8 @@ def agent_chat(body: AgentIn):
             except AgentError as error:
                 yield line({"t": "error", "message": str(error)})
                 return
+        # Реплика дошла до конца — диалог целиком уходит в базу.
+        store.save(body.session, agent.state())
         yield line({"t": "done", **agent.report()})
 
     return StreamingResponse(run(), media_type="application/x-ndjson")
@@ -644,7 +657,19 @@ def agent_chat(body: AgentIn):
 @app.post("/api/agent/reset")
 def agent_reset(body: SessionIn):
     AGENTS.pop(body.session, None)
+    store.drop(body.session)
     return {"ok": True}
+
+
+@app.post("/api/agent/history")
+def agent_history(body: SessionIn):
+    """Диалог для страницы, которая только что открылась: реплики и счётчики.
+
+    Браузер держит идентификатор диалога в `localStorage`, поэтому после
+    перезагрузки страницы и перезапуска службы он спрашивает тот же диалог.
+    """
+    agent = agent_for(body.session)
+    return {"messages": agent.history, "metrics": agent.report()}
 
 
 @app.get("/api/config")
