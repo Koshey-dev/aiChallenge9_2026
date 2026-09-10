@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Четыре способа рассуждения</title>
+<title>Стенд AI Challenge</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧠</text></svg>">
 <style>
   :root {
@@ -116,9 +116,33 @@
   .fine { color: var(--dim); font-size: 12.5px; margin: 8px 0 0; }
   .verdict { margin-top: 20px; }
   .verdict .body { max-height: none; }
+
+  .tabs { display: flex; gap: 8px; margin: 0 0 22px;
+          border-bottom: 1px solid var(--line); }
+  .tab { border-bottom: none; border-radius: 8px 8px 0 0; margin-bottom: -1px; }
+  .tab.on { border-color: var(--accent); color: var(--accent); background: #16201b; }
+
+  .persona { background: var(--card); border: 1px solid var(--line);
+             border-radius: 10px; padding: 10px 14px; margin-bottom: 18px; }
+  .persona summary { cursor: pointer; color: var(--dim); font-size: 14px; }
+  .persona p { margin: 10px 0 0; font-size: 14.5px; color: #cfd3e0; }
+  .chat { display: grid; gap: 12px; margin-bottom: 16px; }
+  .msg { background: var(--card); border: 1px solid var(--line);
+         border-radius: 12px; padding: 10px 14px; max-width: 820px; }
+  .msg.me { justify-self: end; background: #16201b; border-color: #2c4436; }
+  .msg .who { color: var(--dim); font-size: 12px; letter-spacing: .04em;
+              text-transform: uppercase; display: block; margin-bottom: 4px; }
+  input#agentKey { width: 300px; font-size: 14px; }
 </style>
 </head>
 <body>
+
+<nav class="tabs">
+  <button class="tab" data-pane="week1">Неделя 1</button>
+  <button class="tab" data-pane="week2">Неделя 2</button>
+</nav>
+
+<section class="pane" id="week1">
 
 <h1>Одна задача, четыре способа рассуждения</h1>
 <p class="sub">Модель <code id="model">…</code> · <span id="price">…</span> · запросы идут по REST к OpenAI-совместимому эндпоинту Gemini</p>
@@ -206,6 +230,36 @@
   </div>
 </section>
 
+</section>
+
+<section class="pane" id="week2" hidden>
+
+<h1>Агент: роль, память, ответ по REST</h1>
+<p class="sub">Модель <code id="model2">…</code> ·
+  историю диалога держит объект агента на сервере, браузер шлёт только новую реплику</p>
+
+<details class="persona">
+  <summary>Роль агента — системный промпт, который уходит в каждый запрос</summary>
+  <p id="role"></p>
+</details>
+
+<div class="chat" id="chat"></div>
+
+<div class="controls">
+  <textarea id="say" placeholder="Спросите что-нибудь. Enter — отправить, Shift+Enter — перенос строки"></textarea>
+  <div class="row">
+    <button class="main" id="send">Отправить</button>
+    <button id="forget">Забыть диалог</button>
+    <label for="agentKey">Свой API-ключ</label>
+    <input id="agentKey" type="password" placeholder="пусто — ключ сервера" autocomplete="off">
+    <span class="hint">ключ нигде не сохраняется</span>
+  </div>
+</div>
+<div class="stage" id="agentStage"></div>
+<div class="metrics" id="agentMetrics"></div>
+
+</section>
+
 <script>
 const NAMES = {
   1: "1 — прямой", 2: "2 — пошагово",
@@ -219,6 +273,8 @@ const panel = n => $("#p" + n);
 
 fetch("/api/config").then(r => r.json()).then(cfg => {
   $("#model").textContent = cfg.model;
+  $("#model2").textContent = cfg.model;
+  $("#role").textContent = cfg.agent.role;
   $("#price").textContent = cfg.price
     ? `$${cfg.price.input} / $${cfg.price.output} за 1M токенов (вход / выход)`
     : "цена неизвестна";
@@ -231,6 +287,7 @@ fetch("/api/config").then(r => r.json()).then(cfg => {
   });
   if (!cfg.server_key) {
     $("#key").placeholder = "ключа на сервере нет — введите свой";
+    $("#agentKey").placeholder = "ключа на сервере нет — введите свой";
   }
 });
 
@@ -413,7 +470,7 @@ async function runSummary() {
 }
 
 function lock(on) {
-  document.querySelectorAll("button").forEach(b => (b.disabled = on));
+  document.querySelectorAll("#week1 button").forEach(b => (b.disabled = on));
 }
 
 document.querySelectorAll("[data-run]").forEach(button => {
@@ -437,6 +494,99 @@ $("#judge").addEventListener("click", async () => {
   lock(true);
   await runSummary();
   lock(false);
+});
+
+function showPane(name) {
+  document.querySelectorAll(".pane").forEach(p => (p.hidden = p.id !== name));
+  document.querySelectorAll(".tab")
+    .forEach(t => t.classList.toggle("on", t.dataset.pane === name));
+}
+
+document.querySelectorAll(".tab").forEach(tab => {
+  tab.addEventListener("click", () => {
+    location.hash = tab.dataset.pane;
+    showPane(tab.dataset.pane);
+  });
+});
+showPane(location.hash === "#week2" ? "week2" : "week1");
+
+// Идентификатор диалога: по нему сервер находит объект агента с историей.
+const session = sessionStorage.getItem("agent") || (crypto.randomUUID
+  ? crypto.randomUUID()
+  : "s" + Date.now() + Math.random().toString(36).slice(2));
+sessionStorage.setItem("agent", session);
+
+function forget() {
+  return fetch("/api/agent/reset", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ session }),
+  });
+}
+
+// экран пустой — пусть и память агента будет пустой
+forget();
+
+function bubble(who, text) {
+  const box = document.createElement("div");
+  box.className = "msg " + who;
+  box.innerHTML = "<span class='who'></span><div class='body'></div>";
+  $(".who", box).textContent = who === "me" ? "вы" : "агент";
+  const body = $(".body", box);
+  if (text) body.textContent = text;
+  $("#chat").append(box);
+  box.scrollIntoView({ block: "end" });
+  return body;
+}
+
+function agentMetrics(m) {
+  $("#agentMetrics").textContent =
+    `реплик ${m.turns} · ${m.seconds} с · ${m.tokens_in} ток. вход · ` +
+    `${m.tokens_out} ток. выход · ${m.requests} запр. · ${money(m.cost)}`;
+}
+
+function lockChat(on) {
+  $("#send").disabled = on;
+  $("#forget").disabled = on;
+}
+
+async function send() {
+  const text = $("#say").value.trim();
+  if (!text) return;
+  $("#say").value = "";
+  bubble("me", text);
+  const box = bubble("bot", "");
+  const stage = $("#agentStage");
+  stage.textContent = "агент думает";
+  lockChat(true);
+
+  try {
+    await stream("/api/agent", { session, text, key: $("#agentKey").value }, event => {
+      if (event.t === "delta") append(box, event.text);
+      else if (event.t === "error") fail(box, event.message);
+      else if (event.t === "done") agentMetrics(event);
+    });
+  } catch (error) {
+    fail(box, "сбой: " + error.message);
+  } finally {
+    stage.textContent = "";
+    lockChat(false);
+  }
+}
+
+$("#send").addEventListener("click", send);
+
+$("#forget").addEventListener("click", async () => {
+  await forget();
+  $("#chat").textContent = "";
+  $("#agentMetrics").textContent = "";
+});
+
+$("#say").addEventListener("keydown", event => {
+  if (event.key === "Enter" && !event.shiftKey) {
+    event.preventDefault();
+    send();
+  }
 });
 </script>
 </body>

@@ -12,6 +12,7 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
+from agent import MEMORY, ROLE, Agent, AgentError
 from models import MAX_TOKENS, MODELS, MODEL_TASKS, RUNS_PER_MODEL, SCALES, URLS, cost_of
 
 load_dotenv()
@@ -161,6 +162,16 @@ class VerdictIn(BaseModel):
     task: str
     groups: dict[str, list[str]]
     key: str | None = None
+
+
+class AgentIn(BaseModel):
+    session: str
+    text: str
+    key: str | None = None
+
+
+class SessionIn(BaseModel):
+    session: str
 
 
 class ModelsIn(BaseModel):
@@ -589,6 +600,41 @@ def run_models(body: ModelsIn):
     )
 
 
+# Агенты живут между запросами: браузер присылает только новую реплику,
+# историю диалога держит агент на сервере. Ключ — идентификатор вкладки.
+AGENTS: dict[str, Agent] = {}
+
+
+@app.post("/api/agent")
+def agent_chat(body: AgentIn):
+    key = (body.key or "").strip() or SERVER_KEY
+    agent = AGENTS.get(body.session)
+    if agent is None:
+        agent = AGENTS[body.session] = Agent(key, url=URL, model=MODEL,
+                                             price=PRICES.get(MODEL))
+    # ключ мог появиться уже посреди диалога — агент переживёт смену
+    agent.key = key
+
+    async def run():
+        async with httpx.AsyncClient(timeout=180, default_encoding="utf-8",
+                                     proxy=PROXY) as client:
+            try:
+                async for piece in agent.ask(client, body.text):
+                    yield line({"t": "delta", "text": piece})
+            except AgentError as error:
+                yield line({"t": "error", "message": str(error)})
+                return
+        yield line({"t": "done", **agent.report()})
+
+    return StreamingResponse(run(), media_type="application/x-ndjson")
+
+
+@app.post("/api/agent/reset")
+def agent_reset(body: SessionIn):
+    AGENTS.pop(body.session, None)
+    return {"ok": True}
+
+
 @app.get("/api/config")
 def config():
     price = PRICES.get(MODEL)
@@ -600,6 +646,7 @@ def config():
         "tasks": TASKS,
         "temperatures": TEMPERATURES,
         "runs": RUNS,
+        "agent": {"role": ROLE, "memory": MEMORY},
     }
 
 
