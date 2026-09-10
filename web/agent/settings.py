@@ -1,0 +1,124 @@
+"""Параметры коробки: значения по умолчанию и описание полей для интерфейса.
+
+Один список `BLOCKS` — единственный источник правды: из него берутся и значения
+по умолчанию, и типы для приведения, и форма настроек в браузере.
+"""
+
+import copy
+
+ROLE = (
+    "Ты — ассистент учебного стенда AI Challenge. Отвечай по делу: без вступлений, "
+    "без пересказа вопроса, два-три абзаца максимум. "
+    "Если вопрос читается по-разному — назови прочтения и спроси, какое имелось в виду. "
+    "Если чего-то не знаешь — скажи прямо, не придумывай."
+)
+
+BLOCKS = [
+    {
+        "title": "Модель",
+        "note": "Куда и как уходит запрос.",
+        "fields": [
+            {"key": "model", "label": "Модель", "type": "text", "default": ""},
+            {"key": "temperature", "label": "Температура", "type": "number",
+             "default": 0.3, "hint": "0 — предсказуемо, выше 1 — разнообразнее"},
+            {"key": "max_tokens", "label": "Предел токенов ответа", "type": "number",
+             "default": 800},
+        ],
+    },
+    {
+        "title": "Роль и память",
+        "note": "Что уходит первым сообщением и сколько прошлого агент берёт с собой.",
+        "fields": [
+            {"key": "role", "label": "Системный промпт", "type": "textarea",
+             "default": ROLE},
+            {"key": "memory", "label": "Сколько последних реплик помнить",
+             "type": "number", "default": 20},
+        ],
+    },
+    {
+        "title": "Политика входа",
+        "note": "Отрабатывает до вызова модели. Отказ виден в чате.",
+        "fields": [
+            {"key": "input_max", "label": "Максимум символов в запросе",
+             "type": "number", "default": 2000},
+            {"key": "input_ban", "label": "Стоп-слова через запятую", "type": "text",
+             "default": "пароль, номер карты, cvv"},
+            {"key": "input_guard", "label": "Ловить попытки вытащить системный промпт",
+             "type": "bool", "default": True},
+        ],
+    },
+    {
+        "title": "Политика выхода",
+        "note": "Отрабатывает на готовом ответе. Если политика вмешалась, текст в чате заменяется очищенным.",
+        "fields": [
+            {"key": "output_max", "label": "Максимум символов в ответе",
+             "type": "number", "default": 4000},
+            {"key": "mask_secrets", "label": "Маскировать ключи и токены",
+             "type": "bool", "default": True},
+            {"key": "hide_role", "label": "Вырезать пересказ системного промпта",
+             "type": "bool", "default": True},
+        ],
+    },
+    {
+        "title": "Судья",
+        "note": "Отдельный вызов модели проверяет готовый ответ. Удваивает число запросов.",
+        "fields": [
+            {"key": "judge", "label": "Проверять ответ судьёй", "type": "bool",
+             "default": False},
+        ],
+    },
+    {
+        "title": "Бригада",
+        "note": "Если запрос похож на исследование, коробка поднимает под себя "
+                "несколько таких же агентов с настройками по умолчанию.",
+        "fields": [
+            {"key": "crew", "label": "Разрешить бригаду", "type": "bool", "default": True},
+            {"key": "crew_max", "label": "Сколько агентов максимум", "type": "number",
+             "default": 3},
+        ],
+    },
+    {
+        "title": "Журнал",
+        "note": "Что коробка сделала с репликой: политики, план, агенты, судья.",
+        "fields": [
+            {"key": "log", "label": "Показывать журнал решений в чате", "type": "bool",
+             "default": True},
+        ],
+    },
+]
+
+DEFAULTS = {field["key"]: field["default"] for block in BLOCKS for field in block["fields"]}
+TYPES = {field["key"]: field["type"] for block in BLOCKS for field in block["fields"]}
+
+
+def blocks(model):
+    """Описание настроек для интерфейса. Модель приходит снаружи: коробка не решает,
+    какую модель поднял стенд, — она только знает, что модель настраиваемая."""
+    described = copy.deepcopy(BLOCKS)
+    for block in described:
+        for field in block["fields"]:
+            if field["key"] == "model":
+                field["default"] = model
+    return described
+
+
+def coerce(values):
+    """Приводит присланное браузером к типам полей. Чужие ключи выбрасываются:
+    настройки приходят снаружи, и подкладывать в них что попало нельзя."""
+    clean = {}
+    for key, value in (values or {}).items():
+        kind = TYPES.get(key)
+        if kind is None:
+            continue
+        try:
+            if kind == "number":
+                number = float(value)
+                clean[key] = int(number) if isinstance(DEFAULTS[key], int) else number
+            elif kind == "bool":
+                clean[key] = (value.strip().lower() in ("1", "true", "on", "да")
+                              if isinstance(value, str) else bool(value))
+            else:
+                clean[key] = str(value)
+        except (TypeError, ValueError):
+            continue
+    return clean

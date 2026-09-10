@@ -133,6 +133,26 @@
   .msg .who { color: var(--dim); font-size: 12px; letter-spacing: .04em;
               text-transform: uppercase; display: block; margin-bottom: 4px; }
   input#agentKey { width: 300px; font-size: 14px; }
+  .log { color: var(--dim); font-size: 13px; font-family: ui-monospace, Consolas, monospace; }
+  .verdictline { color: var(--warn); font-size: 13px; margin-top: -4px;
+                 font-family: ui-monospace, Consolas, monospace; }
+
+  .modal { position: fixed; inset: 0; z-index: 10; overflow-y: auto;
+           background: rgba(8, 9, 14, .72); padding: 40px 16px;
+           display: flex; align-items: flex-start; justify-content: center; }
+  .modal[hidden] { display: none; }
+  .sheet { background: var(--card); border: 1px solid var(--line);
+           border-radius: 14px; padding: 22px; width: min(720px, 100%); }
+  .sheet h2 { margin: 0 0 6px; font-size: 19px; }
+  .block { border: 1px solid var(--line); border-radius: 10px;
+           margin: 14px 0; padding: 4px 14px 14px; }
+  .block legend { color: var(--accent); font-size: 14px; padding: 0 6px; }
+  .block .fine { margin: 6px 0 0; }
+  .field { display: grid; grid-template-columns: 250px 1fr; gap: 10px;
+           align-items: center; margin-top: 12px; }
+  .field textarea { min-height: 110px; font-size: 14px; }
+  .field input[type=checkbox] { width: 18px; height: 18px; justify-self: start; }
+  .field .hint { grid-column: 2; }
 </style>
 </head>
 <body>
@@ -250,6 +270,7 @@
   <div class="row">
     <button class="main" id="send">Отправить</button>
     <button id="forget">Забыть диалог</button>
+    <button id="settings">⚙ Настройки</button>
     <label for="agentKey">Свой API-ключ</label>
     <input id="agentKey" type="password" placeholder="пусто — ключ сервера" autocomplete="off">
     <span class="hint">ключ нигде не сохраняется</span>
@@ -257,6 +278,20 @@
 </div>
 <div class="stage" id="agentStage"></div>
 <div class="metrics" id="agentMetrics"></div>
+
+<div class="modal" id="modal" hidden>
+  <div class="sheet">
+    <h2>Настройки агента</h2>
+    <p class="fine">Поля заполнены значениями по умолчанию. Изменения уходят вместе
+      с каждой репликой и хранятся в браузере, на сервере не остаются.</p>
+    <div id="fields"></div>
+    <div class="row">
+      <button class="main" id="apply">Применить</button>
+      <button id="defaults">Сбросить к умолчанию</button>
+      <button id="close">Закрыть</button>
+    </div>
+  </div>
+</div>
 
 </section>
 
@@ -274,7 +309,7 @@ const panel = n => $("#p" + n);
 fetch("/api/config").then(r => r.json()).then(cfg => {
   $("#model").textContent = cfg.model;
   $("#model2").textContent = cfg.model;
-  $("#role").textContent = cfg.agent.role;
+  setupSettings(cfg.agent.blocks);
   $("#price").textContent = cfg.price
     ? `$${cfg.price.input} / $${cfg.price.output} за 1M токенов (вход / выход)`
     : "цена неизвестна";
@@ -545,6 +580,22 @@ function agentMetrics(m) {
     `${m.tokens_out} ток. выход · ${m.requests} запр. · ${money(m.cost)}`;
 }
 
+function logLine(text) {
+  const row = document.createElement("div");
+  row.className = "log";
+  row.textContent = "· " + text;
+  $("#chat").append(row);
+  row.scrollIntoView({ block: "end" });
+}
+
+function verdict(node, event) {
+  const row = document.createElement("div");
+  row.className = "verdictline";
+  row.textContent = `судья: ${event.answered ? "по делу" : "мимо вопроса"}` +
+    ` · риск выдумки ${event.risk} · ${event.comment}`;
+  node.parentElement.after(row);
+}
+
 function lockChat(on) {
   $("#send").disabled = on;
   $("#forget").disabled = on;
@@ -555,24 +606,136 @@ async function send() {
   if (!text) return;
   $("#say").value = "";
   bubble("me", text);
-  const box = bubble("bot", "");
+
+  // Пузырь ответа появляется на первом куске текста: до него в чат капает журнал.
+  let box = null;
+  const answer = () => (box = box || bubble("bot", ""));
   const stage = $("#agentStage");
-  stage.textContent = "агент думает";
+  stage.textContent = "агент работает";
   lockChat(true);
 
   try {
-    await stream("/api/agent", { session, text, key: $("#agentKey").value }, event => {
-      if (event.t === "delta") append(box, event.text);
-      else if (event.t === "error") fail(box, event.message);
-      else if (event.t === "done") agentMetrics(event);
-    });
+    await stream("/api/agent", { session, text, key: $("#agentKey").value, settings: conf },
+      event => {
+        if (event.t === "delta") append(answer(), event.text);
+        else if (event.t === "log") { if (conf.log) logLine(event.text); }
+        else if (event.t === "blocked") fail(answer(), "отказ: " + event.reason);
+        else if (event.t === "replace") {
+          const node = answer();
+          node.raw = "";
+          node.textContent = "";
+          append(node, event.text);
+        }
+        else if (event.t === "judge") verdict(answer(), event);
+        else if (event.t === "error") fail(answer(), event.message);
+        else if (event.t === "done") agentMetrics(event);
+      });
   } catch (error) {
-    fail(box, "сбой: " + error.message);
+    fail(answer(), "сбой: " + error.message);
   } finally {
     stage.textContent = "";
     lockChat(false);
   }
 }
+
+// ── Настройки коробки ──────────────────────────────────────────────
+// Поля описаны на сервере: интерфейс их только рисует и складывает значения.
+const CONF_KEY = "agent-conf";
+let blocks = [];
+let conf = {};
+
+function defaults() {
+  const values = {};
+  blocks.forEach(block => block.fields.forEach(f => (values[f.key] = f.default)));
+  return values;
+}
+
+function setupSettings(described) {
+  blocks = described;
+  let saved = {};
+  try {
+    saved = JSON.parse(localStorage.getItem(CONF_KEY)) || {};
+  } catch (error) {
+    saved = {};
+  }
+  conf = { ...defaults(), ...saved };
+  $("#role").textContent = conf.role;
+  renderFields();
+}
+
+function renderFields() {
+  const host = $("#fields");
+  host.textContent = "";
+
+  blocks.forEach(block => {
+    const part = document.createElement("fieldset");
+    part.className = "block";
+    part.innerHTML = "<legend></legend><p class='fine'></p>";
+    $("legend", part).textContent = block.title;
+    $(".fine", part).textContent = block.note || "";
+
+    block.fields.forEach(field => {
+      const row = document.createElement("div");
+      row.className = "field";
+
+      const label = document.createElement("label");
+      label.textContent = field.label;
+      label.htmlFor = "conf-" + field.key;
+
+      const input = document.createElement(field.type === "textarea" ? "textarea" : "input");
+      if (field.type !== "textarea") {
+        input.type = field.type === "bool" ? "checkbox"
+          : field.type === "number" ? "number" : "text";
+      }
+      if (field.type === "number") input.step = "any";
+      input.id = "conf-" + field.key;
+      input.dataset.key = field.key;
+      if (field.type === "bool") input.checked = Boolean(conf[field.key]);
+      else input.value = conf[field.key];
+
+      row.append(label, input);
+      if (field.hint) {
+        const hint = document.createElement("span");
+        hint.className = "hint";
+        hint.textContent = field.hint;
+        row.append(hint);
+      }
+      part.append(row);
+    });
+    host.append(part);
+  });
+}
+
+function readFields() {
+  $("#fields").querySelectorAll("[data-key]").forEach(input => {
+    conf[input.dataset.key] = input.type === "checkbox" ? input.checked : input.value;
+  });
+  localStorage.setItem(CONF_KEY, JSON.stringify(conf));
+  $("#role").textContent = conf.role;
+}
+
+$("#settings").addEventListener("click", () => {
+  renderFields();
+  $("#modal").hidden = false;
+});
+
+$("#apply").addEventListener("click", () => {
+  readFields();
+  $("#modal").hidden = true;
+});
+
+$("#defaults").addEventListener("click", () => {
+  conf = defaults();
+  localStorage.removeItem(CONF_KEY);
+  $("#role").textContent = conf.role;
+  renderFields();
+});
+
+$("#close").addEventListener("click", () => ($("#modal").hidden = true));
+
+$("#modal").addEventListener("click", event => {
+  if (event.target.id === "modal") $("#modal").hidden = true;
+});
 
 $("#send").addEventListener("click", send);
 

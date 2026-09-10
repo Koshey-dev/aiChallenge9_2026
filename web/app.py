@@ -12,7 +12,7 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
-from agent import MEMORY, ROLE, Agent, AgentError
+from agent import Agent, AgentError, blocks
 from models import MAX_TOKENS, MODELS, MODEL_TASKS, RUNS_PER_MODEL, SCALES, URLS, cost_of
 
 load_dotenv()
@@ -168,6 +168,7 @@ class AgentIn(BaseModel):
     session: str
     text: str
     key: str | None = None
+    settings: dict | None = None
 
 
 class SessionIn(BaseModel):
@@ -610,17 +611,17 @@ def agent_chat(body: AgentIn):
     key = (body.key or "").strip() or SERVER_KEY
     agent = AGENTS.get(body.session)
     if agent is None:
-        agent = AGENTS[body.session] = Agent(key, url=URL, model=MODEL,
-                                             price=PRICES.get(MODEL))
-    # ключ мог появиться уже посреди диалога — агент переживёт смену
+        agent = AGENTS[body.session] = Agent(key, url=URL, model=MODEL, prices=PRICES)
+    # ключ и настройки приходят с каждой репликой: агент переживёт смену любого
     agent.key = key
+    agent.configure(body.settings)
 
     async def run():
         async with httpx.AsyncClient(timeout=180, default_encoding="utf-8",
                                      proxy=PROXY) as client:
             try:
-                async for piece in agent.ask(client, body.text):
-                    yield line({"t": "delta", "text": piece})
+                async for event in agent.ask(client, body.text):
+                    yield line(event)
             except AgentError as error:
                 yield line({"t": "error", "message": str(error)})
                 return
@@ -646,7 +647,7 @@ def config():
         "tasks": TASKS,
         "temperatures": TEMPERATURES,
         "runs": RUNS,
-        "agent": {"role": ROLE, "memory": MEMORY},
+        "agent": {"blocks": blocks(MODEL)},
     }
 
 
