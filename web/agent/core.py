@@ -27,6 +27,8 @@ class Agent:
         self.settings = {**DEFAULTS, "model": model, **coerce(settings)}
         self.history = []
         self.usage = new_usage()
+        # Счётчики на начало реплики: разница с ними — расход одного запроса.
+        self.before = new_usage()
         self.log = []
         self.results = []
         self.seconds = 0.0
@@ -110,6 +112,7 @@ class Agent:
         started = time.monotonic()
         self.log = []
         self.results = []
+        self.before = dict(self.usage)
 
         try:
             question, notes = policy.check_input(text, self.settings)
@@ -172,21 +175,31 @@ class Agent:
 
         self.seconds = round(time.monotonic() - started, 1)
 
-    def cost(self):
+    def price_of(self, prompt, completion):
         price = self.prices.get(self.settings["model"])
         if not price:
             return None
-        return round(self.usage["prompt"] / 1e6 * price[0]
-                     + self.usage["completion"] / 1e6 * price[1], 6)
+        return round(prompt / 1e6 * price[0] + completion / 1e6 * price[1], 6)
 
     def report(self):
-        """Счётчики за весь диалог, время — за последнюю реплику."""
+        """Счётчики за весь диалог и отдельно расход последней реплики.
+
+        Реплика может стоить нескольких запросов — планировщик, агенты бригады,
+        сводка, судья, — поэтому расход считается разницей, а не по одному вызову.
+        """
+        turn = {field: self.usage[field] - self.before[field] for field in self.usage}
         return {
             "seconds": self.seconds,
             "turns": len(self.history) // 2,
             "requests": self.usage["requests"],
             "tokens_in": self.usage["prompt"],
             "tokens_out": self.usage["completion"],
-            "cost": self.cost(),
+            "cost": self.price_of(self.usage["prompt"], self.usage["completion"]),
+            "turn": {
+                "requests": turn["requests"],
+                "tokens_in": turn["prompt"],
+                "tokens_out": turn["completion"],
+                "cost": self.price_of(turn["prompt"], turn["completion"]),
+            },
             "log": self.log,
         }

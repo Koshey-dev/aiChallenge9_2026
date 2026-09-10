@@ -136,6 +136,9 @@
   .log { color: var(--dim); font-size: 13px; font-family: ui-monospace, Consolas, monospace; }
   .verdictline { color: var(--warn); font-size: 13px; margin-top: -4px;
                  font-family: ui-monospace, Consolas, monospace; }
+  .spend { color: var(--warn); font-size: 13px; padding-top: 8px;
+           border-top: 1px solid var(--line);
+           font-family: ui-monospace, Consolas, monospace; }
 
   .modal { position: fixed; inset: 0; z-index: 10; overflow-y: auto;
            background: rgba(8, 9, 14, .72); padding: 40px 16px;
@@ -598,6 +601,19 @@ function verdict(node, event) {
   node.parentElement.after(row);
 }
 
+// Расход последней реплики — отдельной строкой под ответом. Диалог целиком
+// считается в строке метрик под полем ввода.
+function spendLine(spent) {
+  if (!spent || !spent.requests) return;
+  const row = document.createElement("div");
+  row.className = "spend";
+  row.textContent = `потрачено на запрос: ${spent.tokens_in} ток. вход · ` +
+    `${spent.tokens_out} ток. выход · ${spent.tokens_in + spent.tokens_out} всего · ` +
+    `${spent.requests} запр. · ${money(spent.cost)}`;
+  $("#chat").append(row);
+  row.scrollIntoView({ block: "end" });
+}
+
 function lockChat(on) {
   $("#send").disabled = on;
   $("#forget").disabled = on;
@@ -630,7 +646,10 @@ async function send() {
         }
         else if (event.t === "judge") verdict(answer(), event);
         else if (event.t === "error") fail(answer(), event.message);
-        else if (event.t === "done") agentMetrics(event);
+        else if (event.t === "done") {
+          spendLine(event.turn);
+          agentMetrics(event);
+        }
       });
   } catch (error) {
     fail(answer(), "сбой: " + error.message);
