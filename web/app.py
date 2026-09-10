@@ -53,6 +53,22 @@ PRICES = {
     "gemini-2.5-flash-lite": (0.10, 0.40),
 }
 
+# Предел контекста, токенов: столько модель принимает в запросе вместе с историей.
+# Числа из документации провайдера (api-docs.deepseek.com, раздел Models & Pricing:
+# 1M контекста, 384K выхода). Поменяли модель — сверьте, иначе страж контекста
+# в коробке будет считать по чужому пределу.
+CONTEXTS = {
+    "deepseek-flash": 1_000_000,
+    "deepseek-v4-pro": 1_000_000,
+}
+
+AGENT_CONTEXT = CONTEXTS.get(AGENT_MODEL, 0)
+
+# Предел, с которым стенд стартует. Меньше настоящего специально: на миллионе
+# токенов одна реплика с переполненной историей стоит треть доллара, а на учебном
+# пределе то же самое видно за две реплики и за копейки. Меняется в настройках.
+AGENT_LIMIT = 8_000
+
 PRESETS = [
     {
         "type": "логическая",
@@ -184,6 +200,11 @@ class AgentIn(BaseModel):
 
 class SessionIn(BaseModel):
     session: str
+
+
+class BallastIn(BaseModel):
+    session: str
+    tokens: int
 
 
 class ModelsIn(BaseModel):
@@ -624,7 +645,8 @@ def agent_for(session):
     agent = AGENTS.get(session)
     if agent is None:
         agent = AGENTS[session] = Agent(AGENT_KEY, url=AGENT_URL, model=AGENT_MODEL,
-                                        prices=PRICES)
+                                        prices=PRICES,
+                                        settings={"context_limit": AGENT_LIMIT})
         saved = store.load(session)
         if saved:
             agent.restore(saved)
@@ -661,6 +683,20 @@ def agent_reset(body: SessionIn):
     return {"ok": True}
 
 
+@app.post("/api/agent/ballast")
+def agent_ballast(body: BallastIn):
+    """Синтетическая история на заданное число токенов.
+
+    Довести диалог до предела контекста настоящими репликами — это сотни запросов
+    и реальные деньги. Балласт занимает то же место в запросе, но не стоит ничего,
+    пока его не отправили.
+    """
+    agent = agent_for(body.session)
+    agent.ballast = max(0, body.tokens)
+    store.save(body.session, agent.state())
+    return {"metrics": agent.report()}
+
+
 @app.post("/api/agent/history")
 def agent_history(body: SessionIn):
     """Диалог для страницы, которая только что открылась: реплики и счётчики.
@@ -683,7 +719,8 @@ def config():
         "tasks": TASKS,
         "temperatures": TEMPERATURES,
         "runs": RUNS,
-        "agent": {"blocks": blocks(AGENT_MODEL), "model": AGENT_MODEL,
+        "agent": {"blocks": blocks(AGENT_MODEL, AGENT_CONTEXT, AGENT_LIMIT),
+                  "model": AGENT_MODEL, "context": AGENT_CONTEXT,
                   "server_key": bool(AGENT_KEY)},
     }
 

@@ -139,6 +139,30 @@
   .spend { color: var(--warn); font-size: 13px; padding-top: 8px;
            border-top: 1px solid var(--line);
            font-family: ui-monospace, Consolas, monospace; }
+  .budget { color: var(--accent); font-size: 13px;
+            font-family: ui-monospace, Consolas, monospace; }
+
+  .modeline { margin-bottom: 14px; }
+  .switch { display: inline-flex; align-items: center; gap: 8px;
+            color: var(--text); font-size: 15px; }
+  .switch input { width: 18px; height: 18px; }
+  .chats { display: grid; gap: 16px; margin-bottom: 16px; }
+  .chats.three { grid-template-columns: repeat(3, 1fr); align-items: start; }
+  .chats.three .col { background: var(--card); border: 1px solid var(--line);
+                      border-radius: 12px; padding: 14px; min-width: 0; }
+  .chats.three .chat { height: 360px; overflow-y: auto; padding-right: 4px; }
+  .chats.three .msg { max-width: none; font-size: 14px; }
+  .col h2 { font-size: 16px; margin: 0 0 2px; }
+  .col .note { color: var(--dim); font-size: 13px; margin: 0 0 10px; }
+  .ledger summary { color: var(--dim); font-size: 13px; cursor: pointer; }
+  .ledger table { margin-top: 8px; font-size: 12.5px; }
+  .ledger th, .ledger td { padding: 3px 6px; }
+  .sparkline { width: 100%; height: 34px; margin-top: 8px; }
+  .sparkline polyline { fill: none; stroke: var(--accent); stroke-width: 1.5;
+                        vector-effect: non-scaling-stroke; }
+  .ballastrow { margin-top: 12px; }
+  .ballastrow input { width: 120px; font-size: 14px; }
+  .ballastrow button { padding: 6px 12px; font-size: 14px; }
 
   .modal { position: fixed; inset: 0; z-index: 10; overflow-y: auto;
            background: rgba(8, 9, 14, .72); padding: 40px 16px;
@@ -258,7 +282,7 @@
 <section class="pane" id="week2" hidden>
 
 <h1>Агент: роль, память, ответ по REST</h1>
-<p class="sub">Модель <code id="model2">…</code> ·
+<p class="sub">Модель <code id="model2">…</code> · контекст <code id="context2">…</code> ·
   историю диалога держит агент на сервере и складывает в SQLite —
   перезапуск службы диалог переживает</p>
 
@@ -267,7 +291,14 @@
   <p id="role"></p>
 </details>
 
-<div class="chat" id="chat"></div>
+<div class="row modeline">
+  <label class="switch"><input type="checkbox" id="compare">Режим сравнения</label>
+  <span class="hint">три диалога в одну строку — короткий, длинный и переполненный;
+    вопрос уходит сразу во все три, балласт считается от предела из настроек</span>
+  <button id="preload" hidden>Набить историю по пресетам</button>
+</div>
+
+<div class="chats" id="chats"></div>
 
 <div class="controls">
   <textarea id="say" placeholder="Спросите что-нибудь. Enter — отправить, Shift+Enter — перенос строки"></textarea>
@@ -281,7 +312,29 @@
   </div>
 </div>
 <div class="stage" id="agentStage"></div>
-<div class="metrics" id="agentMetrics"></div>
+
+<template id="chatBox">
+  <div class="col">
+    <h2 class="title"></h2>
+    <p class="note"></p>
+    <div class="chat"></div>
+    <div class="metrics"></div>
+    <details class="ledger">
+      <summary>Расход по репликам</summary>
+      <div class="curve"></div>
+      <table>
+        <thead><tr><th>реплика</th><th>вход</th><th>выход</th><th>история</th>
+          <th>цена</th><th>всего</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </details>
+    <div class="row ballastrow">
+      <label>Балласт, токенов</label>
+      <input type="number" class="tokens" min="0" step="1000">
+      <button class="apply">Применить</button>
+    </div>
+  </div>
+</template>
 
 <div class="modal" id="modal" hidden>
   <div class="sheet">
@@ -313,10 +366,17 @@ const panel = n => $("#p" + n);
 fetch("/api/config").then(r => r.json()).then(cfg => {
   $("#model").textContent = cfg.model;
   $("#model2").textContent = cfg.agent.model;
+  context = cfg.agent.context;
+  $("#context2").textContent = context
+    ? context.toLocaleString("ru") + " токенов" : "предел неизвестен";
   if (!cfg.agent.server_key) {
     $("#agentKey").placeholder = "ключа на сервере нет — введите свой";
   }
   setupSettings(cfg.agent.blocks);
+  // Колонки поднимаются после настроек: пресеты балласта считаются от предела
+  // контекста, а он приходит вместе с ними.
+  $("#compare").checked = Boolean(localStorage.getItem(MODE_KEY));
+  showChats($("#compare").checked);
   $("#price").textContent = cfg.price
     ? `$${cfg.price.input} / $${cfg.price.output} за 1M токенов (вход / выход)`
     : "цена неизвестна";
@@ -551,69 +611,192 @@ document.querySelectorAll(".tab").forEach(tab => {
 });
 showPane(location.hash === "#week2" ? "week2" : "week1");
 
+// ── Диалоги второй недели ──────────────────────────────────────────
+// Колонка диалога — один и тот же компонент в обоих режимах. Разница только
+// в том, сколько колонок на странице и сколько балласта лежит в каждой.
+const VIEWS = {
+  solo: [{ key: "solo", title: "", note: "", ballast: () => 0 }],
+  compare: [
+    { key: "short", title: "Короткий",
+      note: "история пустая: платим за роль и вопрос",
+      ballast: () => 0 },
+    { key: "long", title: "Длинный",
+      note: "история на четверть контекста — и она уходит в каждый запрос заново",
+      ballast: limit => Math.round(limit / 4) },
+    { key: "over", title: "Переполненный",
+      note: "история больше, чем модель берёт в запрос",
+      ballast: limit => Math.round(limit * 1.05) },
+  ],
+};
+
+const MODE_KEY = "agent-compare";
+let context = 0;  // предел контекста модели агента, приходит с /api/config
+let chats = [];
+
+// Балласт колонок считается от того предела, с которым коробка работает сейчас,
+// а не от предела модели: предел живёт в настройках и его меняют по ходу.
+function limit() {
+  return Number(conf.context_limit) || 0;
+}
+
 // Идентификатор диалога: по нему сервер находит агента с историей. Лежит
 // в localStorage, а не в sessionStorage: диалог должен пережить и закрытую
-// вкладку, и перезапуск службы.
-const session = localStorage.getItem("agent") || (crypto.randomUUID
-  ? crypto.randomUUID()
-  : "s" + Date.now() + Math.random().toString(36).slice(2));
-localStorage.setItem("agent", session);
+// вкладку, и перезапуск службы. У каждой колонки он свой — с общим три
+// диалога сравнения оказались бы одним.
+function sessionFor(key) {
+  const slot = key === "solo" ? "agent" : "agent:" + key;
+  let id = localStorage.getItem(slot);
+  if (!id) {
+    id = crypto.randomUUID
+      ? crypto.randomUUID()
+      : "s" + Date.now() + Math.random().toString(36).slice(2);
+    localStorage.setItem(slot, id);
+  }
+  return id;
+}
 
-function forget() {
-  return fetch("/api/agent/reset", {
+function post(url, payload) {
+  return fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ session }),
+    body: JSON.stringify(payload),
   });
+}
+
+function makeChat(view, alone) {
+  const node = $("#chatBox").content.firstElementChild.cloneNode(true);
+  const chat = { view, node, session: sessionFor(view.key), estimated: 0 };
+  chat.box = $(".chat", node);
+  chat.metrics = $(".metrics", node);
+  chat.rows = $(".ledger tbody", node);
+  chat.curve = $(".curve", node);
+  chat.tokens = $(".tokens", node);
+
+  $(".title", node).textContent = view.title;
+  $(".note", node).textContent = view.note;
+  $(".title", node).hidden = alone;
+  $(".note", node).hidden = alone;
+  chat.tokens.value = view.ballast(limit());
+  $(".apply", node)
+    .addEventListener("click", () => ballast(chat, Number(chat.tokens.value)));
+
+  $("#chats").append(node);
+  return chat;
+}
+
+function showChats(compare) {
+  $("#chats").textContent = "";
+  $("#chats").classList.toggle("three", compare);
+  $("#preload").hidden = !compare;
+  chats = (compare ? VIEWS.compare : VIEWS.solo).map(view => makeChat(view, !compare));
+  chats.forEach(chat => restore(chat).catch(
+    () => logLine(chat, "сервер не ответил — диалог не восстановлен")));
 }
 
 // Страница открылась — забираем диалог с сервера и отрисовываем заново:
 // пустой экран при живой памяти агента врал бы о том, что тот помнит.
-async function restore() {
-  const response = await fetch("/api/agent/history", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ session }),
-  });
+async function restore(chat) {
+  const response = await post("/api/agent/history", { session: chat.session });
   if (!response.ok) return;
 
   const data = await response.json();
+  showMetrics(chat, data.metrics);
+  if (data.metrics.ballast) chat.tokens.value = data.metrics.ballast;
   if (!data.messages.length) return;
 
   data.messages.forEach(message => {
-    if (message.role === "user") bubble("me", message.content);
-    else append(bubble("bot", ""), message.content);
+    if (message.role === "user") bubble(chat, "me", message.content);
+    else append(bubble(chat, "bot", ""), message.content);
   });
-  logLine(`диалог восстановлен: реплик ${data.metrics.turns}`);
-  agentMetrics(data.metrics);
+  logLine(chat, `диалог восстановлен: реплик ${data.metrics.turns}`);
 }
 
-restore().catch(() => logLine("сервер не ответил — диалог не восстановлен"));
+function forget(chat) {
+  return post("/api/agent/reset", { session: chat.session }).then(() => {
+    chat.box.textContent = "";
+    chat.metrics.textContent = "";
+    chat.rows.innerHTML = "";
+    chat.curve.textContent = "";
+    chat.tokens.value = chat.view.ballast(limit());
+  });
+}
 
-function bubble(who, text) {
+// Балласт — синтетическая история на сервере. Нужен, чтобы дойти до предела
+// контекста, не оплачивая сотню настоящих реплик.
+async function ballast(chat, amount) {
+  const response = await post("/api/agent/ballast",
+    { session: chat.session, tokens: amount });
+  if (!response.ok) { logLine(chat, "балласт не поставлен: сервер отказал"); return; }
+
+  const data = await response.json();
+  showMetrics(chat, data.metrics);
+  logLine(chat, amount
+    ? `балласт: ~${amount} синтетических токенов в истории`
+    : "балласт снят");
+}
+
+function bubble(chat, who, text) {
   const box = document.createElement("div");
   box.className = "msg " + who;
   box.innerHTML = "<span class='who'></span><div class='body'></div>";
   $(".who", box).textContent = who === "me" ? "вы" : "агент";
   const body = $(".body", box);
   if (text) body.textContent = text;
-  $("#chat").append(box);
+  chat.box.append(box);
   box.scrollIntoView({ block: "end" });
   return body;
 }
 
-function agentMetrics(m) {
-  $("#agentMetrics").textContent =
-    `реплик ${m.turns} · ${m.seconds} с · ${m.tokens_in} ток. вход · ` +
-    `${m.tokens_out} ток. выход · ${m.requests} запр. · ${money(m.cost)}`;
+function logLine(chat, text, kind = "log") {
+  const row = document.createElement("div");
+  row.className = kind;
+  row.textContent = "· " + text;
+  chat.box.append(row);
+  row.scrollIntoView({ block: "end" });
 }
 
-function logLine(text) {
-  const row = document.createElement("div");
-  row.className = "log";
-  row.textContent = "· " + text;
-  $("#chat").append(row);
-  row.scrollIntoView({ block: "end" });
+function showMetrics(chat, m) {
+  const parts = [
+    `реплик ${m.turns}`, `${m.seconds} с`,
+    `${m.tokens_in} ток. вход`, `${m.tokens_out} ток. выход`,
+    `${m.requests} запр.`, money(m.cost),
+    `история ~${m.history_tokens} ток.`,
+  ];
+  if (m.ballast) parts.push(`балласт ~${m.ballast} ток.`);
+  if (m.context) parts.push(`предел ${m.context}`);
+  chat.metrics.textContent = parts.join(" · ");
+  drawLedger(chat, m.ledger || []);
+}
+
+// Как растёт расход по мере диалога: строка на реплику и кривая входных токенов.
+// Вход растёт даже при вопросах одной длины: история уходит в модель заново.
+function drawLedger(chat, ledger) {
+  chat.rows.innerHTML = ledger.slice(-12).map(row =>
+    `<tr><td>${row.turn}</td><td>${row.tokens_in}</td><td>${row.tokens_out}</td>` +
+    `<td>${row.history}</td><td>${money(row.cost)}</td>` +
+    `<td>${money(row.total_cost)}</td></tr>`).join("");
+  chat.curve.innerHTML = curve(ledger.map(row => row.tokens_in));
+}
+
+function curve(values) {
+  if (values.length < 2) return "";
+  const top = Math.max(...values, 1);
+  const step = 100 / (values.length - 1);
+  const points = values
+    .map((value, i) => `${(i * step).toFixed(1)},${(30 - value / top * 28).toFixed(1)}`)
+    .join(" ");
+  return `<svg class="sparkline" viewBox="0 0 100 30" preserveAspectRatio="none">
+    <polyline points="${points}"></polyline></svg>`;
+}
+
+// Из чего сложился запрос — до того, как он ушёл к провайдеру.
+function budgetLine(chat, b) {
+  chat.estimated = b.predicted;
+  const parts = [`роль ${b.role}`];
+  if (b.ballast) parts.push(`балласт ${b.ballast}`);
+  parts.push(`память ${b.memory}`, `вопрос ${b.question}`);
+  logLine(chat, `запрос ~${b.predicted} ток. (${parts.join(" · ")}) + ${b.reply_max}` +
+    ` на ответ${b.limit ? ` при пределе ${b.limit}` : ""}`, "budget");
 }
 
 function verdict(node, event) {
@@ -624,42 +807,41 @@ function verdict(node, event) {
   node.parentElement.after(row);
 }
 
-// Расход последней реплики — отдельной строкой под ответом. Диалог целиком
-// считается в строке метрик под полем ввода.
-function spendLine(spent) {
+// Расход последней реплики — отдельной строкой под ответом. Рядом с фактом
+// стоит оценка, посчитанная до запроса: видно, насколько она врёт.
+function spendLine(chat, spent) {
   if (!spent || !spent.requests) return;
   const row = document.createElement("div");
   row.className = "spend";
   row.textContent = `потрачено на запрос: ${spent.tokens_in} ток. вход · ` +
     `${spent.tokens_out} ток. выход · ${spent.tokens_in + spent.tokens_out} всего · ` +
-    `${spent.requests} запр. · ${money(spent.cost)}`;
-  $("#chat").append(row);
+    `${spent.requests} запр. · ${money(spent.cost)}` +
+    (chat.estimated ? ` · оценка была ~${chat.estimated}` : "");
+  chat.box.append(row);
   row.scrollIntoView({ block: "end" });
 }
 
 function lockChat(on) {
   $("#send").disabled = on;
   $("#forget").disabled = on;
+  $("#preload").disabled = on;
+  document.querySelectorAll("#chats .apply").forEach(b => (b.disabled = on));
 }
 
-async function send() {
-  const text = $("#say").value.trim();
-  if (!text) return;
-  $("#say").value = "";
-  bubble("me", text);
+async function sendTo(chat, text) {
+  bubble(chat, "me", text);
 
   // Пузырь ответа появляется на первом куске текста: до него в чат капает журнал.
   let box = null;
-  const answer = () => (box = box || bubble("bot", ""));
-  const stage = $("#agentStage");
-  stage.textContent = "агент работает";
-  lockChat(true);
+  const answer = () => (box = box || bubble(chat, "bot", ""));
 
   try {
-    await stream("/api/agent", { session, text, key: $("#agentKey").value, settings: conf },
+    await stream("/api/agent",
+      { session: chat.session, text, key: $("#agentKey").value, settings: conf },
       event => {
         if (event.t === "delta") append(answer(), event.text);
-        else if (event.t === "log") { if (conf.log) logLine(event.text); }
+        else if (event.t === "log") { if (conf.log) logLine(chat, event.text); }
+        else if (event.t === "budget") budgetLine(chat, event);
         else if (event.t === "blocked") fail(answer(), "отказ: " + event.reason);
         else if (event.t === "replace") {
           const node = answer();
@@ -670,17 +852,43 @@ async function send() {
         else if (event.t === "judge") verdict(answer(), event);
         else if (event.t === "error") fail(answer(), event.message);
         else if (event.t === "done") {
-          spendLine(event.turn);
-          agentMetrics(event);
+          spendLine(chat, event.turn);
+          showMetrics(chat, event);
         }
       });
   } catch (error) {
     fail(answer(), "сбой: " + error.message);
+  }
+}
+
+// Вопрос уходит во все открытые колонки сразу: в этом и смысл сравнения —
+// один и тот же запрос при разной длине истории.
+async function send() {
+  const text = $("#say").value.trim();
+  if (!text) return;
+  $("#say").value = "";
+
+  const stage = $("#agentStage");
+  stage.textContent = "агент работает";
+  lockChat(true);
+  try {
+    await Promise.all(chats.map(chat => sendTo(chat, text)));
   } finally {
     stage.textContent = "";
     lockChat(false);
   }
 }
+
+$("#compare").addEventListener("change", event => {
+  localStorage.setItem(MODE_KEY, event.target.checked ? "1" : "");
+  showChats(event.target.checked);
+});
+
+$("#preload").addEventListener("click", async () => {
+  lockChat(true);
+  await Promise.all(chats.map(chat => ballast(chat, chat.view.ballast(limit()))));
+  lockChat(false);
+});
 
 // ── Настройки коробки ──────────────────────────────────────────────
 // Поля описаны на сервере: интерфейс их только рисует и складывает значения.
@@ -784,9 +992,9 @@ $("#modal").addEventListener("click", event => {
 $("#send").addEventListener("click", send);
 
 $("#forget").addEventListener("click", async () => {
-  await forget();
-  $("#chat").textContent = "";
-  $("#agentMetrics").textContent = "";
+  lockChat(true);
+  await Promise.all(chats.map(forget));
+  lockChat(false);
 });
 
 $("#say").addEventListener("keydown", event => {

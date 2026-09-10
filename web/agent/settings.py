@@ -40,6 +40,22 @@ BLOCKS = [
         ],
     },
     {
+        "title": "Токены и контекст",
+        "note": "Сколько токенов уходит в запросе и что делать, когда они перестают "
+                "влезать в контекст модели.",
+        "fields": [
+            {"key": "context_limit", "label": "Предел контекста, токенов",
+             "type": "number", "default": 0,
+             "hint": "0 — не проверять; предел модели подставляется стендом"},
+            {"key": "context_guard", "label": "Проверять предел до запроса",
+             "type": "bool", "default": True,
+             "hint": "выключено — запрос уходит как есть, и предел ловит провайдер"},
+            {"key": "trim_history", "label": "Резать память, когда не влезает",
+             "type": "bool", "default": True,
+             "hint": "выключено — коробка отказывает, а не теряет реплики молча"},
+        ],
+    },
+    {
         "title": "Политика входа",
         "note": "Отрабатывает до вызова модели. Отказ виден в чате.",
         "fields": [
@@ -95,14 +111,22 @@ DEFAULTS = {field["key"]: field["default"] for block in BLOCKS for field in bloc
 TYPES = {field["key"]: field["type"] for block in BLOCKS for field in block["fields"]}
 
 
-def blocks(model):
-    """Описание настроек для интерфейса. Модель приходит снаружи: коробка не решает,
-    какую модель поднял стенд, — она только знает, что модель настраиваемая."""
+def blocks(model, context=0, limit=0):
+    """Описание настроек для интерфейса. Модель, её предел контекста и предел,
+    с которым стартует стенд, приходят снаружи: коробка не решает, какую модель
+    подняли и с каким запасом её гоняют, — она только знает, что контекст конечный.
+    """
     described = copy.deepcopy(BLOCKS)
     for block in described:
         for field in block["fields"]:
             if field["key"] == "model":
                 field["default"] = model
+            elif field["key"] == "context_limit":
+                field["default"] = limit or context
+                if context:
+                    field["hint"] = (f"предел модели — {context}; стенд стартует "
+                                     "с меньшего, чтобы переполнение было видно "
+                                     "за пару реплик и стоило копейки")
     return described
 
 

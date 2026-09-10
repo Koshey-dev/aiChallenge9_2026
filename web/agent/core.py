@@ -8,7 +8,7 @@
 import asyncio
 import time
 
-from . import crew, judge, policy
+from . import crew, judge, policy, tokens
 from .llm import AgentError, new_usage, stream_chat
 from .settings import DEFAULTS, coerce
 
@@ -33,6 +33,13 @@ class Agent:
         self.log = []
         self.results = []
         self.seconds = 0.0
+        # Балласт — синтетическая история на столько токенов. Нужен, чтобы
+        # дойти до предела контекста, не оплачивая сотню настоящих реплик.
+        self.ballast = 0
+        # Расход по репликам: из него видно, как растут токены и цена.
+        self.ledger = []
+        # Во сколько раз факт от провайдера разошёлся с оценкой по символам.
+        self.scale = 1.0
 
     def configure(self, values):
         """Настройки приходят из браузера с каждой репликой: чужие ключи отсекаются."""
@@ -45,13 +52,22 @@ class Agent:
         window = max(0, int(self.settings["memory"]))
         return self.history[-window:] if window else []
 
+    def padding(self):
+        """Балласт как пара реплик: занимает контекст, не тратя запросов к модели."""
+        if self.ballast <= 0:
+            return []
+        half = self.ballast // 2
+        return [{"role": "user", "content": tokens.filler(half)},
+                {"role": "assistant", "content": tokens.filler(self.ballast - half)}]
+
     def state(self):
-        """Всё, что стоит пережить перезапуск: история диалога и счётчики.
+        """Всё, что стоит пережить перезапуск: диалог, счётчики, журнал расхода.
 
         Настройки сюда не идут — они приходят из браузера с каждой репликой,
         и хранить их вторым экземпляром значит рано или поздно разойтись с ним.
         """
-        return {"history": self.history, "usage": self.usage}
+        return {"history": self.history, "usage": self.usage,
+                "ballast": self.ballast, "ledger": self.ledger, "scale": self.scale}
 
     def restore(self, state):
         """Поднять диалог из сохранённого состояния — как будто не выключались."""
@@ -59,6 +75,9 @@ class Agent:
         self.history = list(state.get("history") or [])
         self.usage = {field: int(saved.get(field, 0)) for field in new_usage()}
         self.before = dict(self.usage)
+        self.ballast = int(state.get("ballast") or 0)
+        self.ledger = list(state.get("ledger") or [])
+        self.scale = float(state.get("scale") or 1.0)
 
     def note(self, text):
         self.log.append(text)
@@ -85,6 +104,49 @@ class Agent:
             return {}
         state = "enabled" if self.settings["thinking"] else "disabled"
         return {"thinking": {"type": state}}
+
+    def weigh(self, pieces):
+        """Оценка запроса до отправки: во что обходится каждая его часть.
+
+        Точное число придёт от провайдера в `usage` вместе с ответом. Здесь —
+        оценка по символам, поправленная коэффициентом, который коробка сняла
+        с прошлых ответов: по ней решается, влезет ли запрос в контекст.
+        """
+        parts = {name: tokens.of(messages) for name, messages in pieces.items()}
+        total = sum(parts.values())
+        return {
+            **parts,
+            "total": total,
+            "predicted": round(total * self.scale),
+            "scale": self.scale,
+            "history": tokens.of(self.history),
+            "reply_max": int(self.settings["max_tokens"]),
+            "limit": int(self.settings["context_limit"]),
+        }
+
+    def over(self, budget):
+        """Не влезает ли запрос вместе с местом, зарезервированным под ответ."""
+        limit = budget["limit"]
+        return bool(limit) and budget["predicted"] + budget["reply_max"] > limit
+
+    def record(self, budget):
+        """Строка в журнал расхода: что стоила реплика и во что обошёлся диалог.
+
+        Заодно калибровка: оценка сверяется с фактом только там, где запрос был
+        один — у бригады и судьи в факт попадает расход чужих вызовов.
+        """
+        spent = {field: self.usage[field] - self.before[field] for field in self.usage}
+        if spent["requests"] == 1 and budget["total"]:
+            self.scale = round(spent["prompt"] / budget["total"], 2)
+        self.ledger.append({
+            "turn": len(self.history) // 2,
+            "estimated": budget["predicted"],
+            "tokens_in": spent["prompt"],
+            "tokens_out": spent["completion"],
+            "history": tokens.of(self.history),
+            "cost": self.price_of(spent["prompt"], spent["completion"]),
+            "total_cost": self.price_of(self.usage["prompt"], self.usage["completion"]),
+        })
 
     async def answer(self, client, messages):
         """Один потоковый вызов модели с настройками коробки."""
@@ -151,16 +213,54 @@ class Agent:
             yield self.note(f"планировщик: агентов — {len(tasks)}" if tasks
                             else "планировщик: хватит одного агента")
 
+        # Запрос собирается по частям, а не одним списком: каждую часть коробка
+        # взвешивает отдельно и показывает, из чего сложился расход токенов.
         if tasks:
             async for event in self.team_up(client, question, tasks):
                 yield event
             yield self.note("свожу результаты в один ответ")
-            messages = [{"role": "system", "content": crew.SUMMARY},
-                        {"role": "user", "content": crew.digest(question, self.results)}]
+            pieces = {
+                "role": [{"role": "system", "content": crew.SUMMARY}],
+                "ballast": [],
+                "memory": [],
+                "question": [{"role": "user",
+                              "content": crew.digest(question, self.results)}],
+            }
         else:
-            messages = [{"role": "system", "content": self.settings["role"]},
-                        *self.remembered(),
-                        {"role": "user", "content": question}]
+            pieces = {
+                "role": [{"role": "system", "content": self.settings["role"]}],
+                "ballast": self.padding(),
+                "memory": list(self.remembered()),
+                "question": [{"role": "user", "content": question}],
+            }
+
+        budget = self.weigh(pieces)
+        if self.settings["context_guard"]:
+            dropped = 0
+            if self.settings["trim_history"]:
+                # Режем парами: реплика пользователя без ответа модели в памяти
+                # только путает и модель, и того, кто читает журнал.
+                while self.over(budget) and pieces["memory"]:
+                    del pieces["memory"][:2]
+                    dropped += 2
+                    budget = self.weigh(pieces)
+                if dropped:
+                    yield self.note("страж контекста: память обрезана до "
+                                    f"{len(pieces['memory'])} сообщений — иначе "
+                                    "запрос не влезал в предел")
+            if self.over(budget):
+                reason = (f"контекст переполнен: запрос ~{budget['predicted']} токенов "
+                          f"плюс {budget['reply_max']} на ответ при пределе "
+                          f"{budget['limit']}")
+                yield self.note("страж контекста: отказ — " + reason)
+                yield {"t": "budget", **budget}
+                yield {"t": "blocked", "reason": reason}
+                self.seconds = round(time.monotonic() - started, 1)
+                return
+
+        yield {"t": "budget", **budget}
+        messages = [*pieces["role"], *pieces["ballast"],
+                    *pieces["memory"], *pieces["question"]]
 
         raw = []
         async for piece in self.answer(client, messages):
@@ -189,6 +289,7 @@ class Agent:
             yield self.note(f"судья: {hit}, риск выдумки — {verdict['risk']}")
             yield {"t": "judge", **verdict}
 
+        self.record(budget)
         self.seconds = round(time.monotonic() - started, 1)
 
     def price_of(self, prompt, completion):
@@ -217,5 +318,12 @@ class Agent:
                 "tokens_out": turn["completion"],
                 "cost": self.price_of(turn["prompt"], turn["completion"]),
             },
+            # Токены всей истории — не то же самое, что сумма `tokens_in`: та
+            # растёт с каждой репликой, потому что история уходит заново.
+            "history_tokens": tokens.of(self.history),
+            "ballast": self.ballast,
+            "context": int(self.settings["context_limit"]),
+            "scale": self.scale,
+            "ledger": self.ledger,
             "log": self.log,
         }
