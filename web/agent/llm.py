@@ -78,7 +78,7 @@ async def stream_chat(client, *, url, key, model, messages, usage, **knobs):
 
         except httpx.HTTPError as error:
             if attempt == 2:
-                raise AgentError(f"сеть: {error}") from error
+                raise AgentError(f"сеть: {error or type(error).__name__}") from error
             await asyncio.sleep(2 * (attempt + 1))
 
     raise AgentError("провайдер не отвечает: лимит запросов")
@@ -98,7 +98,7 @@ async def json_chat(client, *, url, key, model, messages, schema, name, usage, *
     try:
         response = await client.post(url, headers=_headers(key), json=payload)
     except httpx.HTTPError as error:
-        raise AgentError(f"сеть: {error}") from error
+        raise AgentError(f"сеть: {error or type(error).__name__}") from error
 
     if response.status_code != 200:
         raise AgentError(f"{response.status_code}: {response.text[:300]}")
