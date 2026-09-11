@@ -707,8 +707,20 @@ function showChats(compare) {
   });
   $("#preload").hidden = !compare;
   chats = (compare ? VIEWS.compare : VIEWS.solo).map(view => makeChat(view, !compare));
-  chats.forEach(chat => restore(chat).catch(
-    () => logLine(chat, "сервер не ответил — диалог не восстановлен")));
+  chats.forEach(chat => restore(chat)
+    .then(metrics => preset(chat, metrics))
+    .catch(() => logLine(chat, "сервер не ответил — диалог не восстановлен")));
+}
+
+// Колонка должна отвечать своему имени с первого же вопроса, иначе три пустых
+// диалога дадут один и тот же ответ и одни и те же цифры. Пустая колонка берёт
+// балласт из пресета сама; начатый диалог не трогаем — там уже выбрал человек.
+function preset(chat, metrics) {
+  if (chats.length < 2 || !metrics || metrics.turns) return;
+  const want = chat.view.ballast(limit());
+  if (want === metrics.ballast) return;
+  chat.tokens.value = want;
+  return ballast(chat, want);
 }
 
 // Страница открылась — забираем диалог с сервера и отрисовываем заново:
@@ -720,13 +732,14 @@ async function restore(chat) {
   const data = await response.json();
   showMetrics(chat, data.metrics);
   if (data.metrics.ballast) chat.tokens.value = data.metrics.ballast;
-  if (!data.messages.length) return;
+  if (!data.messages.length) return data.metrics;
 
   data.messages.forEach(message => {
     if (message.role === "user") bubble(chat, "me", message.content);
     else append(bubble(chat, "bot", ""), message.content);
   });
   logLine(chat, `диалог восстановлен: реплик ${data.metrics.turns}`);
+  return data.metrics;
 }
 
 function forget(chat) {
