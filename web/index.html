@@ -152,6 +152,8 @@
                       border-radius: 12px; padding: 14px; min-width: 0; }
   .chats.three .chat { height: 360px; overflow-y: auto; padding-right: 4px; }
   .chats.three .msg { max-width: none; font-size: 14px; }
+  .chats .chat { margin-bottom: 0; }
+  .chats .metrics:empty { display: none; }
   .col h2 { font-size: 16px; margin: 0 0 2px; }
   .col .note { color: var(--dim); font-size: 13px; margin: 0 0 10px; }
   .ledger summary { color: var(--dim); font-size: 13px; cursor: pointer; }
@@ -298,7 +300,7 @@
   <button id="preload" hidden>Набить историю по пресетам</button>
 </div>
 
-<div class="chats" id="chats"></div>
+<div class="chats" id="heads"></div>
 
 <div class="controls">
   <textarea id="say" placeholder="Спросите что-нибудь. Enter — отправить, Shift+Enter — перенос строки"></textarea>
@@ -313,11 +315,12 @@
 </div>
 <div class="stage" id="agentStage"></div>
 
-<template id="chatBox">
+<div class="chats" id="chats"></div>
+
+<template id="chatHead">
   <div class="col">
     <h2 class="title"></h2>
     <p class="note"></p>
-    <div class="chat"></div>
     <div class="metrics"></div>
     <details class="ledger">
       <summary>Расход по репликам</summary>
@@ -333,6 +336,12 @@
       <input type="number" class="tokens" min="0" step="1000">
       <button class="apply">Применить</button>
     </div>
+  </div>
+</template>
+
+<template id="chatBody">
+  <div class="col">
+    <div class="chat"></div>
   </div>
 </template>
 
@@ -663,30 +672,37 @@ function post(url, payload) {
   });
 }
 
+// Колонка живёт двумя кусками: шапка со счётчиками и настройками над полем
+// ввода, лента диалога под ним. Куски идут в разные сетки, поэтому в обоих
+// режимах колонки стоят друг под другом ровно.
 function makeChat(view, alone) {
-  const node = $("#chatBox").content.firstElementChild.cloneNode(true);
-  const chat = { view, node, session: sessionFor(view.key), estimated: 0 };
-  chat.box = $(".chat", node);
-  chat.metrics = $(".metrics", node);
-  chat.rows = $(".ledger tbody", node);
-  chat.curve = $(".curve", node);
-  chat.tokens = $(".tokens", node);
+  const head = $("#chatHead").content.firstElementChild.cloneNode(true);
+  const body = $("#chatBody").content.firstElementChild.cloneNode(true);
+  const chat = { view, head, body, session: sessionFor(view.key), estimated: 0 };
+  chat.box = $(".chat", body);
+  chat.metrics = $(".metrics", head);
+  chat.rows = $(".ledger tbody", head);
+  chat.curve = $(".curve", head);
+  chat.tokens = $(".tokens", head);
 
-  $(".title", node).textContent = view.title;
-  $(".note", node).textContent = view.note;
-  $(".title", node).hidden = alone;
-  $(".note", node).hidden = alone;
+  $(".title", head).textContent = view.title;
+  $(".note", head).textContent = view.note;
+  $(".title", head).hidden = alone;
+  $(".note", head).hidden = alone;
   chat.tokens.value = view.ballast(limit());
-  $(".apply", node)
+  $(".apply", head)
     .addEventListener("click", () => ballast(chat, Number(chat.tokens.value)));
 
-  $("#chats").append(node);
+  $("#heads").append(head);
+  $("#chats").append(body);
   return chat;
 }
 
 function showChats(compare) {
-  $("#chats").textContent = "";
-  $("#chats").classList.toggle("three", compare);
+  ["#heads", "#chats"].forEach(id => {
+    $(id).textContent = "";
+    $(id).classList.toggle("three", compare);
+  });
   $("#preload").hidden = !compare;
   chats = (compare ? VIEWS.compare : VIEWS.solo).map(view => makeChat(view, !compare));
   chats.forEach(chat => restore(chat).catch(
@@ -825,7 +841,7 @@ function lockChat(on) {
   $("#send").disabled = on;
   $("#forget").disabled = on;
   $("#preload").disabled = on;
-  document.querySelectorAll("#chats .apply").forEach(b => (b.disabled = on));
+  document.querySelectorAll("#heads .apply").forEach(b => (b.disabled = on));
 }
 
 async function sendTo(chat, text) {
