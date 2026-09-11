@@ -165,6 +165,7 @@
   .ballastrow { margin-top: 12px; }
   .ballastrow input { width: 120px; font-size: 14px; }
   .ballastrow button { padding: 6px 12px; font-size: 14px; }
+  .ballastrow .apply { color: var(--accent); font-size: 17px; line-height: 1; }
 
   .modal { position: fixed; inset: 0; z-index: 10; overflow-y: auto;
            background: rgba(8, 9, 14, .72); padding: 40px 16px;
@@ -334,7 +335,8 @@
     <div class="row ballastrow">
       <label>Балласт, токенов</label>
       <input type="number" class="tokens" min="0" step="1000">
-      <button class="apply">Применить</button>
+      <button class="apply" title="Применить балласт"
+              aria-label="Применить балласт">✓</button>
     </div>
   </div>
 </template>
