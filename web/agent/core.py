@@ -252,8 +252,8 @@ class Agent:
 
         self.summary = text
         self.folded = edge
-        yield self.note(f"сжатие: {self.folded} сообщений свёрнуты в конспект "
-                        f"~{tokens.of(self.briefing())} ток. вместо ~{before}")
+        yield self.note(f"сжатие: в конспекте ~{tokens.of(self.briefing())} ток. "
+                        f"вместо ~{before} — свёрнуто сообщений: {self.folded}")
 
     async def ask(self, client, text):
         """Полный проход коробки. Отдаёт события: журнал, куски ответа, вердикт."""
