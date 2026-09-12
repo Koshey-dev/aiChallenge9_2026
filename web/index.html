@@ -151,11 +151,19 @@
   .chats.three .col { background: var(--card); border: 1px solid var(--line);
                       border-radius: 12px; padding: 14px; min-width: 0; }
   .chats.three .chat { padding-right: 4px; }
+  /* Ответ с кодом не должен распирать колонку. Элементу ленты разрешено быть уже
+     своего содержимого (иначе grid считает его по min-content и колонка течёт),
+     длинные идентификаторы ломаются по месту, блок кода прокручивается внутри
+     пузыря — он и так `overflow-x: auto`. */
+  .chats .chat > * { min-width: 0; overflow-wrap: anywhere; }
   .chats.three .msg { max-width: none; font-size: 14px; }
   .chats .chat { margin-bottom: 0; }
   .chats .metrics:empty { display: none; }
   .col h2 { font-size: 16px; margin: 0 0 2px; }
   .col .note { color: var(--dim); font-size: 13px; margin: 0 0 10px; }
+  /* Шесть числовых колонок в узкой колонке диалога не сходятся: журнал расхода
+     прокручивается по горизонтали сам, а не распирает колонку. */
+  .ledger { overflow-x: auto; }
   .ledger summary { color: var(--dim); font-size: 13px; cursor: pointer; }
   .ledger table { margin-top: 8px; font-size: 12.5px; }
   .ledger th, .ledger td { padding: 3px 6px; }
