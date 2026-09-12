@@ -55,6 +55,29 @@ BLOCKS = [
         ],
     },
     {
+        "title": "Стратегия контекста",
+        "note": "Что уходит в запрос вместо реплик, не влезших в окно памяти, "
+                "и от какой линии диалога это окно считается.",
+        "fields": [
+            {"key": "strategy", "label": "Стратегия", "type": "choice",
+             "default": "window",
+             "options": [
+                 {"value": "window", "label": "Окно — только последние N сообщений"},
+                 {"value": "facts",
+                  "label": "Факты — карточка ключ-значение плюс окно"},
+                 {"value": "branch",
+                  "label": "Ветки — окно плюс ветки от контрольной точки"},
+             ],
+             "hint": "окно — основа для всех трёх: факты добавляют к нему карточку, "
+                     "ветки меняют не состав запроса, а линию диалога, из которой "
+                     "берётся история"},
+            {"key": "facts_max", "label": "Предел карточки фактов, символов",
+             "type": "number", "default": 1200,
+             "hint": "карточку обновляет отдельный запрос после каждой реплики — "
+                     "это вдвое больше запросов, чем у окна"},
+        ],
+    },
+    {
         "title": "Токены и контекст",
         "note": "Сколько токенов уходит в запросе и что делать, когда они перестают "
                 "влезать в контекст модели.",
@@ -124,6 +147,10 @@ BLOCKS = [
 
 DEFAULTS = {field["key"]: field["default"] for block in BLOCKS for field in block["fields"]}
 TYPES = {field["key"]: field["type"] for block in BLOCKS for field in block["fields"]}
+# Допустимые значения полей выбора: присланное браузером сверяется с ними,
+# иначе настройка превратилась бы в способ передать в коробку что угодно.
+OPTIONS = {field["key"]: [option["value"] for option in field["options"]]
+           for block in BLOCKS for field in block["fields"] if "options" in field}
 
 
 def blocks(model, context=0, limit=0):
@@ -160,6 +187,9 @@ def coerce(values):
             elif kind == "bool":
                 clean[key] = (value.strip().lower() in ("1", "true", "on", "да")
                               if isinstance(value, str) else bool(value))
+            elif kind == "choice":
+                if str(value) in OPTIONS[key]:
+                    clean[key] = str(value)
             else:
                 clean[key] = str(value)
         except (TypeError, ValueError):

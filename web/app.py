@@ -207,6 +207,11 @@ class BallastIn(BaseModel):
     tokens: int
 
 
+class BranchIn(BaseModel):
+    session: str
+    name: str
+
+
 class ModelsIn(BaseModel):
     task: str
     key: str | None = None
@@ -695,6 +700,29 @@ def agent_ballast(body: BallastIn):
     agent.ballast = max(0, body.tokens)
     store.save(body.session, agent.state())
     return {"metrics": agent.report()}
+
+
+@app.post("/api/agent/checkpoint")
+def agent_checkpoint(body: SessionIn):
+    """Контрольная точка: место в диалоге, от которого потом отходят ветки."""
+    agent = agent_for(body.session)
+    at = agent.mark()
+    store.save(body.session, agent.state())
+    return {"at": at, "metrics": agent.report()}
+
+
+@app.post("/api/agent/branch")
+def agent_branch(body: BranchIn):
+    """Переход на ветку. Неизвестное имя — новая ветка от контрольной точки.
+
+    Наружу уходят не только счётчики, но и реплики: у ветки своя история, и
+    браузер перерисовывает ленту целиком, иначе на экране остались бы реплики
+    чужой линии.
+    """
+    agent = agent_for(body.session)
+    fresh = agent.switch(body.name.strip() or "без имени")
+    store.save(body.session, agent.state())
+    return {"fresh": fresh, "messages": agent.history, "metrics": agent.report()}
 
 
 @app.post("/api/agent/history")

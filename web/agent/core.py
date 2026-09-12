@@ -8,9 +8,12 @@
 import asyncio
 import time
 
-from . import crew, judge, policy, recap, tokens
+from . import crew, facts, judge, policy, recap, tokens
 from .llm import AgentError, new_usage, stream_chat
 from .settings import DEFAULTS, coerce
+
+# Имя линии, в которой диалог живёт, пока от него не отвели ветку.
+MAIN = "основная"
 
 
 class Agent:
@@ -45,6 +48,14 @@ class Agent:
         # конспект — что от неё уходит в запрос вместо этого.
         self.summary = ""
         self.folded = 0
+        # Карточка липких фактов: ключ — имя факта, значение — строка. Живёт
+        # отдельно от истории и переживает любое окно памяти.
+        self.facts = {}
+        # Ветки диалога: имя активной линии, снимки остальных и контрольная
+        # точка — снимок, от которого отводится новая ветка.
+        self.branch = MAIN
+        self.branches = {}
+        self.point = None
 
     def configure(self, values):
         """Настройки приходят из браузера с каждой репликой: чужие ключи отсекаются."""
@@ -54,6 +65,10 @@ class Agent:
         self.history.clear()
         self.summary = ""
         self.folded = 0
+        self.facts = {}
+        self.branch = MAIN
+        self.branches = {}
+        self.point = None
 
     def remembered(self):
         """Реплики, которые уходят в запрос дословно.
@@ -78,6 +93,53 @@ class Agent:
             return []
         return [{"role": "system", "content": recap.FRAME + self.summary}]
 
+    def factsheet(self):
+        """Карточка фактов как одно системное сообщение.
+
+        Как и конспект, в запрос уходит по решению места сборки: в шапке колонки
+        карточка видна и после того, как стратегию переключили на другую.
+        """
+        return facts.sheet(self.facts)
+
+    def snapshot(self):
+        """Линия диалога целиком: история и всё, что из неё выведено.
+
+        Ветка — это не только реплики: конспект и карточка фактов собраны из
+        них же, и оставить их общими значило бы протащить в одну ветку то, что
+        сказали в другой.
+        """
+        return {"history": list(self.history), "facts": dict(self.facts),
+                "summary": self.summary, "folded": self.folded}
+
+    def mark(self):
+        """Контрольная точка: снимок места, от которого разойдутся ветки."""
+        self.point = self.snapshot()
+        return len(self.point["history"])
+
+    def switch(self, name):
+        """Перейти на ветку: текущую линию — в хранилище, запрошенную — в работу.
+
+        Неизвестное имя значит новую ветку: она начинается с контрольной точки,
+        то есть видит ровно ту историю, что была на момент её постановки. Точки
+        нет — ветка отходит от текущего места, иначе кнопка просто не работала бы.
+        """
+        self.branches[self.branch] = self.snapshot()
+        fresh = name not in self.branches
+        line = (self.point or self.snapshot()) if fresh else self.branches[name]
+        self.branch = name
+        self.history = list(line["history"])
+        self.facts = dict(line["facts"])
+        self.summary = line["summary"]
+        self.folded = line["folded"]
+        return fresh
+
+    def lines(self):
+        """Имена ветвей: сохранённые плюс текущая — её в хранилище ещё нет."""
+        names = list(self.branches)
+        if self.branch not in names:
+            names.append(self.branch)
+        return names
+
     def padding(self):
         """Балласт как пара реплик: занимает контекст, не тратя запросов к модели."""
         if self.ballast <= 0:
@@ -94,7 +156,9 @@ class Agent:
         """
         return {"history": self.history, "usage": self.usage,
                 "ballast": self.ballast, "ledger": self.ledger, "scale": self.scale,
-                "summary": self.summary, "folded": self.folded}
+                "summary": self.summary, "folded": self.folded,
+                "facts": self.facts, "branch": self.branch,
+                "branches": self.branches, "point": self.point}
 
     def restore(self, state):
         """Поднять диалог из сохранённого состояния — как будто не выключались."""
@@ -107,6 +171,10 @@ class Agent:
         self.scale = float(state.get("scale") or 1.0)
         self.summary = str(state.get("summary") or "")
         self.folded = int(state.get("folded") or 0)
+        self.facts = dict(state.get("facts") or {})
+        self.branch = str(state.get("branch") or MAIN)
+        self.branches = dict(state.get("branches") or {})
+        self.point = state.get("point") or None
 
     def note(self, text):
         self.log.append(text)
@@ -255,6 +323,28 @@ class Agent:
         yield self.note(f"сжатие: в конспекте ~{tokens.of(self.briefing())} ток. "
                         f"вместо ~{before} — свёрнуто сообщений: {self.folded}")
 
+    async def pin(self, client, question):
+        """Обновить карточку фактов по новой реплике пользователя.
+
+        Вызов на каждую реплику, а не пачкой, как конспект: карточка должна
+        помочь ответу на ту самую реплику, из которой её обновили. Это цена
+        стратегии — второй запрос к модели на каждый вопрос.
+        """
+        before = len(self.facts)
+        fresh = await facts.update(client, url=self.url, key=self.key,
+                                   model=self.settings["model"], facts=self.facts,
+                                   question=question, usage=self.usage,
+                                   limit=int(self.settings["facts_max"]),
+                                   **self.quirks())
+        if not fresh:
+            # Пустая карточка вместо прошлой — потеря фактов без всякой выгоды.
+            yield self.note("факты: карточка не разобралась — оставляю прошлую")
+            return
+
+        self.facts = fresh
+        yield self.note(f"факты: записей {len(self.facts)} (было {before}), "
+                        f"карточка ~{tokens.of(self.factsheet())} ток.")
+
     async def ask(self, client, text):
         """Полный проход коробки. Отдаёт события: журнал, куски ответа, вердикт."""
         started = time.monotonic()
@@ -287,6 +377,10 @@ class Agent:
             async for event in self.compact(client):
                 yield event
 
+        if self.settings["strategy"] == "facts" and not tasks:
+            async for event in self.pin(client, question):
+                yield event
+
         # Запрос собирается по частям, а не одним списком: каждую часть коробка
         # взвешивает отдельно и показывает, из чего сложился расход токенов.
         if tasks:
@@ -296,6 +390,7 @@ class Agent:
             pieces = {
                 "role": [{"role": "system", "content": crew.SUMMARY}],
                 "summary": [],
+                "facts": [],
                 "ballast": [],
                 "memory": [],
                 "question": [{"role": "user",
@@ -305,6 +400,8 @@ class Agent:
             pieces = {
                 "role": [{"role": "system", "content": self.settings["role"]}],
                 "summary": self.briefing() if self.settings["compress"] else [],
+                "facts": (self.factsheet()
+                          if self.settings["strategy"] == "facts" else []),
                 "ballast": self.padding(),
                 "memory": list(self.remembered()),
                 "question": [{"role": "user", "content": question}],
@@ -335,8 +432,8 @@ class Agent:
                 return
 
         yield {"t": "budget", **budget}
-        messages = [*pieces["role"], *pieces["summary"], *pieces["ballast"],
-                    *pieces["memory"], *pieces["question"]]
+        messages = [*pieces["role"], *pieces["summary"], *pieces["facts"],
+                    *pieces["ballast"], *pieces["memory"], *pieces["question"]]
 
         raw = []
         async for piece in self.answer(client, messages):
@@ -401,6 +498,11 @@ class Agent:
             "summary_tokens": tokens.of(self.briefing()),
             "folded": self.folded,
             "saved": self.savings(),
+            "facts": self.facts,
+            "facts_tokens": tokens.of(self.factsheet()),
+            "branch": self.branch,
+            "branches": self.lines(),
+            "point": len(self.point["history"]) if self.point else None,
             "ballast": self.ballast,
             "context": int(self.settings["context_limit"]),
             "scale": self.scale,
