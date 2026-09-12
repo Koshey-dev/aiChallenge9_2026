@@ -8,7 +8,7 @@
 import asyncio
 import time
 
-from . import crew, judge, policy, tokens
+from . import crew, judge, policy, recap, tokens
 from .llm import AgentError, new_usage, stream_chat
 from .settings import DEFAULTS, coerce
 
@@ -40,6 +40,11 @@ class Agent:
         self.ledger = []
         # Во сколько раз факт от провайдера разошёлся с оценкой по символам.
         self.scale = 1.0
+        # Конспект истории и сколько сообщений с начала диалога в него свёрнуто.
+        # Сам конспект живёт отдельно от истории: история — что было сказано,
+        # конспект — что от неё уходит в запрос вместо этого.
+        self.summary = ""
+        self.folded = 0
 
     def configure(self, values):
         """Настройки приходят из браузера с каждой репликой: чужие ключи отсекаются."""
@@ -47,10 +52,31 @@ class Agent:
 
     def forget(self):
         self.history.clear()
+        self.summary = ""
+        self.folded = 0
 
     def remembered(self):
+        """Реплики, которые уходят в запрос дословно.
+
+        Без сжатия это окно памяти, всё за ним теряется. Со сжатием окно — нижняя
+        граница: что свёрнуто в конспект, второй раз не отправляется, а что за
+        окном, но ещё не свёрнуто, едет как есть — иначе реплика пропадала бы
+        в промежутке между двумя пересборками конспекта.
+        """
+        if self.settings["compress"]:
+            return self.history[self.folded:]
         window = max(0, int(self.settings["memory"]))
         return self.history[-window:] if window else []
+
+    def briefing(self):
+        """Конспект как одно системное сообщение. Пустой места не занимает.
+
+        Решение, уходит ли он в запрос, принимается на месте сборки: в шапке
+        колонки конспект показан и после того, как сжатие выключили.
+        """
+        if not self.summary:
+            return []
+        return [{"role": "system", "content": recap.FRAME + self.summary}]
 
     def padding(self):
         """Балласт как пара реплик: занимает контекст, не тратя запросов к модели."""
@@ -67,7 +93,8 @@ class Agent:
         и хранить их вторым экземпляром значит рано или поздно разойтись с ним.
         """
         return {"history": self.history, "usage": self.usage,
-                "ballast": self.ballast, "ledger": self.ledger, "scale": self.scale}
+                "ballast": self.ballast, "ledger": self.ledger, "scale": self.scale,
+                "summary": self.summary, "folded": self.folded}
 
     def restore(self, state):
         """Поднять диалог из сохранённого состояния — как будто не выключались."""
@@ -78,6 +105,8 @@ class Agent:
         self.ballast = int(state.get("ballast") or 0)
         self.ledger = list(state.get("ledger") or [])
         self.scale = float(state.get("scale") or 1.0)
+        self.summary = str(state.get("summary") or "")
+        self.folded = int(state.get("folded") or 0)
 
     def note(self, text):
         self.log.append(text)
@@ -129,6 +158,17 @@ class Agent:
         limit = budget["limit"]
         return bool(limit) and budget["predicted"] + budget["reply_max"] > limit
 
+    def savings(self):
+        """Сколько токенов снимает конспект: свёрнутые реплики против него самого.
+
+        Точка отсчёта — вся история: без сжатия те же реплики либо ушли бы
+        в запрос целиком и платно, либо потерялись бы вместе со своими фактами.
+        """
+        if not (self.settings["compress"] and self.folded):
+            return 0
+        return max(0, tokens.of(self.history[:self.folded])
+                   - tokens.of(self.briefing()))
+
     def record(self, budget):
         """Строка в журнал расхода: что стоила реплика и во что обошёлся диалог.
 
@@ -146,6 +186,7 @@ class Agent:
             "history": tokens.of(self.history),
             "cost": self.price_of(spent["prompt"], spent["completion"]),
             "total_cost": self.price_of(self.usage["prompt"], self.usage["completion"]),
+            "saved": self.savings(),
         })
 
     async def answer(self, client, messages):
@@ -185,6 +226,35 @@ class Agent:
             measured = f"сбой — {failure[:90]}" if failure else f"{len(text)} символов"
             yield self.note(f"агент {index + 1} «{title}»: {measured}")
 
+    async def compact(self, client):
+        """Свернуть в конспект реплики, вышедшие за окно памяти.
+
+        Сворачивается только то, что уже за окном: реплики внутри окна модель
+        должна видеть дословно. Пачка меньше порога — конспект не пересобираем,
+        иначе отдельный вызов на каждую реплику съел бы всю экономию.
+        """
+        window = max(0, int(self.settings["memory"]))
+        edge = max(0, len(self.history) - window)
+        batch = self.history[self.folded:edge]
+        if len(batch) < max(1, int(self.settings["compress_every"])):
+            return
+
+        before = tokens.of(self.history[:edge])
+        text = await recap.fold(client, url=self.url, key=self.key,
+                                model=self.settings["model"], summary=self.summary,
+                                messages=batch, usage=self.usage,
+                                limit=int(self.settings["summary_max"]),
+                                **self.quirks())
+        if not text:
+            # Пустой конспект вместо реплик — потеря фактов без всякой экономии.
+            yield self.note("сжатие: конспект пришёл пустым — история не свёрнута")
+            return
+
+        self.summary = text
+        self.folded = edge
+        yield self.note(f"сжатие: {self.folded} сообщений свёрнуты в конспект "
+                        f"~{tokens.of(self.briefing())} ток. вместо ~{before}")
+
     async def ask(self, client, text):
         """Полный проход коробки. Отдаёт события: журнал, куски ответа, вердикт."""
         started = time.monotonic()
@@ -213,6 +283,10 @@ class Agent:
             yield self.note(f"планировщик: агентов — {len(tasks)}" if tasks
                             else "планировщик: хватит одного агента")
 
+        if self.settings["compress"] and not tasks:
+            async for event in self.compact(client):
+                yield event
+
         # Запрос собирается по частям, а не одним списком: каждую часть коробка
         # взвешивает отдельно и показывает, из чего сложился расход токенов.
         if tasks:
@@ -221,6 +295,7 @@ class Agent:
             yield self.note("свожу результаты в один ответ")
             pieces = {
                 "role": [{"role": "system", "content": crew.SUMMARY}],
+                "summary": [],
                 "ballast": [],
                 "memory": [],
                 "question": [{"role": "user",
@@ -229,6 +304,7 @@ class Agent:
         else:
             pieces = {
                 "role": [{"role": "system", "content": self.settings["role"]}],
+                "summary": self.briefing() if self.settings["compress"] else [],
                 "ballast": self.padding(),
                 "memory": list(self.remembered()),
                 "question": [{"role": "user", "content": question}],
@@ -259,7 +335,7 @@ class Agent:
                 return
 
         yield {"t": "budget", **budget}
-        messages = [*pieces["role"], *pieces["ballast"],
+        messages = [*pieces["role"], *pieces["summary"], *pieces["ballast"],
                     *pieces["memory"], *pieces["question"]]
 
         raw = []
@@ -321,6 +397,10 @@ class Agent:
             # Токены всей истории — не то же самое, что сумма `tokens_in`: та
             # растёт с каждой репликой, потому что история уходит заново.
             "history_tokens": tokens.of(self.history),
+            "summary": self.summary,
+            "summary_tokens": tokens.of(self.briefing()),
+            "folded": self.folded,
+            "saved": self.savings(),
             "ballast": self.ballast,
             "context": int(self.settings["context_limit"]),
             "scale": self.scale,

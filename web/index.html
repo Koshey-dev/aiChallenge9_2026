@@ -162,6 +162,10 @@
   .sparkline { width: 100%; height: 34px; margin-top: 8px; }
   .sparkline polyline { fill: none; stroke: var(--accent); stroke-width: 1.5;
                         vector-effect: non-scaling-stroke; }
+  .recap { margin-top: 8px; }
+  .recap summary { color: var(--dim); font-size: 13px; cursor: pointer; }
+  .recaptext { margin: 8px 0 0; font-size: 13px; color: #cfd3e0;
+               white-space: pre-wrap; }
   .ballastrow { margin-top: 12px; }
   .ballastrow input { width: 120px; font-size: 14px; }
   .ballastrow button { padding: 6px 12px; font-size: 14px; }
@@ -301,6 +305,13 @@
   <button id="preload" hidden>Набить историю по пресетам</button>
 </div>
 
+<div class="row modeline">
+  <label class="switch"><input type="checkbox" id="compare9">Режим сравнения, день 9</label>
+  <span class="hint">те же три колонки, но про сжатие: вся история, одно окно памяти,
+    окно плюс конспект; память и сжатие у каждой колонки свои</span>
+  <button id="scenario" hidden>Прогнать сценарий</button>
+</div>
+
 <div class="chats" id="heads"></div>
 
 <div class="controls">
@@ -331,6 +342,10 @@
           <th>цена</th><th>всего</th></tr></thead>
         <tbody></tbody>
       </table>
+    </details>
+    <details class="recap" hidden>
+      <summary>Конспект истории</summary>
+      <p class="recaptext"></p>
     </details>
     <div class="row ballastrow">
       <label>Балласт, токенов</label>
@@ -386,8 +401,10 @@ fetch("/api/config").then(r => r.json()).then(cfg => {
   setupSettings(cfg.agent.blocks);
   // Колонки поднимаются после настроек: пресеты балласта считаются от предела
   // контекста, а он приходит вместе с ними.
-  $("#compare").checked = Boolean(localStorage.getItem(MODE_KEY));
-  showChats($("#compare").checked);
+  // "1" — значение прежней версии, когда режим сравнения был один и хранился
+  // галочкой; со вторым режимом в ключе лежит имя набора колонок.
+  const saved = localStorage.getItem(MODE_KEY);
+  setMode(saved === "1" ? "compare" : VIEWS[saved] ? saved : "solo");
   $("#price").textContent = cfg.price
     ? `$${cfg.price.input} / $${cfg.price.output} за 1M токенов (вход / выход)`
     : "цена неизвестна";
@@ -638,7 +655,36 @@ const VIEWS = {
       note: "история больше, чем модель берёт в запрос",
       ballast: limit => Math.round(limit * 1.05) },
   ],
+  // День 9: у колонок одна и та же история, разная политика памяти. Балласта
+  // нет нигде — конспект сворачивает настоящие реплики, а не синтетические.
+  recap: [
+    { key: "full", title: "Вся история",
+      note: "весь диалог уходит в каждый запрос — ничего не забыто и дороже всего",
+      ballast: () => 0,
+      settings: { memory: 999, compress: false } },
+    { key: "window", title: "Только окно",
+      note: "последние 6 сообщений, всё за окном теряется вместе с фактами",
+      ballast: () => 0,
+      settings: { memory: 6, compress: false } },
+    { key: "folded", title: "Окно и конспект",
+      note: "те же 6 сообщений, вместо остального конспект — раз в 4 сообщения",
+      ballast: () => 0,
+      settings: { memory: 6, compress: true, compress_every: 4 } },
+  ],
 };
+
+// Сценарий замера: первые реплики кладут факты, последние спрашивают их обратно.
+// Один и тот же диалог во всех колонках — иначе сравнивать нечего.
+const SCENARIO = [
+  "Меня зовут Кощей. Пишу на Rust, редактор — Helix.",
+  "Проект — парсер логов nginx. Внешние крейты нельзя, только стандартная библиотека.",
+  "Чем в Rust читать большой файл построчно?",
+  "Как замерить, сколько времени заняла обработка?",
+  "Объясни разницу между String и &str.",
+  "Какой способ обработки ошибок выбрать для такого проекта?",
+  "Как меня зовут и на чём я пишу?",
+  "Напомни ограничение моего проекта и в каком редакторе я работаю.",
+];
 
 const MODE_KEY = "agent-compare";
 let context = 0;  // предел контекста модели агента, приходит с /api/config
@@ -685,6 +731,8 @@ function makeChat(view, alone) {
   chat.metrics = $(".metrics", head);
   chat.rows = $(".ledger tbody", head);
   chat.curve = $(".curve", head);
+  chat.recap = $(".recap", head);
+  chat.recaptext = $(".recaptext", head);
   chat.tokens = $(".tokens", head);
 
   $(".title", head).textContent = view.title;
@@ -700,13 +748,16 @@ function makeChat(view, alone) {
   return chat;
 }
 
-function showChats(compare) {
+function showChats(mode) {
+  const views = VIEWS[mode] || VIEWS.solo;
+  const many = views.length > 1;
   ["#heads", "#chats"].forEach(id => {
     $(id).textContent = "";
-    $(id).classList.toggle("three", compare);
+    $(id).classList.toggle("three", many);
   });
-  $("#preload").hidden = !compare;
-  chats = (compare ? VIEWS.compare : VIEWS.solo).map(view => makeChat(view, !compare));
+  $("#preload").hidden = mode !== "compare";
+  $("#scenario").hidden = mode !== "recap";
+  chats = views.map(view => makeChat(view, !many));
   chats.forEach(chat => restore(chat)
     .then(metrics => preset(chat, metrics))
     .catch(() => logLine(chat, "сервер не ответил — диалог не восстановлен")));
@@ -748,6 +799,7 @@ function forget(chat) {
     chat.metrics.textContent = "";
     chat.rows.innerHTML = "";
     chat.curve.textContent = "";
+    showRecap(chat, "");
     chat.tokens.value = chat.view.ballast(limit());
   });
 }
@@ -794,9 +846,20 @@ function showMetrics(chat, m) {
     `история ~${m.history_tokens} ток.`,
   ];
   if (m.ballast) parts.push(`балласт ~${m.ballast} ток.`);
+  if (m.folded) parts.push(`свёрнуто ${m.folded} сообщ.`);
+  if (m.summary_tokens) parts.push(`конспект ~${m.summary_tokens} ток.`);
+  if (m.saved) parts.push(`снято сжатием ~${m.saved} ток.`);
   if (m.context) parts.push(`предел ${m.context}`);
   chat.metrics.textContent = parts.join(" · ");
   drawLedger(chat, m.ledger || []);
+  showRecap(chat, m.summary);
+}
+
+// Конспект лежит отдельно от истории и уходит в запрос вместо неё — поэтому
+// показан он тоже отдельно, а не строкой в диалоге.
+function showRecap(chat, text) {
+  chat.recap.hidden = !text;
+  chat.recaptext.textContent = text || "";
 }
 
 // Как растёт расход по мере диалога: строка на реплику и кривая входных токенов.
@@ -824,6 +887,7 @@ function curve(values) {
 function budgetLine(chat, b) {
   chat.estimated = b.predicted;
   const parts = [`роль ${b.role}`];
+  if (b.summary) parts.push(`конспект ${b.summary}`);
   if (b.ballast) parts.push(`балласт ${b.ballast}`);
   parts.push(`память ${b.memory}`, `вопрос ${b.question}`);
   logLine(chat, `запрос ~${b.predicted} ток. (${parts.join(" · ")}) + ${b.reply_max}` +
@@ -856,6 +920,7 @@ function lockChat(on) {
   $("#send").disabled = on;
   $("#forget").disabled = on;
   $("#preload").disabled = on;
+  $("#scenario").disabled = on;
   document.querySelectorAll("#heads .apply").forEach(b => (b.disabled = on));
 }
 
@@ -868,7 +933,8 @@ async function sendTo(chat, text) {
 
   try {
     await stream("/api/agent",
-      { session: chat.session, text, key: $("#agentKey").value, settings: conf },
+      { session: chat.session, text, key: $("#agentKey").value,
+        settings: { ...conf, ...(chat.view.settings || {}) } },
       event => {
         if (event.t === "delta") append(answer(), event.text);
         else if (event.t === "log") { if (conf.log) logLine(chat, event.text); }
@@ -893,27 +959,46 @@ async function sendTo(chat, text) {
 }
 
 // Вопрос уходит во все открытые колонки сразу: в этом и смысл сравнения —
-// один и тот же запрос при разной длине истории.
-async function send() {
-  const text = $("#say").value.trim();
-  if (!text) return;
-  $("#say").value = "";
-
+// один и тот же запрос при разной памяти. Реплики сценария идут по очереди:
+// вторая должна увидеть историю, которую оставила первая.
+async function askAll(lines) {
   const stage = $("#agentStage");
-  stage.textContent = "агент работает";
   lockChat(true);
   try {
-    await Promise.all(chats.map(chat => sendTo(chat, text)));
+    for (const text of lines) {
+      stage.textContent = `агент работает: ${text.slice(0, 48)}`;
+      await Promise.all(chats.map(chat => sendTo(chat, text)));
+    }
   } finally {
     stage.textContent = "";
     lockChat(false);
   }
 }
 
+function send() {
+  const text = $("#say").value.trim();
+  if (!text) return;
+  $("#say").value = "";
+  return askAll([text]);
+}
+
+// Режимы сравнения исключают друг друга: колонки в странице одни.
+function setMode(next) {
+  localStorage.setItem(MODE_KEY, next);
+  $("#compare").checked = next === "compare";
+  $("#compare9").checked = next === "recap";
+  showChats(next);
+}
+
 $("#compare").addEventListener("change", event => {
-  localStorage.setItem(MODE_KEY, event.target.checked ? "1" : "");
-  showChats(event.target.checked);
+  setMode(event.target.checked ? "compare" : "solo");
 });
+
+$("#compare9").addEventListener("change", event => {
+  setMode(event.target.checked ? "recap" : "solo");
+});
+
+$("#scenario").addEventListener("click", () => askAll(SCENARIO));
 
 $("#preload").addEventListener("click", async () => {
   lockChat(true);
