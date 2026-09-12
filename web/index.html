@@ -174,6 +174,18 @@
   .recap summary { color: var(--dim); font-size: 13px; cursor: pointer; }
   .recaptext { margin: 8px 0 0; font-size: 13px; color: #cfd3e0;
                white-space: pre-wrap; }
+  .factsbox { margin-top: 8px; }
+  .factsbox summary { color: var(--dim); font-size: 13px; cursor: pointer; }
+  /* Ширины колонок заданы, а не посчитаны по содержимому: иначе в узкой колонке
+     таблица отдаёт имени факта пару символов и рвёт слова посреди букв. */
+  .factsbox table { margin-top: 8px; font-size: 12.5px; table-layout: fixed; }
+  .factsbox td { padding: 3px 6px; text-align: left; vertical-align: top;
+                 overflow-wrap: break-word; }
+  .factsbox td:first-child { color: var(--dim); width: 36%; }
+  /* Список ветвей в узкой колонке: общий select шире самой колонки. */
+  .branchrow { margin-top: 10px; }
+  .branchrow select { min-width: 0; flex: 1; font-size: 14px; padding: 6px 8px; }
+  .branchrow button { padding: 6px 12px; font-size: 15px; }
   .ballastrow { margin-top: 12px; }
   .ballastrow input { width: 120px; font-size: 14px; }
   .ballastrow button { padding: 6px 12px; font-size: 14px; }
@@ -333,6 +345,13 @@
   <button id="scenario" hidden>Прогнать сценарий</button>
 </div>
 
+<div class="row modeline">
+  <label class="switch"><input type="checkbox" id="compare10">Режим сравнения, день 10</label>
+  <span class="hint">три стратегии контекста на одном ТЗ: только окно, окно плюс
+    карточка фактов, окно плюс ветки от контрольной точки</span>
+  <button id="brief" hidden>Прогнать ТЗ</button>
+</div>
+
 <div class="chats" id="heads"></div>
 
 <div class="controls">
@@ -368,6 +387,16 @@
       <summary>Конспект истории</summary>
       <p class="recaptext"></p>
     </details>
+    <details class="factsbox" hidden>
+      <summary>Карточка фактов</summary>
+      <table class="facts"><tbody></tbody></table>
+    </details>
+    <div class="row branchrow" hidden>
+      <label>Ветка</label>
+      <select class="branch" aria-label="Ветка диалога"></select>
+      <button class="mark" title="Поставить контрольную точку">точка</button>
+      <button class="fork" title="Новая ветка от контрольной точки">+ ветка</button>
+    </div>
     <div class="row ballastrow">
       <label>Балласт, токенов</label>
       <input type="number" class="tokens" min="0" step="1000">
@@ -708,6 +737,25 @@ const VIEWS = {
       ballast: () => 0,
       settings: { memory: 6, compress: true, compress_every: 4 } },
   ],
+  // День 10: три стратегии на одном ТЗ. Окно памяти у всех одно и то же —
+  // разница в том, что едет в запрос вместе с ним и из какой линии диалога
+  // он собирается. Конспект выключен: день 10 — про способы без него.
+  strategy: [
+    { key: "win", title: "Окно",
+      note: "последние 6 сообщений, всё, что вышло за окно, отброшено",
+      ballast: () => 0,
+      settings: { memory: 6, compress: false, strategy: "window" } },
+    { key: "facts", title: "Факты",
+      note: "то же окно плюс карточка ключ-значение: её обновляет отдельный "
+          + "запрос после каждой реплики",
+      ballast: () => 0,
+      settings: { memory: 6, compress: false, strategy: "facts" } },
+    { key: "branch", title: "Ветки",
+      note: "то же окно, но история берётся из активной ветки — их две "
+          + "от одной контрольной точки",
+      ballast: () => 0,
+      settings: { memory: 6, compress: false, strategy: "branch" } },
+  ],
 };
 
 // Сценарий замера: первые реплики кладут факты, последние спрашивают их обратно.
@@ -723,9 +771,47 @@ const SCENARIO = [
   "Напомни ограничение моего проекта и в каком редакторе я работаю.",
 ];
 
+// Сценарий дня 10: собираем ТЗ. Первые восемь реплик кладут факты, решения
+// и договорённости, середина занимает окно обычными вопросами, последние две
+// спрашивают всё обратно — к этому месту факты давно вышли за окно.
+const BRIEF = [
+  "Собираем ТЗ. Меня зовут Сергей, продукт — внутренний дашборд для отдела логистики.",
+  "Ограничения: только веб, мобильного приложения не будет, срок — шесть недель.",
+  "Стек: Python на бэкенде, тяжёлых фронтенд-фреймворков не берём.",
+  "Пользователей сорок, одновременно онлайн не больше десяти.",
+  "Главный экран — карта машин и список заказов на день.",
+  "Договорились: вход через корпоративный SSO, своих паролей не храним.",
+  "Данные берём из 1С ночным выгрузом, real-time не нужен.",
+  "Решили: экспорт в Excel в первую версию не попадёт.",
+  "Какие риски ты видишь в таком объёме за такой срок?",
+  "С чего начать первую неделю?",
+  "Как нарезать работу на этапы?",
+  "Сформулируй раздел «Нефункциональные требования» в двух абзацах.",
+  "Напомни: как меня зовут, что за продукт и какой у нас срок?",
+  "Перечисли принятые решения: вход, источник данных и что мы выкинули из первой версии.",
+];
+
+// Продолжение для колонки с ветками: от одной контрольной точки расходятся два
+// варианта ТЗ. Вопрос в них один и тот же — ответы обязаны разойтись, иначе
+// ветки не дают ничего.
+const FORKS = [
+  { name: "срок",
+    lines: ["Вариант А: срок держим шесть недель, объём режем.",
+            "Что в этом варианте придётся выкинуть из первой версии?"] },
+  { name: "объём",
+    lines: ["Вариант Б: объём держим целиком, срок просим восемь недель.",
+            "Что в этом варианте придётся выкинуть из первой версии?"] },
+];
+
+// Возврат в первую ветку: агент должен говорить про её вариант, а не про тот,
+// в котором мы были только что.
+const BACK = "О каком варианте мы сейчас говорим и что в нём решили?";
+
 // Разбор механизма по шагам: что сделано, где лежит и как считается.
 // Листается руками — за прогоном панель не бежит, чтобы не перебивать клики.
-const CUES = [
+// У каждого режима сравнения свой разбор: панель одна, наполнение разное.
+const CUES = {
+ recap: [
   { when: "задача дня 9",
     text: "Последние N сообщений уходят модели как есть, остальное заменяется "
         + "конспектом. Конспект хранится отдельно от истории и подставляется "
@@ -773,15 +859,87 @@ const CUES = [
         + "Сумма за диалог 40 739 против 33 418, минус 18, а цена почти "
         + "сошлась: пересборка платит выходными токенами, вчетверо дорогими. "
         + "На коротком диалоге сжатие выходит дороже полной истории." },
-];
+ ],
+ strategy: [
+  { when: "задача дня 10",
+    text: "Три стратегии управления контекстом без конспекта и переключатель "
+        + "между ними: только окно последних N сообщений; карточка фактов "
+        + "ключ-значение плюс окно; ветки диалога от контрольной точки." },
+  { when: "переключатель",
+    text: "Настройки, блок «Стратегия контекста»: выбор из трёх значений. "
+        + "Он уходит на сервер с каждой репликой, поэтому в режиме сравнения "
+        + "каждая колонка присылает своё — три стратегии работают одновременно "
+        + "в трёх диалогах." },
+  { when: "где это лежит",
+    text: "agent/facts.py — промпт карточки, разбор JSON и рамки. В core.py: "
+        + "pin() обновляет карточку, factsheet() кладёт её в запрос, snapshot() "
+        + "снимает линию диалога, mark() ставит точку, switch() переключает "
+        + "ветку. Снаружи — /api/agent/checkpoint и /api/agent/branch." },
+  { when: "стратегия 1: окно",
+    text: "remembered() отдаёт последние N сообщений, остальное не уходит "
+        + "никуда и нигде не хранится. Это основа двух других стратегий: "
+        + "и факты, и ветки работают с тем же окном." },
+  { when: "стратегия 2: карточка фактов",
+    text: "Отдельный блок ключ-значение: цель, ограничения, сроки, стек, "
+        + "принятые решения, договорённости. Обновляется отдельным запросом "
+        + "после каждой реплики пользователя и уходит одним системным "
+        + "сообщением с пометкой «справка, а не инструкция»." },
+  { when: "почему карточка, а не конспект",
+    text: "Конспект пересказывает вышедшие реплики, карточка держит поля — "
+        + "и перезаписывает значение, когда договорённость поменялась. "
+        + "Рамки жёсткие: 20 записей, 200 символов на значение. Без них "
+        + "карточка дорастёт до конспекта, только дороже." },
+  { when: "стратегия 3: ветки",
+    text: "Контрольная точка — снимок линии целиком: история, карточка фактов, "
+        + "конспект. Ветка отходит от снимка и живёт сама; переключение меняет "
+        + "активную линию, и лента перерисовывается — реплики чужой ветки "
+        + "на экране не остаются." },
+  { when: "оговорка про ветки",
+    text: "Ветки не урезают контекст — это вторая ось: не «что выброшено», "
+        + "а «какая линия активна». Запрос в ветке собирается точно так же, "
+        + "как в колонке с окном. Третьим значением переключателя они стоят "
+        + "потому, что так просит задание." },
+  { when: "сценарий: собираем ТЗ",
+    text: "14 реплик. Восемь кладут факты, решения и договорённости, середина "
+        + "занимает окно обычными вопросами, последние две спрашивают всё "
+        + "обратно. Потом в колонке ветвей ставится точка и от неё идут два "
+        + "варианта ТЗ с одним и тем же вопросом." },
+  { when: "качество и стабильность",
+    text: "Замер на 14 репликах: на 13-й окно и ветки ответили, что имени, "
+        + "продукта и срока в разговоре не было — реплики с ними вышли за окно. "
+        + "Карточка назвала «Сергей, дашборд логистики, шесть недель» и на 14-й "
+        + "перечислила все три принятых решения; окно назвало два из трёх "
+        + "и сказало, что из первой версии ничего не выкидывали." },
+  { when: "расход токенов",
+    text: "За 14 реплик: окно 13 718 входных токенов и 14 запросов за $0.0093, "
+        + "карточка 18 357 и 28 запросов за $0.0120 — память стоит плюс 34 "
+        + "процента входа и вдвое больше запросов. Ветки — те же 14 запросов "
+        + "и 13 043 токена: разница с окном в 5 процентов это шум от длины "
+        + "ответов, а не стратегия." },
+  { when: "удобство",
+    text: "Окно: настраивать нечего, но агент не помнит ничего за пределами "
+        + "шести сообщений. Факты: видно, что именно агент помнит, — карточка "
+        + "открыта в шапке колонки, её можно проверить глазами. Ветки: можно "
+        + "пробовать варианты, не портя основную линию." },
+ ],
+};
 
 let cue = 0;
+let steps = [];
 
 function showCue(index) {
-  cue = Math.min(Math.max(index, 0), CUES.length - 1);
-  $("#cues .cuewhen").textContent = CUES[cue].when;
-  $("#cues .cuetext").textContent = CUES[cue].text;
-  $("#cues .count").textContent = `${cue + 1} из ${CUES.length}`;
+  if (!steps.length) return;
+  cue = Math.min(Math.max(index, 0), steps.length - 1);
+  $("#cues .cuewhen").textContent = steps[cue].when;
+  $("#cues .cuetext").textContent = steps[cue].text;
+  $("#cues .count").textContent = `${cue + 1} из ${steps.length}`;
+}
+
+// Панель показана там, где для режима написан разбор.
+function showCues(mode) {
+  steps = CUES[mode] || [];
+  $("#cues").hidden = !steps.length;
+  if (steps.length) showCue(0);
 }
 
 const MODE_KEY = "agent-compare";
@@ -831,6 +989,9 @@ function makeChat(view, alone) {
   chat.curve = $(".curve", head);
   chat.recap = $(".recap", head);
   chat.recaptext = $(".recaptext", head);
+  chat.factsbox = $(".factsbox", head);
+  chat.facts = $(".facts tbody", head);
+  chat.branches = $(".branch", head);
   chat.tokens = $(".tokens", head);
 
   $(".title", head).textContent = view.title;
@@ -840,6 +1001,9 @@ function makeChat(view, alone) {
   chat.tokens.value = view.ballast(limit());
   $(".apply", head)
     .addEventListener("click", () => ballast(chat, Number(chat.tokens.value)));
+  $(".mark", head).addEventListener("click", () => checkpoint(chat));
+  $(".fork", head).addEventListener("click", () => toBranch(chat, nextName(chat)));
+  chat.branches.addEventListener("change", event => toBranch(chat, event.target.value));
 
   $("#heads").append(head);
   $("#chats").append(body);
@@ -855,9 +1019,10 @@ function showChats(mode) {
   });
   $("#preload").hidden = mode !== "compare";
   $("#scenario").hidden = mode !== "recap";
-  $("#cues").hidden = mode !== "recap";
-  if (mode === "recap") showCue(0);
+  $("#brief").hidden = mode !== "strategy";
+  showCues(mode);
   chats = views.map(view => makeChat(view, !many));
+  showBranchRow();
   chats.forEach(chat => restore(chat)
     .then(metrics => preset(chat, metrics))
     .catch(() => logLine(chat, "сервер не ответил — диалог не восстановлен")));
@@ -874,6 +1039,18 @@ function preset(chat, metrics) {
   return ballast(chat, want);
 }
 
+// Лента целиком по списку реплик: и когда страница открылась, и когда перешли
+// на другую ветку — у неё своя история, и чужие реплики на экране остаться
+// не должны.
+function draw(chat, messages) {
+  chat.box.textContent = "";
+  chat.estimated = 0;
+  messages.forEach(message => {
+    if (message.role === "user") bubble(chat, "me", message.content);
+    else append(bubble(chat, "bot", ""), message.content);
+  });
+}
+
 // Страница открылась — забираем диалог с сервера и отрисовываем заново:
 // пустой экран при живой памяти агента врал бы о том, что тот помнит.
 async function restore(chat) {
@@ -885,10 +1062,7 @@ async function restore(chat) {
   if (data.metrics.ballast) chat.tokens.value = data.metrics.ballast;
   if (!data.messages.length) return data.metrics;
 
-  data.messages.forEach(message => {
-    if (message.role === "user") bubble(chat, "me", message.content);
-    else append(bubble(chat, "bot", ""), message.content);
-  });
+  draw(chat, data.messages);
   logLine(chat, `диалог восстановлен: реплик ${data.metrics.turns}`);
   return data.metrics;
 }
@@ -900,6 +1074,8 @@ function forget(chat) {
     chat.rows.innerHTML = "";
     chat.curve.textContent = "";
     showRecap(chat, "");
+    showFacts(chat, {});
+    showBranches(chat, { branch: "", branches: [] });
     chat.tokens.value = chat.view.ballast(limit());
   });
 }
@@ -916,6 +1092,50 @@ async function ballast(chat, amount) {
   logLine(chat, amount
     ? `балласт: ~${amount} синтетических токенов в истории`
     : "балласт снят");
+}
+
+// ── Ветки диалога ──────────────────────────────────────────────────
+// Стратегия колонки: в сравнении её задаёт сама колонка, в одиночном диалоге —
+// настройки. От неё зависит, нужен ли в шапке выбор ветки.
+function strategyOf(chat) {
+  return (chat.view.settings || {}).strategy || conf.strategy;
+}
+
+function showBranchRow() {
+  chats.forEach(chat => {
+    $(".branchrow", chat.head).hidden = strategyOf(chat) !== "branch";
+  });
+}
+
+// Имя для новой ветки: буквами по порядку. Запрашивать его через prompt() нельзя
+// — модальное окно браузера останавливает прогон сценария.
+function nextName(chat) {
+  const taken = [...chat.branches.options].map(option => option.value);
+  return ["А", "Б", "В", "Г", "Д"].find(name => !taken.includes(name)) || "ещё";
+}
+
+async function checkpoint(chat) {
+  const response = await post("/api/agent/checkpoint", { session: chat.session });
+  if (!response.ok) { logLine(chat, "точка не поставлена: сервер отказал"); return; }
+
+  const data = await response.json();
+  showMetrics(chat, data.metrics);
+  logLine(chat, `контрольная точка на ${data.at} сообщениях — отсюда пойдут ветки`);
+}
+
+// Переход на ветку: история приходит с сервера вместе со счётчиками, лента
+// перерисовывается целиком. Неизвестное имя — новая ветка от контрольной точки.
+async function toBranch(chat, name) {
+  const response = await post("/api/agent/branch",
+    { session: chat.session, name });
+  if (!response.ok) { logLine(chat, "ветка не переключена: сервер отказал"); return; }
+
+  const data = await response.json();
+  draw(chat, data.messages);
+  showMetrics(chat, data.metrics);
+  logLine(chat, (data.fresh ? `новая ветка «${name}» от контрольной точки`
+                            : `ветка «${name}»`)
+               + `: сообщений ${data.messages.length}`);
 }
 
 // За потоком страница следует только когда диалог один. В сравнении колонок
@@ -955,10 +1175,18 @@ function showMetrics(chat, m) {
   if (m.folded) parts.push(`свёрнуто ${m.folded} сообщ.`);
   if (m.summary_tokens) parts.push(`конспект ~${m.summary_tokens} ток.`);
   if (m.saved) parts.push(`снято сжатием ~${m.saved} ток.`);
+  const facts = Object.keys(m.facts || {}).length;
+  if (facts) parts.push(`факты ${facts} (~${m.facts_tokens} ток.)`);
+  if ((m.branches || []).length > 1) {
+    parts.push(`ветка «${m.branch}» из ${m.branches.length}`);
+  }
+  if (m.point !== null && m.point !== undefined) parts.push(`точка на ${m.point}`);
   if (m.context) parts.push(`предел ${m.context}`);
   chat.metrics.textContent = parts.join(" · ");
   drawLedger(chat, m.ledger || []);
   showRecap(chat, m.summary);
+  showFacts(chat, m.facts);
+  showBranches(chat, m);
 }
 
 // Конспект лежит отдельно от истории и уходит в запрос вместо неё — поэтому
@@ -966,6 +1194,25 @@ function showMetrics(chat, m) {
 function showRecap(chat, text) {
   chat.recap.hidden = !text;
   chat.recaptext.textContent = text || "";
+}
+
+// Карточка фактов тоже лежит отдельно от истории — и показана отдельно,
+// строками ключ-значение: по ней видно, что именно агент помнит. Значения пишет
+// модель, поэтому в разметку они идут только через экранирование.
+function showFacts(chat, map) {
+  const rows = Object.entries(map || {});
+  chat.factsbox.hidden = !rows.length;
+  chat.facts.innerHTML = rows.map(([name, value]) =>
+    `<tr><td>${escapeHtml(name)}</td><td>${escapeHtml(value)}</td></tr>`).join("");
+}
+
+// Список ветвей: пока ветка одна, выбирать нечего.
+function showBranches(chat, m) {
+  const names = m.branches || [];
+  chat.branches.innerHTML = names.map(name =>
+    `<option${name === m.branch ? " selected" : ""}>${escapeHtml(name)}</option>`)
+    .join("");
+  chat.branches.disabled = names.length < 2;
 }
 
 // Как растёт расход по мере диалога: строка на реплику и кривая входных токенов.
@@ -994,6 +1241,7 @@ function budgetLine(chat, b) {
   chat.estimated = b.predicted;
   const parts = [`роль ${b.role}`];
   if (b.summary) parts.push(`конспект ${b.summary}`);
+  if (b.facts) parts.push(`факты ${b.facts}`);
   if (b.ballast) parts.push(`балласт ${b.ballast}`);
   parts.push(`память ${b.memory}`, `вопрос ${b.question}`);
   logLine(chat, `запрос ~${b.predicted} ток. (${parts.join(" · ")}) + ${b.reply_max}` +
@@ -1027,7 +1275,9 @@ function lockChat(on) {
   $("#forget").disabled = on;
   $("#preload").disabled = on;
   $("#scenario").disabled = on;
-  document.querySelectorAll("#heads .apply").forEach(b => (b.disabled = on));
+  $("#brief").disabled = on;
+  document.querySelectorAll("#heads .apply, #heads .mark, #heads .fork")
+    .forEach(b => (b.disabled = on));
 }
 
 async function sendTo(chat, text) {
@@ -1081,6 +1331,34 @@ async function askAll(lines) {
   }
 }
 
+// Прогон дня 10: ТЗ уходит во все три колонки, а ветки живут только в своей —
+// их нужно показать живьём: один и тот же вопрос от одной точки в двух линиях
+// даёт разные ответы, и возврат в первую линию не видит реплик второй.
+async function runBrief() {
+  await askAll(BRIEF);
+  const chat = chats.find(item => strategyOf(item) === "branch");
+  if (!chat) return;
+
+  const stage = $("#agentStage");
+  lockChat(true);
+  try {
+    await checkpoint(chat);
+    for (const fork of FORKS) {
+      await toBranch(chat, fork.name);
+      for (const text of fork.lines) {
+        stage.textContent = `ветка «${fork.name}»: ${text.slice(0, 40)}`;
+        await sendTo(chat, text);
+      }
+    }
+    await toBranch(chat, FORKS[0].name);
+    stage.textContent = `возврат в ветку «${FORKS[0].name}»`;
+    await sendTo(chat, BACK);
+  } finally {
+    stage.textContent = "";
+    lockChat(false);
+  }
+}
+
 function send() {
   const text = $("#say").value.trim();
   if (!text) return;
@@ -1093,6 +1371,7 @@ function setMode(next) {
   localStorage.setItem(MODE_KEY, next);
   $("#compare").checked = next === "compare";
   $("#compare9").checked = next === "recap";
+  $("#compare10").checked = next === "strategy";
   showChats(next);
 }
 
@@ -1104,7 +1383,12 @@ $("#compare9").addEventListener("change", event => {
   setMode(event.target.checked ? "recap" : "solo");
 });
 
+$("#compare10").addEventListener("change", event => {
+  setMode(event.target.checked ? "strategy" : "solo");
+});
+
 $("#scenario").addEventListener("click", () => askAll(SCENARIO));
+$("#brief").addEventListener("click", runBrief);
 $("#cues .back").addEventListener("click", () => showCue(cue - 1));
 $("#cues .next").addEventListener("click", () => showCue(cue + 1));
 // Крестик убирает панель на время, без записи в localStorage: обновление
@@ -1161,12 +1445,22 @@ function renderFields() {
       label.textContent = field.label;
       label.htmlFor = "conf-" + field.key;
 
-      const input = document.createElement(field.type === "textarea" ? "textarea" : "input");
-      if (field.type !== "textarea") {
+      const tag = field.type === "textarea" ? "textarea"
+        : field.type === "choice" ? "select" : "input";
+      const input = document.createElement(tag);
+      if (tag === "input") {
         input.type = field.type === "bool" ? "checkbox"
           : field.type === "number" ? "number" : "text";
       }
       if (field.type === "number") input.step = "any";
+      if (field.type === "choice") {
+        field.options.forEach(option => {
+          const item = document.createElement("option");
+          item.value = option.value;
+          item.textContent = option.label;
+          input.append(item);
+        });
+      }
       input.id = "conf-" + field.key;
       input.dataset.key = field.key;
       if (field.type === "bool") input.checked = Boolean(conf[field.key]);
@@ -1191,6 +1485,9 @@ function readFields() {
   });
   localStorage.setItem(CONF_KEY, JSON.stringify(conf));
   $("#role").textContent = conf.role;
+  // Стратегию могли поменять на ветки — тогда в одиночном диалоге нужен
+  // выбор ветки, а колонки сравнения настройку стратегии не слушают.
+  showBranchRow();
 }
 
 $("#settings").addEventListener("click", () => {
