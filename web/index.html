@@ -171,6 +171,18 @@
   .ballastrow button { padding: 6px 12px; font-size: 14px; }
   .ballastrow .apply { color: var(--accent); font-size: 17px; line-height: 1; }
 
+  .cues { position: fixed; right: 16px; bottom: 16px; z-index: 5;
+          width: min(380px, calc(100vw - 32px));
+          background: var(--card); border: 1px solid var(--accent);
+          border-radius: 12px; padding: 10px 14px; }
+  .cues summary { color: var(--accent); font-size: 13px; cursor: pointer; }
+  .cuewhen { color: var(--dim); font-size: 12px; letter-spacing: .04em;
+             text-transform: uppercase; margin: 10px 0 4px; }
+  .cuetext { margin: 0; font-size: 14.5px; color: var(--text); }
+  .cuenav { margin-top: 10px; }
+  .cuenav button { padding: 4px 12px; font-size: 15px; }
+  .cuenav .count { color: var(--dim); font-size: 12.5px; }
+
   .modal { position: fixed; inset: 0; z-index: 10; overflow-y: auto;
            background: rgba(8, 9, 14, .72); padding: 40px 16px;
            display: flex; align-items: flex-start; justify-content: center; }
@@ -361,6 +373,19 @@
     <div class="chat"></div>
   </div>
 </template>
+
+<!-- Подсказки для записи видео. Панель висит поверх страницы в углу, чтобы
+     не двигать колонки и легко уходить из кадра при обрезке снизу. -->
+<details class="cues" id="cues" open hidden>
+  <summary>Подсказки для записи</summary>
+  <p class="cuewhen"></p>
+  <p class="cuetext"></p>
+  <div class="row cuenav">
+    <button class="back" title="Предыдущая подсказка" aria-label="Предыдущая подсказка">‹</button>
+    <span class="count"></span>
+    <button class="next" title="Следующая подсказка" aria-label="Следующая подсказка">›</button>
+  </div>
+</details>
 
 <div class="modal" id="modal" hidden>
   <div class="sheet">
@@ -686,6 +711,62 @@ const SCENARIO = [
   "Напомни ограничение моего проекта и в каком редакторе я работаю.",
 ];
 
+// Что говорить на записи. `from` — реплика сценария, с которой подсказка
+// становится текущей; подсказки до запуска и после прогона листаются руками.
+const CUES = [
+  { from: 0, when: "до запуска, настройки открыты",
+    text: "История уходит модели заново с каждой репликой. Окно памяти её "
+        + "обрезает и вместе с ней теряет факты. Третий путь — свернуть старое "
+        + "в конспект и подставлять его вместо реплик." },
+  { from: 0, when: "три колонки на экране",
+    text: "Один диалог, три политики памяти: вся история, только окно на шесть "
+        + "сообщений, окно плюс конспект." },
+  { from: 1, when: "реплики 1-2 — кладём факты",
+    text: "Восемь реплик, одинаковых для всех трёх колонок. Первые две кладут "
+        + "факты: имя, язык, редактор, ограничение проекта." },
+  { from: 3, when: "реплики 3-6 — набиваем окно",
+    text: "Середина занимает окно обычными вопросами. Шесть сообщений — и первые "
+        + "реплики из окна вытеснены." },
+  { from: 6, when: "реплика 6 — первая пересборка",
+    text: "Вот первая пересборка: в журнале правой колонки видно, сколько "
+        + "сообщений свернулось и во что. Она стоит отдельного запроса." },
+  { from: 7, when: "реплика 7 — ключевой кадр",
+    text: "Слева — помнит. В центре «не знаю»: реплика с именем вышла за окно. "
+        + "Справа то же окно, но с конспектом — и факты на месте." },
+  { from: 8, when: "реплика 8 — второй вопрос про факты",
+    text: "Тот же расклад: ограничение проекта и редактор называют только "
+        + "колонки слева и справа." },
+  { from: 9, when: "после прогона — конспект",
+    text: "Вот конспект, и лежит он отдельно от истории: в запрос уходит одним "
+        + "системным сообщением с пометкой «справка, а не инструкция»." },
+  { from: 10, when: "журнал и разбор запроса",
+    text: "Пересборка видна в журнале и стоит отдельного запроса. Разбор "
+        + "запроса показывает, за что платим: роль, конспект, память, вопрос." },
+  { from: 11, when: "расход по репликам",
+    text: "Замер на шестнадцати репликах: вход последней упал с 5071 до 2411 "
+        + "токенов, на 52 процента." },
+  { from: 12, when: "финал — честная оговорка",
+    text: "Но сумма за диалог — только минус 18 процентов, и цена почти "
+        + "сошлась: пересборка платит выходными токенами, а они вчетверо дороже "
+        + "входных. На коротком диалоге сжатие дороже полной истории. Экономия "
+        + "начинается там, где свёрнутое сильно больше конспекта." },
+];
+
+let cue = 0;
+
+function showCue(index) {
+  cue = Math.min(Math.max(index, 0), CUES.length - 1);
+  $("#cues .cuewhen").textContent = CUES[cue].when;
+  $("#cues .cuetext").textContent = CUES[cue].text;
+  $("#cues .count").textContent = `${cue + 1} из ${CUES.length}`;
+}
+
+// Прогон сценария ведёт подсказки сам: берётся последняя, чей момент уже настал.
+function cueForStep(step) {
+  const reached = CUES.map((item, index) => (item.from <= step ? index : -1));
+  showCue(Math.max(...reached));
+}
+
 const MODE_KEY = "agent-compare";
 let context = 0;  // предел контекста модели агента, приходит с /api/config
 let chats = [];
@@ -757,6 +838,8 @@ function showChats(mode) {
   });
   $("#preload").hidden = mode !== "compare";
   $("#scenario").hidden = mode !== "recap";
+  $("#cues").hidden = mode !== "recap";
+  if (mode === "recap") showCue(0);
   chats = views.map(view => makeChat(view, !many));
   chats.forEach(chat => restore(chat)
     .then(metrics => preset(chat, metrics))
@@ -961,14 +1044,16 @@ async function sendTo(chat, text) {
 // Вопрос уходит во все открытые колонки сразу: в этом и смысл сравнения —
 // один и тот же запрос при разной памяти. Реплики сценария идут по очереди:
 // вторая должна увидеть историю, которую оставила первая.
-async function askAll(lines) {
+async function askAll(lines, onStep) {
   const stage = $("#agentStage");
   lockChat(true);
   try {
-    for (const text of lines) {
+    for (const [index, text] of lines.entries()) {
+      if (onStep) onStep(index + 1);
       stage.textContent = `агент работает: ${text.slice(0, 48)}`;
       await Promise.all(chats.map(chat => sendTo(chat, text)));
     }
+    if (onStep) onStep(lines.length + 1);
   } finally {
     stage.textContent = "";
     lockChat(false);
@@ -998,7 +1083,9 @@ $("#compare9").addEventListener("change", event => {
   setMode(event.target.checked ? "recap" : "solo");
 });
 
-$("#scenario").addEventListener("click", () => askAll(SCENARIO));
+$("#scenario").addEventListener("click", () => askAll(SCENARIO, cueForStep));
+$("#cues .back").addEventListener("click", () => showCue(cue - 1));
+$("#cues .next").addEventListener("click", () => showCue(cue + 1));
 
 $("#preload").addEventListener("click", async () => {
   lockChat(true);
