@@ -28,6 +28,9 @@
 
   .controls { display: grid; gap: 12px; margin-bottom: 22px; }
   .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  /* Свой display сильнее правила браузера для [hidden], и спрятанный ряд
+     оставался на экране: ряд ветвей был виден в колонках, где ветвей нет. */
+  .row[hidden] { display: none; }
   label { color: var(--dim); font-size: 14px; }
   textarea, input, select {
     background: var(--card); color: var(--text);
@@ -174,14 +177,17 @@
   .recap summary { color: var(--dim); font-size: 13px; cursor: pointer; }
   .recaptext { margin: 8px 0 0; font-size: 13px; color: #cfd3e0;
                white-space: pre-wrap; }
-  .factsbox { margin-top: 8px; }
-  .factsbox summary { color: var(--dim); font-size: 13px; cursor: pointer; }
+  .factsbox, .layerbox { margin-top: 8px; }
+  .factsbox summary, .layerbox summary { color: var(--dim); font-size: 13px;
+                                         cursor: pointer; }
   /* Ширины колонок заданы, а не посчитаны по содержимому: иначе в узкой колонке
      таблица отдаёт имени факта пару символов и рвёт слова посреди букв. */
-  .factsbox table { margin-top: 8px; font-size: 12.5px; table-layout: fixed; }
-  .factsbox td { padding: 3px 6px; text-align: left; vertical-align: top;
-                 overflow-wrap: break-word; }
-  .factsbox td:first-child { color: var(--dim); width: 36%; }
+  .factsbox table, .layerbox table { margin-top: 8px; font-size: 12.5px;
+                                     table-layout: fixed; }
+  .factsbox td, .layerbox td { padding: 3px 6px; text-align: left;
+                               vertical-align: top; overflow-wrap: break-word; }
+  .factsbox td:first-child, .layerbox td:first-child { color: var(--dim);
+                                                       width: 36%; }
   /* Список ветвей в узкой колонке: общий select шире самой колонки. */
   .branchrow { margin-top: 10px; }
   .branchrow select { min-width: 0; flex: 1; font-size: 14px; padding: 6px 8px; }
@@ -190,6 +196,48 @@
   .ballastrow input { width: 120px; font-size: 14px; }
   .ballastrow button { padding: 6px 12px; font-size: 14px; }
   .ballastrow .apply { color: var(--accent); font-size: 17px; line-height: 1; }
+
+  /* Неделя 3: диалог слева, стеллаж памяти колонкой справа. Колонка липкая —
+     слой должно быть видно и тогда, когда лента уехала вниз. */
+  .deck { display: grid; grid-template-columns: minmax(0, 1fr) 340px;
+          gap: 18px; align-items: start; }
+  .deck.full { grid-template-columns: minmax(0, 1fr); }
+  .memory { position: sticky; top: 16px; display: grid; gap: 12px; }
+  .layer { background: var(--card); border: 1px solid var(--line);
+           border-left: 3px solid var(--line); border-radius: 12px;
+           padding: 12px 14px; }
+  .layer.short { border-left-color: var(--dim); }
+  .layer.work { border-left-color: var(--warn); }
+  .layer.profile { border-left-color: var(--accent); }
+  .layer h3 { margin: 0; font-size: 15px; }
+  .layer h3 .span { color: var(--dim); font-size: 11.5px; letter-spacing: .04em;
+                    text-transform: uppercase; margin-left: 8px; }
+  .layer .life { margin: 3px 0 8px; color: var(--dim); font-size: 12px; }
+  .layer .count { color: var(--accent); font-size: 12.5px;
+                  font-family: ui-monospace, Consolas, monospace; }
+  /* Запись слоя: имя строкой сверху, значение во всю ширину карточки —
+     в столбце 340 px таблица отдаёт значению меньше половины и рвёт его. */
+  .layer .record { padding: 6px 0; border-top: 1px solid var(--line); }
+  .layer .record .top { display: flex; align-items: baseline; gap: 8px; }
+  .layer .record .name { color: var(--dim); font-size: 12px;
+                         letter-spacing: .03em; overflow-wrap: anywhere; }
+  .layer .record .ops { margin-left: auto; white-space: nowrap; }
+  .layer .record .ops button { padding: 0 5px; font-size: 13px; line-height: 1.5;
+                               color: var(--dim); border-radius: 6px; }
+  .layer .record .value { font-size: 13px; overflow-wrap: anywhere; }
+  .layer .peek { margin: 8px 0 0; padding: 0; list-style: none;
+                 color: #cfd3e0; font-size: 12.5px; }
+  .layer .peek li { padding: 2px 0; overflow-wrap: anywhere; }
+  .layer .peek b { color: var(--dim); font-weight: 500; }
+  .layer .row { margin-top: 10px; gap: 10px; }
+  .layer .switch { font-size: 13px; color: var(--dim); }
+  .layer .switch input { width: 15px; height: 15px; }
+  .layer .wipe { margin-left: auto; padding: 5px 10px; font-size: 13px; }
+  /* Узкий экран: стеллаж уходит под диалог, липкость там только мешает. */
+  @media (max-width: 1100px) {
+    .deck { grid-template-columns: minmax(0, 1fr); }
+    .memory { position: static; }
+  }
 
   .cues { position: fixed; right: 16px; bottom: 16px; z-index: 5;
           width: min(380px, calc(100vw - 32px));
@@ -227,6 +275,7 @@
 <nav class="tabs">
   <button class="tab" data-pane="week1">Неделя 1</button>
   <button class="tab" data-pane="week2">Неделя 2</button>
+  <button class="tab" data-pane="week3">Неделя 3</button>
 </nav>
 
 <section class="pane" id="week1">
@@ -369,6 +418,81 @@
 
 <div class="chats" id="chats"></div>
 
+</section>
+
+<section class="pane" id="week3" hidden>
+
+<h1>Модель памяти: три слоя с разным сроком жизни</h1>
+<p class="sub">Модель <code id="model3">…</code> · контекст <code id="context3">…</code> ·
+  короткая память живёт до края окна, рабочая — до новой задачи,
+  долговременная лежит в своей таблице и переживает забытый диалог</p>
+
+<div class="row modeline">
+  <label class="switch"><input type="checkbox" id="compare11">Режим сравнения, день 11</label>
+  <span class="hint">три колонки на одном сценарии: только диалог; диалог и рабочая
+    память; все три слоя</span>
+  <button id="scenario11" hidden>Прогнать сценарий</button>
+</div>
+
+<div class="deck" id="deck3">
+  <div class="talk">
+    <div class="chats" id="heads3"></div>
+
+    <div class="controls">
+      <textarea id="say3" placeholder="Спросите что-нибудь. Enter — отправить, Shift+Enter — перенос строки"></textarea>
+      <div class="row">
+        <button class="main" id="send3">Отправить</button>
+        <button id="forget3">Забыть диалог</button>
+        <button id="settings3">⚙ Настройки</button>
+        <label for="agentKey3">Свой API-ключ</label>
+        <input id="agentKey3" type="password" placeholder="пусто — ключ сервера" autocomplete="off">
+        <span class="hint">ключ нигде не сохраняется</span>
+      </div>
+    </div>
+    <div class="stage" id="agentStage3"></div>
+
+    <div class="chats" id="chats3"></div>
+  </div>
+
+  <!-- Стеллаж памяти. Слои стоят по возрастанию срока жизни и заполняются
+       на глазах: колонка липкая, поэтому видна и когда лента ушла вниз. -->
+  <aside class="memory" id="memory3">
+    <section class="layer short">
+      <h3>Короткая<span class="span">диалог</span></h3>
+      <p class="life">живёт до края окна памяти · у каждой ветки своя</p>
+      <div class="count">диалог пуст</div>
+      <ul class="peek"></ul>
+      <div class="row">
+        <label class="switch"><input type="checkbox" class="send" data-key="memory">в запрос</label>
+      </div>
+    </section>
+
+    <section class="layer work">
+      <h3>Рабочая<span class="span">задача</span></h3>
+      <p class="life">живёт до «Новой задачи» · уезжает вместе с веткой</p>
+      <div class="count">пусто</div>
+      <div class="records"></div>
+      <div class="row">
+        <label class="switch"><input type="checkbox" class="send" data-key="send_work">в запрос</label>
+        <button class="wipe">Новая задача</button>
+      </div>
+    </section>
+
+    <section class="layer profile">
+      <h3>Долговременная<span class="span">профиль</span></h3>
+      <p class="life">живёт до «Забыть профиль» · переживает забытый диалог</p>
+      <div class="count">пусто</div>
+      <div class="records"></div>
+      <div class="row">
+        <label class="switch"><input type="checkbox" class="send" data-key="send_profile">в запрос</label>
+        <button class="wipe">Забыть профиль</button>
+      </div>
+    </section>
+  </aside>
+</div>
+
+</section>
+
 <template id="chatHead">
   <div class="col">
     <h2 class="title"></h2>
@@ -390,6 +514,14 @@
     <details class="factsbox" hidden>
       <summary>Карточка фактов</summary>
       <table class="facts"><tbody></tbody></table>
+    </details>
+    <details class="layerbox work" hidden>
+      <summary>Рабочая память</summary>
+      <table><tbody></tbody></table>
+    </details>
+    <details class="layerbox profile" hidden>
+      <summary>Долговременная память</summary>
+      <table><tbody></tbody></table>
     </details>
     <div class="row branchrow" hidden>
       <label>Ветка</label>
@@ -442,8 +574,6 @@
   </div>
 </div>
 
-</section>
-
 <script>
 const NAMES = {
   1: "1 — прямой", 2: "2 — пошагово",
@@ -458,19 +588,20 @@ const panel = n => $("#p" + n);
 fetch("/api/config").then(r => r.json()).then(cfg => {
   $("#model").textContent = cfg.model;
   $("#model2").textContent = cfg.agent.model;
+  $("#model3").textContent = cfg.agent.model;
   context = cfg.agent.context;
   $("#context2").textContent = context
     ? context.toLocaleString("ru") + " токенов" : "предел неизвестен";
+  $("#context3").textContent = $("#context2").textContent;
   if (!cfg.agent.server_key) {
     $("#agentKey").placeholder = "ключа на сервере нет — введите свой";
+    $("#agentKey3").placeholder = "ключа на сервере нет — введите свой";
   }
   setupSettings(cfg.agent.blocks);
   // Колонки поднимаются после настроек: пресеты балласта считаются от предела
   // контекста, а он приходит вместе с ними.
-  // "1" — значение прежней версии, когда режим сравнения был один и хранился
-  // галочкой; со вторым режимом в ключе лежит имя набора колонок.
-  const saved = localStorage.getItem(MODE_KEY);
-  setMode(saved === "1" ? "compare" : VIEWS[saved] ? saved : "solo");
+  ready = true;
+  setMode(savedMode());
   $("#price").textContent = cfg.price
     ? `$${cfg.price.input} / $${cfg.price.output} за 1M токенов (вход / выход)`
     : "цена неизвестна";
@@ -691,10 +822,50 @@ $("#judge").addEventListener("click", async () => {
   lock(false);
 });
 
+// Стенд диалога — набор узлов одной вкладки. Машинерия (колонки, поток,
+// счётчики, настройки) общая на все недели: у каждой вкладки свои узлы и свой
+// список режимов сравнения, а код один. Дни 8–10 живут в неделе 2, модель
+// памяти и всё, что дальше, — в неделе 3.
+const STANDS = {
+  week2: {
+    key: "agent-compare",
+    solo: "solo",
+    ids: { heads: "heads", chats: "chats", stage: "agentStage", say: "say",
+           send: "send", forget: "forget", key: "agentKey", settings: "settings" },
+    modes: {
+      compare: { box: "compare", button: "preload" },
+      recap: { box: "compare9", button: "scenario" },
+      strategy: { box: "compare10", button: "brief" },
+    },
+  },
+  week3: {
+    key: "agent-compare3",
+    solo: "solo3",
+    ids: { heads: "heads3", chats: "chats3", stage: "agentStage3", say: "say3",
+           send: "send3", forget: "forget3", key: "agentKey3",
+           settings: "settings3" },
+    modes: { layers: { box: "compare11", button: "scenario11" } },
+    deck: "deck3",
+    memory: "memory3",
+  },
+};
+
+let stand = STANDS.week2;
+let ready = false;  // настройки пришли — колонки можно поднимать
+const node = name => $("#" + stand.ids[name]);
+
+// У вкладки со стендом свой набор узлов и свой режим сравнения: переключение
+// поднимает колонки заново, иначе они остались бы в чужой вкладке.
 function showPane(name) {
   document.querySelectorAll(".pane").forEach(p => (p.hidden = p.id !== name));
   document.querySelectorAll(".tab")
     .forEach(t => t.classList.toggle("on", t.dataset.pane === name));
+  if (!STANDS[name]) {
+    $("#cues").hidden = true;
+    return;
+  }
+  stand = STANDS[name];
+  if (ready) setMode(savedMode());
 }
 
 document.querySelectorAll(".tab").forEach(tab => {
@@ -703,7 +874,7 @@ document.querySelectorAll(".tab").forEach(tab => {
     showPane(tab.dataset.pane);
   });
 });
-showPane(location.hash === "#week2" ? "week2" : "week1");
+showPane(location.hash.slice(1) in STANDS ? location.hash.slice(1) : "week1");
 
 // ── Диалоги второй недели ──────────────────────────────────────────
 // Колонка диалога — один и тот же компонент в обоих режимах. Разница только
@@ -740,6 +911,29 @@ const VIEWS = {
   // День 10: три стратегии на одном ТЗ. Окно памяти у всех одно и то же —
   // разница в том, что едет в запрос вместе с ним и из какой линии диалога
   // он собирается. Конспект выключен: день 10 — про способы без него.
+  // День 11: у колонок одна и та же история и одна и та же модель памяти.
+  // Разница в том, какие слои уходят в запрос: слой заполняется всегда,
+  // а «в запрос» — это отдельная галочка.
+  layers: [
+    { key: "nolayer", title: "Только диалог",
+      note: "окно 6 сообщений, слоёв нет — всё, что вышло за окно, потеряно",
+      ballast: () => 0,
+      settings: { memory: 6, compress: false, strategy: "window" } },
+    { key: "worklayer", title: "Диалог и задача",
+      note: "окно и рабочая память; профиль заполняется, но в запрос не уходит",
+      ballast: () => 0,
+      settings: { memory: 6, compress: false, strategy: "layers",
+                  send_work: true, send_profile: false } },
+    { key: "alllayers", title: "Три слоя",
+      note: "окно, рабочая память и профиль — в запрос уходит всё",
+      ballast: () => 0,
+      settings: { memory: 6, compress: false, strategy: "layers",
+                  send_work: true, send_profile: true } },
+  ],
+  // Одиночный диалог недели 3 всегда работает по модели памяти: страница
+  // про слои, и выбор стратегии в настройках её не выключает.
+  solo3: [{ key: "solo3", title: "", note: "", ballast: () => 0,
+            settings: { strategy: "layers" } }],
   strategy: [
     { key: "win", title: "Окно",
       note: "последние 6 сообщений, всё, что вышло за окно, отброшено",
@@ -807,6 +1001,40 @@ const FORKS = [
 // в котором мы были только что.
 const BACK = "О каком варианте мы сейчас говорим и что в нём решили?";
 
+// Сценарий дня 11: первая реплика про пользователя, дальше про задачу.
+// Разложить их по слоям — работа маршрутизатора: в профиль уходит то, что
+// останется верным и после этой задачи, в рабочую память — всё остальное.
+const LIFE = [
+  "Меня зовут Сергей, пишу на Python, редактор — VS Code.",
+  "Собираем ТЗ: внутренний дашборд для отдела логистики.",
+  "Ограничения: только веб, мобильного приложения не будет, срок — шесть недель.",
+  "Договорились: вход через корпоративный SSO, своих паролей не храним.",
+  "Данные берём из 1С ночным выгрузом, real-time не нужен.",
+  "Решили: экспорт в Excel в первую версию не попадёт.",
+  "Какие риски ты видишь в таком объёме за такой срок?",
+  "С чего начать первую неделю?",
+  "Как нарезать работу на этапы?",
+  "Сформулируй раздел «Нефункциональные требования» в двух абзацах.",
+  "Напомни: как меня зовут, на чём я пишу и в каком редакторе?",
+  "Перечисли принятые решения: вход, источник данных и что мы выкинули из первой версии.",
+];
+
+// Три посторонних вопроса после «Новой задачи»: окно в шесть сообщений ими
+// проворачивается, и реплики про ТЗ уходят из него. Без этого стёртая рабочая
+// память ничего не доказывает — ответ всё ещё лежит в окне.
+const PAUSE = [
+  "Отвлечёмся: чем кортеж отличается от списка в Python?",
+  "А как обычно читают JSON из файла?",
+  "Что такое виртуальное окружение и зачем оно нужно?",
+];
+
+// Те же два вопроса после «Новой задачи». Слои разошлись сроком жизни, и здесь
+// это видно: профиль отвечает, рабочая память — уже нет.
+const AGAIN = [
+  "Ещё раз: как меня зовут и в каком редакторе я работаю?",
+  "И что мы решили про вход и про экспорт в Excel?",
+];
+
 // Разбор механизма по шагам: что сделано, где лежит и как считается.
 // Листается руками — за прогоном панель не бежит, чтобы не перебивать клики.
 // У каждого режима сравнения свой разбор: панель одна, наполнение разное.
@@ -859,6 +1087,79 @@ const CUES = {
         + "Сумма за диалог 40 739 против 33 418, минус 18, а цена почти "
         + "сошлась: пересборка платит выходными токенами, вчетверо дорогими. "
         + "На коротком диалоге сжатие выходит дороже полной истории." },
+ ],
+ layers: [
+  { when: "задача дня 11",
+    text: "Модель памяти: информация разложена по трём слоям, слои хранятся "
+        + "отдельно друг от друга, и выбор, что куда сохранить, сделан явно — "
+        + "его делает маршрутизатор, а поправить раскладку можно руками." },
+  { when: "три слоя и их сроки жизни",
+    text: "Слои разделены не темой, а сроком жизни. Короткая — дословные "
+        + "реплики в окне памяти, живёт до края окна. Рабочая — данные текущей "
+        + "задачи, живёт до «Новой задачи». Долговременная — профиль "
+        + "пользователя, переживает забытый диалог." },
+  { when: "где это лежит",
+    text: "agent/layers.py — промпт маршрутизатора, разбор двух слоёв, рамки. "
+        + "В core.py: sort() раскладывает реплику, worksheet() и "
+        + "profilesheet() кладут слои в запрос, newtask() и move() меняют их "
+        + "руками. В store.py у профиля своя таблица profiles." },
+  { when: "разные типы памяти хранятся отдельно",
+    text: "Короткая — список history. Рабочая — поле work, оно едет в строку "
+        + "диалога и в снимок ветки. Долговременная — таблица profiles, "
+        + "отдельная строка: «Забыть диалог» удаляет диалог, а профиль "
+        + "остаётся на месте. Разделение не только в коробке, но и на диске." },
+  { when: "что и куда сохраняется",
+    text: "Один вызов модели на реплику возвращает два объекта: «профиль» и "
+        + "«задача». В короткую память модель не пишет — там лежат сами "
+        + "реплики. В журнале строка «маршрут: в рабочую N, в профиль M» "
+        + "с именами записей: видно, что именно уехало и куда." },
+  { when: "правила записи у слоёв разные",
+    text: "Профиль дополняется: что записано, то остаётся, пока не убрали "
+        + "руками. Рабочая память приходит карточкой целиком — договорённость "
+        + "поменялась, значение перезаписано. Пустой слой в ответе значит "
+        + "«менять нечего», а не «сотри»: стирает только кнопка." },
+  { when: "что уходит в запрос",
+    text: "Галочка «в запрос» на карточке слоя. Слой продолжает заполняться, "
+        + "но в запрос не идёт — это и есть проверка, на что он влияет: "
+        + "данные на месте, а ответ меняется. Каждый слой уходит своим "
+        + "системным сообщением с пометкой «справка, а не инструкция»." },
+  { when: "поправить раскладку руками",
+    text: "Раскладывает модель, а значит ошибается. Стрелка на строке "
+        + "переносит запись в соседний слой, крестик забывает её. "
+        + "Эндпоинты /api/agent/move, /api/agent/newtask и "
+        + "/api/agent/forget-profile — каждый пишет в базу сразу." },
+  { when: "три колонки",
+    text: "Одна история и одна модель памяти, разные слои в запросе: только "
+        + "диалог (окно 6, слоёв нет); диалог и задача (профиль заполняется, "
+        + "но не отправляется); три слоя. Вопрос уходит сразу во все три." },
+  { when: "сценарий: 12 реплик и новая задача",
+    text: "Первая реплика про пользователя, пять следующих про задачу, "
+        + "середина занимает окно, последние две спрашивают и то и другое "
+        + "обратно. Потом «Новая задача» в колонках со слоями и те же два "
+        + "вопроса ещё раз." },
+  { when: "качество: что помнит каждая колонка",
+    text: "Замер на 17 репликах. На 11-й имя, язык и редактор назвала только "
+        + "колонка с профилем. Средняя знала их не хуже — профиль у неё "
+        + "заполнялся, — но в запрос не слала и ответила «не знаю»: слой "
+        + "отключён, а не пуст. На 12-й обе колонки со слоями перечислили три "
+        + "решения, а колонка без слоёв ответила, что ничего не принимали." },
+  { when: "сроки жизни на замере",
+    text: "После «Новой задачи» и трёх посторонних вопросов (окно "
+        + "провернулось) имя назвала только колонка с профилем, а про решения "
+        + "не вспомнил никто: рабочую память закончили намеренно. Забытый "
+        + "диалог: история ноль, окно ноль, профиль на месте — агент ответил "
+        + "«Сергей, Python, VS Code» по одной долговременной памяти." },
+  { when: "расход токенов",
+    text: "За 17 реплик: только диалог — 12 935 входных токенов и 17 запросов "
+        + "за $0.0082; три слоя — 21 191 и 34 запроса за $0.0119. "
+        + "Маршрутизатор удваивает число запросов и добавляет 64 процента "
+        + "входа. Сами слои в запросе дёшевы: профиль 51 токен, рабочая "
+        + "память 189 — против 753 на окно памяти." },
+  { when: "оговорка про слои и стратегии",
+    text: "Слои — четвёртое значение того же переключателя стратегий, что и в "
+        + "дне 10. Окно у них общее: рабочая память и профиль не заменяют его, "
+        + "а едут рядом. Карточка фактов дня 10 — тот же приём без разделения "
+        + "по сроку жизни, поэтому она осталась отдельной стратегией." },
  ],
  strategy: [
   { when: "задача дня 10",
@@ -942,7 +1243,6 @@ function showCues(mode) {
   if (steps.length) showCue(0);
 }
 
-const MODE_KEY = "agent-compare";
 let context = 0;  // предел контекста модели агента, приходит с /api/config
 let chats = [];
 
@@ -991,6 +1291,8 @@ function makeChat(view, alone) {
   chat.recaptext = $(".recaptext", head);
   chat.factsbox = $(".factsbox", head);
   chat.facts = $(".facts tbody", head);
+  chat.workbox = $(".layerbox.work", head);
+  chat.profilebox = $(".layerbox.profile", head);
   chat.branches = $(".branch", head);
   chat.tokens = $(".tokens", head);
 
@@ -1005,21 +1307,28 @@ function makeChat(view, alone) {
   $(".fork", head).addEventListener("click", () => toBranch(chat, nextName(chat)));
   chat.branches.addEventListener("change", event => toBranch(chat, event.target.value));
 
-  $("#heads").append(head);
-  $("#chats").append(body);
+  node("heads").append(head);
+  node("chats").append(body);
   return chat;
 }
 
 function showChats(mode) {
-  const views = VIEWS[mode] || VIEWS.solo;
+  const views = VIEWS[mode] || VIEWS[stand.solo];
   const many = views.length > 1;
-  ["#heads", "#chats"].forEach(id => {
-    $(id).textContent = "";
-    $(id).classList.toggle("three", many);
+  [node("heads"), node("chats")].forEach(host => {
+    host.textContent = "";
+    host.classList.toggle("three", many);
   });
-  $("#preload").hidden = mode !== "compare";
-  $("#scenario").hidden = mode !== "recap";
-  $("#brief").hidden = mode !== "strategy";
+  // У каждого режима своя кнопка прогона; чужие на странице висеть не должны.
+  Object.entries(stand.modes).forEach(([name, wiring]) =>
+    ($("#" + wiring.button).hidden = name !== mode));
+  // Стеллаж памяти — для одного диалога: у трёх колонок памяти три, и каждая
+  // показывает свою в шапке. Без стеллажа диалог занимает всю ширину.
+  if (stand.memory) {
+    $("#" + stand.memory).hidden = many;
+    $("#" + stand.deck).classList.toggle("full", many);
+    syncLayerSwitches();
+  }
   showCues(mode);
   chats = views.map(view => makeChat(view, !many));
   showBranchRow();
@@ -1076,6 +1385,9 @@ function forget(chat) {
     showRecap(chat, "");
     showFacts(chat, {});
     showBranches(chat, { branch: "", branches: [] });
+    // Профиль переживает забытый диалог, поэтому на экране он остаётся:
+    // счётчики придут с сервера следующей репликой.
+    showLayers(chat, { work: {}, messages: 0, window: 0, window_peek: [] });
     chat.tokens.value = chat.view.ballast(limit());
   });
 }
@@ -1177,6 +1489,11 @@ function showMetrics(chat, m) {
   if (m.saved) parts.push(`снято сжатием ~${m.saved} ток.`);
   const facts = Object.keys(m.facts || {}).length;
   if (facts) parts.push(`факты ${facts} (~${m.facts_tokens} ток.)`);
+  if (strategyOf(chat) === "layers") parts.push(`окно ${m.window} из ${m.messages}`);
+  const work = Object.keys(m.work || {}).length;
+  if (work) parts.push(`задача ${work} (~${m.work_tokens} ток.)`);
+  const saved = Object.keys(m.profile || {}).length;
+  if (saved) parts.push(`профиль ${saved} (~${m.profile_tokens} ток.)`);
   if ((m.branches || []).length > 1) {
     parts.push(`ветка «${m.branch}» из ${m.branches.length}`);
   }
@@ -1186,6 +1503,7 @@ function showMetrics(chat, m) {
   drawLedger(chat, m.ledger || []);
   showRecap(chat, m.summary);
   showFacts(chat, m.facts);
+  showLayers(chat, m);
   showBranches(chat, m);
 }
 
@@ -1204,6 +1522,125 @@ function showFacts(chat, map) {
   chat.factsbox.hidden = !rows.length;
   chat.facts.innerHTML = rows.map(([name, value]) =>
     `<tr><td>${escapeHtml(name)}</td><td>${escapeHtml(value)}</td></tr>`).join("");
+}
+
+// ── Слои памяти ────────────────────────────────────────────────────
+// Слои лежат отдельно от истории — и показаны отдельно: в одиночном диалоге
+// стеллажом справа от ленты, в сравнении — свёрнутыми блоками в шапке колонки.
+// Стеллаж один на страницу, поэтому в сравнении он уступает место колонкам.
+function showLayers(chat, m) {
+  const solo = Boolean(stand.memory) && chats.length < 2;
+  fillBox(chat.workbox, m.work, solo);
+  fillBox(chat.profilebox, m.profile, solo);
+  if (solo) showMemory(m);
+}
+
+function fillBox(box, map, solo) {
+  const rows = Object.entries(map || {});
+  box.hidden = solo || !rows.length;
+  $("tbody", box).innerHTML = rows.map(([name, value]) =>
+    `<tr><td>${escapeHtml(name)}</td><td>${escapeHtml(value)}</td></tr>`).join("");
+}
+
+const layerNode = (kind, sel) => $(`#${stand.memory} .layer.${kind} ${sel}`);
+
+function showMemory(m) {
+  // Короткая память: сколько сообщений уходит дословно и из скольких. Первые
+  // слова каждого — чтобы было видно, что окно держит именно эти реплики.
+  layerNode("short", ".count").textContent = m.messages
+    ? `${m.window} из ${m.messages} сообщений · вся история ~${m.history_tokens} ток.`
+    : "диалог пуст";
+  layerNode("short", ".peek").innerHTML = (m.window_peek || []).map(item =>
+    `<li><b>${item.role === "user" ? "вы" : "агент"}:</b> ` +
+    `${escapeHtml(item.text)}…</li>`).join("");
+  fillLayer("work", m.work, m.work_tokens);
+  fillLayer("profile", m.profile, m.profile_tokens);
+}
+
+// Строка слоя: значение плюс две кнопки — перенести в соседний слой и забыть.
+// Раскладывает по слоям модель, а значит ошибается; поправить должно быть можно.
+function fillLayer(kind, map, cost) {
+  const rows = Object.entries(map || {});
+  const other = kind === "work" ? "profile" : "work";
+  const hint = other === "profile" ? "перенести в профиль" : "перенести в задачу";
+  layerNode(kind, ".count").textContent = rows.length
+    ? `записей ${rows.length} · ~${cost} ток.` : "пусто";
+
+  const host = layerNode(kind, ".records");
+  host.textContent = "";
+  rows.forEach(([name, value]) => {
+    const record = document.createElement("div");
+    record.className = "record";
+    record.innerHTML = "<div class='top'><span class='name'></span>"
+                     + "<span class='ops'></span></div><div class='value'></div>";
+    $(".name", record).textContent = name;
+    $(".value", record).textContent = value;
+    // Имя записи пишет модель, поэтому оно уходит в dataset, а не в разметку.
+    [["→", other, hint], ["×", "", "забыть запись"]].forEach(([sign, to, title]) => {
+      const button = document.createElement("button");
+      button.textContent = sign;
+      button.title = title;
+      button.dataset.move = to;
+      button.dataset.key = name;
+      $(".ops", record).append(button);
+    });
+    host.append(record);
+  });
+}
+
+// Галочки «в запрос» держат настройки коробки: у рабочей памяти и профиля свои
+// поля, у короткой это окно памяти — ноль сообщений значит, что реплики
+// не уходят вовсе.
+let lastWindow = 20;
+
+function syncLayerSwitches() {
+  $("#" + stand.memory).querySelectorAll(".send").forEach(box => {
+    box.checked = box.dataset.key === "memory"
+      ? Number(conf.memory) > 0 : Boolean(conf[box.dataset.key]);
+  });
+}
+
+function layerSend(key, on) {
+  if (key === "memory") {
+    if (!on) lastWindow = Number(conf.memory) || lastWindow;
+    conf.memory = on ? lastWindow : 0;
+  } else {
+    conf[key] = on;
+  }
+  localStorage.setItem(CONF_KEY, JSON.stringify(conf));
+}
+
+// Сроки жизни слоёв — это кнопки: без них рабочая память ничем не отличалась бы
+// от карточки фактов, а долговременная — от рабочей.
+async function newtask(chat) {
+  const response = await post("/api/agent/newtask", { session: chat.session });
+  if (!response.ok) { logLine(chat, "новая задача: сервер отказал"); return; }
+
+  const data = await response.json();
+  showMetrics(chat, data.metrics);
+  logLine(chat, `новая задача: рабочая память стёрта (записей было ${data.gone}), `
+               + "профиль и история на месте");
+}
+
+async function forgetProfile(chat) {
+  const response = await post("/api/agent/forget-profile", { session: chat.session });
+  if (!response.ok) { logLine(chat, "профиль не забыт: сервер отказал"); return; }
+
+  const data = await response.json();
+  showMetrics(chat, data.metrics);
+  logLine(chat, `профиль забыт: записей было ${data.gone}, диалог на месте`);
+}
+
+async function moveRecord(chat, layer, key, to) {
+  const response = await post("/api/agent/move",
+    { session: chat.session, layer, key, to });
+  if (!response.ok) { logLine(chat, "запись не перенесена: сервер отказал"); return; }
+
+  const data = await response.json();
+  showMetrics(chat, data.metrics);
+  logLine(chat, to ? `запись «${key}» перенесена в слой ${to === "work"
+                       ? "задачи" : "профиля"}`
+                   : `запись «${key}» забыта`);
 }
 
 // Список ветвей: пока ветка одна, выбирать нечего.
@@ -1242,6 +1679,8 @@ function budgetLine(chat, b) {
   const parts = [`роль ${b.role}`];
   if (b.summary) parts.push(`конспект ${b.summary}`);
   if (b.facts) parts.push(`факты ${b.facts}`);
+  if (b.profile) parts.push(`профиль ${b.profile}`);
+  if (b.work) parts.push(`задача ${b.work}`);
   if (b.ballast) parts.push(`балласт ${b.ballast}`);
   parts.push(`память ${b.memory}`, `вопрос ${b.question}`);
   logLine(chat, `запрос ~${b.predicted} ток. (${parts.join(" · ")}) + ${b.reply_max}` +
@@ -1271,13 +1710,15 @@ function spendLine(chat, spent) {
 }
 
 function lockChat(on) {
-  $("#send").disabled = on;
-  $("#forget").disabled = on;
-  $("#preload").disabled = on;
-  $("#scenario").disabled = on;
-  $("#brief").disabled = on;
-  document.querySelectorAll("#heads .apply, #heads .mark, #heads .fork")
+  node("send").disabled = on;
+  node("forget").disabled = on;
+  Object.values(stand.modes).forEach(w => ($("#" + w.button).disabled = on));
+  node("heads").querySelectorAll(".apply, .mark, .fork")
     .forEach(b => (b.disabled = on));
+  if (stand.memory) {
+    $("#" + stand.memory).querySelectorAll("button")
+      .forEach(b => (b.disabled = on));
+  }
 }
 
 async function sendTo(chat, text) {
@@ -1289,7 +1730,7 @@ async function sendTo(chat, text) {
 
   try {
     await stream("/api/agent",
-      { session: chat.session, text, key: $("#agentKey").value,
+      { session: chat.session, text, key: node("key").value,
         settings: { ...conf, ...(chat.view.settings || {}) } },
       event => {
         if (event.t === "delta") append(answer(), event.text);
@@ -1318,7 +1759,7 @@ async function sendTo(chat, text) {
 // один и тот же запрос при разной памяти. Реплики сценария идут по очереди:
 // вторая должна увидеть историю, которую оставила первая.
 async function askAll(lines) {
-  const stage = $("#agentStage");
+  const stage = node("stage");
   lockChat(true);
   try {
     for (const text of lines) {
@@ -1339,7 +1780,7 @@ async function runBrief() {
   const chat = chats.find(item => strategyOf(item) === "branch");
   if (!chat) return;
 
-  const stage = $("#agentStage");
+  const stage = node("stage");
   lockChat(true);
   try {
     await checkpoint(chat);
@@ -1359,36 +1800,99 @@ async function runBrief() {
   }
 }
 
+// Прогон дня 11: сценарий уходит во все три колонки, потом в колонках со
+// слоями стирается рабочая память — и те же два вопроса задаются ещё раз.
+// Слои разошлись сроком жизни: профиль отвечает, рабочая память уже нет.
+async function runLayers() {
+  await askAll(LIFE);
+  const layered = chats.filter(chat => strategyOf(chat) === "layers");
+  if (!layered.length) return;
+
+  const stage = node("stage");
+  lockChat(true);
+  try {
+    stage.textContent = "новая задача: рабочая память стирается, профиль остаётся";
+    await Promise.all(layered.map(newtask));
+  } finally {
+    stage.textContent = "";
+    lockChat(false);
+  }
+  await askAll(PAUSE);
+  await askAll(AGAIN);
+}
+
 function send() {
-  const text = $("#say").value.trim();
+  const text = node("say").value.trim();
   if (!text) return;
-  $("#say").value = "";
+  node("say").value = "";
   return askAll([text]);
 }
 
-// Режимы сравнения исключают друг друга: колонки в странице одни.
+// Режимы сравнения одной вкладки исключают друг друга: колонки на странице
+// одни. У каждой вкладки свой режим и своя память о нём.
 function setMode(next) {
-  localStorage.setItem(MODE_KEY, next);
-  $("#compare").checked = next === "compare";
-  $("#compare9").checked = next === "recap";
-  $("#compare10").checked = next === "strategy";
+  localStorage.setItem(stand.key, next);
+  Object.entries(stand.modes).forEach(([name, wiring]) =>
+    ($("#" + wiring.box).checked = name === next));
   showChats(next);
 }
 
-$("#compare").addEventListener("change", event => {
-  setMode(event.target.checked ? "compare" : "solo");
-});
+// "1" — значение прежней версии, когда режим сравнения был один и хранился
+// галочкой; со вторым режимом в ключе лежит имя набора колонок.
+function savedMode() {
+  const saved = localStorage.getItem(stand.key);
+  if (saved === "1") return "compare";
+  return VIEWS[saved] && (saved === stand.solo || stand.modes[saved])
+    ? saved : stand.solo;
+}
 
-$("#compare9").addEventListener("change", event => {
-  setMode(event.target.checked ? "recap" : "solo");
-});
+Object.values(STANDS).forEach(item => {
+  Object.entries(item.modes).forEach(([mode, wiring]) => {
+    $("#" + wiring.box).addEventListener("change", event => {
+      setMode(event.target.checked ? mode : item.solo);
+    });
+  });
+  $("#" + item.ids.send).addEventListener("click", send);
+  $("#" + item.ids.forget).addEventListener("click", async () => {
+    lockChat(true);
+    await Promise.all(chats.map(forget));
+    lockChat(false);
+  });
+  $("#" + item.ids.say).addEventListener("keydown", event => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      send();
+    }
+  });
+  $("#" + item.ids.settings).addEventListener("click", () => {
+    renderFields();
+    $("#modal").hidden = false;
+  });
+  if (!item.memory) return;
 
-$("#compare10").addEventListener("change", event => {
-  setMode(event.target.checked ? "strategy" : "solo");
+  // Кнопки внутри стеллажа: имя записи лежит в dataset кнопки, поэтому
+  // обработчик один на всю колонку.
+  $("#" + item.memory).addEventListener("click", event => {
+    const button = event.target.closest("button");
+    if (!button || !chats.length) return;
+    const kind = button.closest(".layer").classList.contains("work")
+      ? "work" : "profile";
+    if (button.classList.contains("wipe")) {
+      (kind === "work" ? newtask : forgetProfile)(chats[0]);
+    } else if (button.dataset.key) {
+      moveRecord(chats[0], kind, button.dataset.key, button.dataset.move);
+    }
+  });
+  $("#" + item.memory).addEventListener("change", event => {
+    if (event.target.classList.contains("send")) {
+      layerSend(event.target.dataset.key, event.target.checked);
+    }
+  });
 });
 
 $("#scenario").addEventListener("click", () => askAll(SCENARIO));
 $("#brief").addEventListener("click", runBrief);
+$("#scenario11").addEventListener("click", runLayers);
 $("#cues .back").addEventListener("click", () => showCue(cue - 1));
 $("#cues .next").addEventListener("click", () => showCue(cue + 1));
 // Крестик убирает панель на время, без записи в localStorage: обновление
@@ -1488,12 +1992,9 @@ function readFields() {
   // Стратегию могли поменять на ветки — тогда в одиночном диалоге нужен
   // выбор ветки, а колонки сравнения настройку стратегии не слушают.
   showBranchRow();
+  // Галочки слоёв стоят и в настройках, и на стеллаже: это одни и те же поля.
+  if (stand.memory) syncLayerSwitches();
 }
-
-$("#settings").addEventListener("click", () => {
-  renderFields();
-  $("#modal").hidden = false;
-});
 
 $("#apply").addEventListener("click", () => {
   readFields();
@@ -1513,20 +2014,6 @@ $("#modal").addEventListener("click", event => {
   if (event.target.id === "modal") $("#modal").hidden = true;
 });
 
-$("#send").addEventListener("click", send);
-
-$("#forget").addEventListener("click", async () => {
-  lockChat(true);
-  await Promise.all(chats.map(forget));
-  lockChat(false);
-});
-
-$("#say").addEventListener("keydown", event => {
-  if (event.key === "Enter" && !event.shiftKey) {
-    event.preventDefault();
-    send();
-  }
-});
 </script>
 </body>
 </html>

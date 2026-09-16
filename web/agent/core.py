@@ -8,7 +8,7 @@
 import asyncio
 import time
 
-from . import crew, facts, judge, policy, recap, tokens
+from . import crew, facts, judge, layers, policy, recap, tokens
 from .llm import AgentError, new_usage, stream_chat
 from .settings import DEFAULTS, coerce
 
@@ -51,6 +51,12 @@ class Agent:
         # Карточка липких фактов: ключ — имя факта, значение — строка. Живёт
         # отдельно от истории и переживает любое окно памяти.
         self.facts = {}
+        # Модель памяти: рабочая память живёт до новой задачи и едет вместе
+        # с веткой, долговременная (профиль) — до кнопки «Забыть профиль».
+        # Профиль держится отдельно от состояния диалога: он и не должен
+        # исчезать вместе с забытым диалогом, поэтому лежит в своей таблице.
+        self.work = {}
+        self.profile = {}
         # Ветки диалога: имя активной линии, снимки остальных и контрольная
         # точка — снимок, от которого отводится новая ветка.
         self.branch = MAIN
@@ -62,10 +68,12 @@ class Agent:
         self.settings.update(coerce(values))
 
     def forget(self):
+        # Профиль здесь не трогаем: забытый диалог — не забытый пользователь.
         self.history.clear()
         self.summary = ""
         self.folded = 0
         self.facts = {}
+        self.work = {}
         self.branch = MAIN
         self.branches = {}
         self.point = None
@@ -101,15 +109,53 @@ class Agent:
         """
         return facts.sheet(self.facts)
 
+    def worksheet(self):
+        """Рабочая память как одно системное сообщение."""
+        return layers.sheet(layers.WORK_FRAME, self.work)
+
+    def profilesheet(self):
+        """Долговременная память как одно системное сообщение."""
+        return layers.sheet(layers.PROFILE_FRAME, self.profile)
+
+    def newtask(self):
+        """Новая задача: рабочая память стирается, профиль и диалог остаются.
+
+        Это и есть граница между слоями: у рабочей памяти срок жизни — одна
+        задача, и без способа её закончить она ничем не отличалась бы от
+        карточки фактов.
+        """
+        gone = len(self.work)
+        self.work = {}
+        return gone
+
+    def move(self, layer, name, to):
+        """Перенос записи между слоями руками; пустой `to` — удаление.
+
+        Маршрутизатор решает, что куда положить, но решает моделью — значит
+        ошибается. Разложить руками должно быть можно, иначе неверно понятый
+        факт останется в слое навсегда.
+        """
+        source = self.work if layer == "work" else self.profile
+        if name not in source:
+            return False
+        value = source.pop(name)
+        if to == "work":
+            self.work[name] = value
+        elif to == "profile":
+            self.profile[name] = value
+        return True
+
     def snapshot(self):
         """Линия диалога целиком: история и всё, что из неё выведено.
 
-        Ветка — это не только реплики: конспект и карточка фактов собраны из
-        них же, и оставить их общими значило бы протащить в одну ветку то, что
-        сказали в другой.
+        Ветка — это не только реплики: конспект, карточка фактов и рабочая
+        память собраны из них же, и оставить их общими значило бы протащить
+        в одну ветку то, что сказали в другой. Профиль сюда не идёт: он про
+        пользователя, а не про линию разговора, и общий у всех веток.
         """
         return {"history": list(self.history), "facts": dict(self.facts),
-                "summary": self.summary, "folded": self.folded}
+                "summary": self.summary, "folded": self.folded,
+                "work": dict(self.work)}
 
     def mark(self):
         """Контрольная точка: снимок места, от которого разойдутся ветки."""
@@ -131,6 +177,7 @@ class Agent:
         self.facts = dict(line["facts"])
         self.summary = line["summary"]
         self.folded = line["folded"]
+        self.work = dict(line.get("work") or {})
         return fresh
 
     def lines(self):
@@ -153,11 +200,13 @@ class Agent:
 
         Настройки сюда не идут — они приходят из браузера с каждой репликой,
         и хранить их вторым экземпляром значит рано или поздно разойтись с ним.
+        Долговременная память тоже не идёт: у неё своя таблица, и второй
+        экземпляр в строке диалога исчезал бы вместе с забытым диалогом.
         """
         return {"history": self.history, "usage": self.usage,
                 "ballast": self.ballast, "ledger": self.ledger, "scale": self.scale,
                 "summary": self.summary, "folded": self.folded,
-                "facts": self.facts, "branch": self.branch,
+                "facts": self.facts, "work": self.work, "branch": self.branch,
                 "branches": self.branches, "point": self.point}
 
     def restore(self, state):
@@ -172,6 +221,7 @@ class Agent:
         self.summary = str(state.get("summary") or "")
         self.folded = int(state.get("folded") or 0)
         self.facts = dict(state.get("facts") or {})
+        self.work = dict(state.get("work") or {})
         self.branch = str(state.get("branch") or MAIN)
         self.branches = dict(state.get("branches") or {})
         self.point = state.get("point") or None
@@ -345,6 +395,38 @@ class Agent:
         yield self.note(f"факты: записей {len(self.facts)} (было {before}), "
                         f"карточка ~{tokens.of(self.factsheet())} ток.")
 
+    async def sort(self, client, question):
+        """Разложить новое из реплики по слоям памяти.
+
+        Вызов на каждую реплику, как и карточка фактов: слой должен помочь
+        ответу на ту самую реплику, из которой его пополнили. Правила записи
+        у слоёв разные — профиль дополняется, рабочая память приходит
+        карточкой целиком, — поэтому ответ модели тут не один объект, а два.
+        """
+        before = dict(self.work)
+        added, card = await layers.route(
+            client, url=self.url, key=self.key, model=self.settings["model"],
+            work=self.work, profile=self.profile, question=question,
+            usage=self.usage, work_limit=int(self.settings["work_max"]),
+            profile_limit=int(self.settings["profile_max"]), **self.quirks())
+
+        # Пустой слой значит «менять нечего», а не «сотри»: модель отдаёт
+        # пустое и когда реплика ничего не добавила, и когда ответ не
+        # разобрался. Стирает слой только кнопка.
+        if card:
+            self.work = card
+        fresh = {name: value for name, value in added.items()
+                 if self.profile.get(name) != value}
+        for name, value in fresh.items():
+            if name in self.profile or len(self.profile) < layers.MAX_KEYS:
+                self.profile[name] = value
+
+        changed = [name for name, value in self.work.items()
+                   if before.get(name) != value]
+        yield self.note(
+            f"маршрут: в рабочую {len(changed)} ({layers.names(changed)}), "
+            f"в профиль {len(fresh)} ({layers.names(fresh)})")
+
     async def ask(self, client, text):
         """Полный проход коробки. Отдаёт события: журнал, куски ответа, вердикт."""
         started = time.monotonic()
@@ -381,6 +463,10 @@ class Agent:
             async for event in self.pin(client, question):
                 yield event
 
+        if self.settings["strategy"] == "layers" and not tasks:
+            async for event in self.sort(client, question):
+                yield event
+
         # Запрос собирается по частям, а не одним списком: каждую часть коробка
         # взвешивает отдельно и показывает, из чего сложился расход токенов.
         if tasks:
@@ -391,17 +477,27 @@ class Agent:
                 "role": [{"role": "system", "content": crew.SUMMARY}],
                 "summary": [],
                 "facts": [],
+                "profile": [],
+                "work": [],
                 "ballast": [],
                 "memory": [],
                 "question": [{"role": "user",
                               "content": crew.digest(question, self.results)}],
             }
         else:
+            # Слой заполняется маршрутизатором всегда, а уходит в запрос
+            # по галочке: заполненный, но отключённый слой — это и есть
+            # проверка, на что он влияет в ответе.
+            layered = self.settings["strategy"] == "layers"
             pieces = {
                 "role": [{"role": "system", "content": self.settings["role"]}],
                 "summary": self.briefing() if self.settings["compress"] else [],
                 "facts": (self.factsheet()
                           if self.settings["strategy"] == "facts" else []),
+                "profile": (self.profilesheet()
+                            if layered and self.settings["send_profile"] else []),
+                "work": (self.worksheet()
+                         if layered and self.settings["send_work"] else []),
                 "ballast": self.padding(),
                 "memory": list(self.remembered()),
                 "question": [{"role": "user", "content": question}],
@@ -433,6 +529,7 @@ class Agent:
 
         yield {"t": "budget", **budget}
         messages = [*pieces["role"], *pieces["summary"], *pieces["facts"],
+                    *pieces["profile"], *pieces["work"],
                     *pieces["ballast"], *pieces["memory"], *pieces["question"]]
 
         raw = []
@@ -500,6 +597,18 @@ class Agent:
             "saved": self.savings(),
             "facts": self.facts,
             "facts_tokens": tokens.of(self.factsheet()),
+            "work": self.work,
+            "work_tokens": tokens.of(self.worksheet()),
+            "profile": self.profile,
+            "profile_tokens": tokens.of(self.profilesheet()),
+            # Короткая память: сколько сообщений уходит дословно и из скольких.
+            # Первые слова каждого — чтобы в шапке было видно, что именно
+            # держит окно, а не только сколько там строк.
+            "window": len(self.remembered()),
+            "messages": len(self.history),
+            "window_peek": [{"role": message["role"],
+                             "text": message["content"][:60]}
+                            for message in self.remembered()[-8:]],
             "branch": self.branch,
             "branches": self.lines(),
             "point": len(self.point["history"]) if self.point else None,

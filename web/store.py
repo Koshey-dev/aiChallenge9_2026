@@ -1,4 +1,4 @@
-"""Диалоги между перезапусками: одна таблица SQLite рядом со стендом.
+"""Диалоги между перезапусками: SQLite рядом со стендом.
 
 Коробка агента про этот файл не знает: она умеет отдать своё состояние и принять
 его обратно, а где оно лежит — решает стенд. Строка на диалог, история и счётчики
@@ -6,6 +6,10 @@
 перекладывание сообщений по строкам. Всё остальное состояние коробки едет
 в колонке `extra` одним объектом: под каждое новое поле заводить колонку значит
 дописывать миграцию на ровном месте.
+
+Таблиц всё-таки две. Долговременная память живёт в своей: её смысл в том, чтобы
+пережить забытый диалог, а строку диалога кнопка «Забыть диалог» удаляет целиком.
+Слои памяти разделены не только в коробке, но и на диске.
 """
 
 import json
@@ -25,6 +29,14 @@ CREATE TABLE IF NOT EXISTS dialogs (
 )
 """
 
+PROFILES = """
+CREATE TABLE IF NOT EXISTS profiles (
+    session TEXT PRIMARY KEY,
+    data    TEXT NOT NULL,
+    updated TEXT NOT NULL
+)
+"""
+
 
 # Поля состояния, у которых в таблице своя колонка. Остальное едет в `extra`.
 COLUMNS = ("history", "usage")
@@ -35,6 +47,7 @@ def connect():
     # а не падает с «database is locked»
     db = sqlite3.connect(FILE, timeout=5)
     db.execute(SCHEMA)
+    db.execute(PROFILES)
     # База могла остаться от версии без журнала расхода — доводим её на месте.
     known = {row[1] for row in db.execute("PRAGMA table_info(dialogs)")}
     if "extra" not in known:
@@ -69,5 +82,29 @@ def save(session, state):
 
 
 def drop(session):
+    """Забыть диалог. Профиль остаётся: он лежит в другой таблице."""
     with closing(connect()) as db, db:
         db.execute("DELETE FROM dialogs WHERE session = ?", (session,))
+
+
+def load_profile(session):
+    """Долговременная память диалога. Пустой словарь, если её ещё нет."""
+    with closing(connect()) as db:
+        row = db.execute("SELECT data FROM profiles WHERE session = ?",
+                         (session,)).fetchone()
+    return json.loads(row[0]) if row else {}
+
+
+def save_profile(session, profile):
+    with closing(connect()) as db, db:
+        db.execute(
+            "INSERT INTO profiles (session, data, updated) "
+            "VALUES (?, ?, datetime('now')) "
+            "ON CONFLICT(session) DO UPDATE SET data = excluded.data, "
+            "updated = excluded.updated",
+            (session, json.dumps(profile, ensure_ascii=False)))
+
+
+def drop_profile(session):
+    with closing(connect()) as db, db:
+        db.execute("DELETE FROM profiles WHERE session = ?", (session,))

@@ -212,6 +212,13 @@ class BranchIn(BaseModel):
     name: str
 
 
+class MemoryIn(BaseModel):
+    session: str
+    layer: str = ""
+    key: str = ""
+    to: str = ""
+
+
 class ModelsIn(BaseModel):
     task: str
     key: str | None = None
@@ -655,6 +662,9 @@ def agent_for(session):
         saved = store.load(session)
         if saved:
             agent.restore(saved)
+        # Долговременная память лежит отдельно от диалога и поднимается
+        # отдельно: диалог могли забыть, а пользователь остался тем же.
+        agent.profile = store.load_profile(session)
     return agent
 
 
@@ -674,8 +684,10 @@ def agent_chat(body: AgentIn):
             except AgentError as error:
                 yield line({"t": "error", "message": str(error)})
                 return
-        # Реплика дошла до конца — диалог целиком уходит в базу.
+        # Реплика дошла до конца — диалог целиком уходит в базу, профиль
+        # в свою таблицу: маршрутизатор мог дописать в него новое.
         store.save(body.session, agent.state())
+        store.save_profile(body.session, agent.profile)
         yield line({"t": "done", **agent.report()})
 
     return StreamingResponse(run(), media_type="application/x-ndjson")
@@ -723,6 +735,39 @@ def agent_branch(body: BranchIn):
     fresh = agent.switch(body.name.strip() or "без имени")
     store.save(body.session, agent.state())
     return {"fresh": fresh, "messages": agent.history, "metrics": agent.report()}
+
+
+@app.post("/api/agent/newtask")
+def agent_newtask(body: SessionIn):
+    """Новая задача: рабочая память стирается, профиль и диалог остаются."""
+    agent = agent_for(body.session)
+    gone = agent.newtask()
+    store.save(body.session, agent.state())
+    return {"gone": gone, "metrics": agent.report()}
+
+
+@app.post("/api/agent/forget-profile")
+def agent_forget_profile(body: SessionIn):
+    """Забыть пользователя: долговременная память уходит вместе со своей строкой."""
+    agent = agent_for(body.session)
+    gone = len(agent.profile)
+    agent.profile = {}
+    store.drop_profile(body.session)
+    return {"gone": gone, "metrics": agent.report()}
+
+
+@app.post("/api/agent/move")
+def agent_move(body: MemoryIn):
+    """Перенос записи между слоями руками; пустой `to` — удаление.
+
+    Раскладывает по слоям модель, а значит ошибается: разложить руками должно
+    быть можно, иначе неверно понятый факт останется в слое навсегда.
+    """
+    agent = agent_for(body.session)
+    moved = agent.move(body.layer, body.key, body.to)
+    store.save(body.session, agent.state())
+    store.save_profile(body.session, agent.profile)
+    return {"moved": moved, "metrics": agent.report()}
 
 
 @app.post("/api/agent/history")
