@@ -7,9 +7,15 @@
 в колонке `extra` одним объектом: под каждое новое поле заводить колонку значит
 дописывать миграцию на ровном месте.
 
-Таблиц всё-таки две. Долговременная память живёт в своей: её смысл в том, чтобы
-пережить забытый диалог, а строку диалога кнопка «Забыть диалог» удаляет целиком.
-Слои памяти разделены не только в коробке, но и на диске.
+Долговременная память живёт в своей таблице: её смысл в том, чтобы пережить
+забытый диалог, а строку диалога кнопка «Забыть диалог» удаляет целиком. Слои
+памяти разделены не только в коробке, но и на диске. Профиль один на весь стенд:
+он про пользователя, а не про разговор, и новый чат должен знать то, что сказали
+в старом.
+
+Чат недели 3 — строка в `chats` поверх строки диалога с тем же идентификатором:
+в `chats` то, что нужно списку слева, — название, модель, расход. Настройки чата
+общие на все чаты и лежат в `prefs`.
 """
 
 import json
@@ -37,6 +43,33 @@ CREATE TABLE IF NOT EXISTS profiles (
 )
 """
 
+CHATS = """
+CREATE TABLE IF NOT EXISTS chats (
+    id      TEXT PRIMARY KEY,
+    title   TEXT NOT NULL DEFAULT '',
+    model   TEXT NOT NULL,
+    turns   INTEGER NOT NULL DEFAULT 0,
+    context INTEGER NOT NULL DEFAULT 0,
+    cost    REAL NOT NULL DEFAULT 0,
+    created TEXT NOT NULL,
+    updated TEXT NOT NULL
+)
+"""
+
+PREFS = """
+CREATE TABLE IF NOT EXISTS prefs (
+    name    TEXT PRIMARY KEY,
+    data    TEXT NOT NULL,
+    updated TEXT NOT NULL
+)
+"""
+
+# Строка общего профиля. Строки, которые лежат под идентификаторами диалогов, —
+# профили прежней версии, когда он был у каждого диалога свой; их никто не читает.
+PROFILE = "*"
+
+CHAT_FIELDS = ("id", "title", "model", "turns", "context", "cost", "created", "updated")
+
 
 # Поля состояния, у которых в таблице своя колонка. Остальное едет в `extra`.
 COLUMNS = ("history", "usage")
@@ -48,6 +81,8 @@ def connect():
     db = sqlite3.connect(FILE, timeout=5)
     db.execute(SCHEMA)
     db.execute(PROFILES)
+    db.execute(CHATS)
+    db.execute(PREFS)
     # База могла остаться от версии без журнала расхода — доводим её на месте.
     known = {row[1] for row in db.execute("PRAGMA table_info(dialogs)")}
     if "extra" not in known:
@@ -87,24 +122,92 @@ def drop(session):
         db.execute("DELETE FROM dialogs WHERE session = ?", (session,))
 
 
-def load_profile(session):
-    """Долговременная память диалога. Пустой словарь, если её ещё нет."""
+def load_profile():
+    """Долговременная память. Пустой словарь, если её ещё нет."""
     with closing(connect()) as db:
         row = db.execute("SELECT data FROM profiles WHERE session = ?",
-                         (session,)).fetchone()
+                         (PROFILE,)).fetchone()
     return json.loads(row[0]) if row else {}
 
 
-def save_profile(session, profile):
+def save_profile(profile):
     with closing(connect()) as db, db:
         db.execute(
             "INSERT INTO profiles (session, data, updated) "
             "VALUES (?, ?, datetime('now')) "
             "ON CONFLICT(session) DO UPDATE SET data = excluded.data, "
             "updated = excluded.updated",
-            (session, json.dumps(profile, ensure_ascii=False)))
+            (PROFILE, json.dumps(profile, ensure_ascii=False)))
 
 
-def drop_profile(session):
+def drop_profile():
     with closing(connect()) as db, db:
-        db.execute("DELETE FROM profiles WHERE session = ?", (session,))
+        db.execute("DELETE FROM profiles WHERE session = ?", (PROFILE,))
+
+
+def chats():
+    """Чаты для списка слева: свежие сверху."""
+    with closing(connect()) as db:
+        rows = db.execute(f"SELECT {', '.join(CHAT_FIELDS)} FROM chats "
+                          "ORDER BY updated DESC").fetchall()
+    return [dict(zip(CHAT_FIELDS, row)) for row in rows]
+
+
+def chat(chat_id):
+    with closing(connect()) as db:
+        row = db.execute(f"SELECT {', '.join(CHAT_FIELDS)} FROM chats WHERE id = ?",
+                         (chat_id,)).fetchone()
+    return dict(zip(CHAT_FIELDS, row)) if row else None
+
+
+def add_chat(chat_id, model):
+    with closing(connect()) as db, db:
+        db.execute("INSERT INTO chats (id, model, created, updated) "
+                   "VALUES (?, ?, datetime('now'), datetime('now'))", (chat_id, model))
+    return chat(chat_id)
+
+
+def edit_chat(chat_id, **fields):
+    """Название или модель. Порядок в списке не меняется: он по последней реплике."""
+    names = [name for name in fields if name in ("title", "model")]
+    if not names:
+        return chat(chat_id)
+    with closing(connect()) as db, db:
+        db.execute(f"UPDATE chats SET {', '.join(f'{name} = ?' for name in names)} "
+                   "WHERE id = ?", (*(fields[name] for name in names), chat_id))
+    return chat(chat_id)
+
+
+def after_turn(chat_id, *, title, turns, context, cost):
+    """Реплика дошла до конца: счётчики чата и место в списке.
+
+    Цена копится, а не пересчитывается по всему расходу: модель у чата меняют
+    по ходу разговора, и прошлые реплики стоили по прайсу своей модели.
+    """
+    with closing(connect()) as db, db:
+        db.execute("UPDATE chats SET title = ?, turns = ?, context = ?, "
+                   "cost = cost + ?, updated = datetime('now') WHERE id = ?",
+                   (title, turns, context, cost, chat_id))
+    return chat(chat_id)
+
+
+def drop_chat(chat_id):
+    """Удалить чат вместе с его диалогом. Профиль общий и остаётся."""
+    with closing(connect()) as db, db:
+        db.execute("DELETE FROM chats WHERE id = ?", (chat_id,))
+        db.execute("DELETE FROM dialogs WHERE session = ?", (chat_id,))
+
+
+def load_prefs(name):
+    with closing(connect()) as db:
+        row = db.execute("SELECT data FROM prefs WHERE name = ?", (name,)).fetchone()
+    return json.loads(row[0]) if row else {}
+
+
+def save_prefs(name, data):
+    with closing(connect()) as db, db:
+        db.execute(
+            "INSERT INTO prefs (name, data, updated) VALUES (?, ?, datetime('now')) "
+            "ON CONFLICT(name) DO UPDATE SET data = excluded.data, "
+            "updated = excluded.updated",
+            (name, json.dumps(data, ensure_ascii=False)))

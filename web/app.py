@@ -4,11 +4,12 @@ import itertools
 import json
 import os
 import time
+import uuid
 from pathlib import Path
 
 import httpx
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
@@ -68,6 +69,55 @@ AGENT_CONTEXT = CONTEXTS.get(AGENT_MODEL, 0)
 # токенов одна реплика с переполненной историей стоит треть доллара, а на учебном
 # пределе то же самое видно за две реплики и за копейки. Меняется в настройках.
 AGENT_LIMIT = 8_000
+
+# ── Чат недели 3 ────────────────────────────────────────────────────
+# Модель выбирается у каждого чата, а куда и с каким ключом уходит запрос,
+# решает её провайдер.
+PROVIDERS = {
+    "deepseek": {"title": "DeepSeek", "url": AGENT_URL, "key": AGENT_KEY},
+    "gemini": {"title": "Gemini", "url": URLS["gemini"], "key": SERVER_KEY},
+    "groq": {"title": "Groq", "url": URLS["groq"], "key": GROQ_KEY},
+}
+
+# Gemini и Groq — из реестра страницы сравнения моделей: там уже проверены и
+# контекст, и прайс. ALLaM не берём: цены у неё нет, а 4K контекста чату мало.
+CHAT_MODELS = [
+    {"id": "deepseek-flash", "title": "DeepSeek Flash", "provider": "deepseek",
+     "context": CONTEXTS["deepseek-flash"]},
+    {"id": "deepseek-v4-pro", "title": "DeepSeek V4 Pro", "provider": "deepseek",
+     "context": CONTEXTS["deepseek-v4-pro"]},
+    *({"id": model["id"], "title": model["title"], "provider": model["provider"],
+       "context": model["context"]} for model in MODELS if model["price"]),
+]
+CHAT_BY_ID = {model["id"]: model for model in CHAT_MODELS}
+CHAT_DEFAULT = "deepseek-flash"
+CHAT_PRICES = {**PRICES, **{model["id"]: model["price"]
+                            for model in MODELS if model["price"]}}
+
+# Чат — ассистент, а не стенд для опытов: ручки прошлых дней стоят как у обычного
+# помощника и в окне настроек не видны. Память — модель слоёв дня 11, бригада
+# не поднимается, предел контекста — настоящий у модели (его ставит `tune`).
+ASSISTANT = {"strategy": "layers", "crew": False, "judge": False, "compress": False}
+
+# Окно настроек показывает только ручки текущего дня курса. Короткая память
+# уходит в запрос по своей галочке: снятая ставит окно в ноль, а число реплик
+# при этом не теряется.
+SHORT = {"key": "send_short", "label": "Слать короткую память в запрос",
+         "type": "bool", "default": True,
+         "hint": "выключено — реплики в запрос не уходят вовсе, ответ собирается "
+                 "из рабочей памяти и профиля"}
+FIELDS = {field["key"]: field for block in blocks(CHAT_DEFAULT) for field in block["fields"]}
+CHAT_BLOCKS = [{
+    "title": "День 11 · модель памяти",
+    "note": "Три слоя с разным сроком жизни. Слой заполняется всегда, а в запрос "
+            "уходит по галочке — так видно, на что он влияет в ответе.",
+    "fields": [SHORT, FIELDS["memory"], FIELDS["send_work"], FIELDS["work_max"],
+               FIELDS["send_profile"], FIELDS["profile_max"]],
+}]
+PREF_DEFAULTS = {field["key"]: field["default"] for field in CHAT_BLOCKS[0]["fields"]}
+
+TITLER = ("Назови разговор в двух-четырёх словах по первой реплике пользователя. "
+          "Верни только название: без кавычек, без точки в конце, с большой буквы.")
 
 PRESETS = [
     {
@@ -217,6 +267,23 @@ class MemoryIn(BaseModel):
     layer: str = ""
     key: str = ""
     to: str = ""
+
+
+class NewChatIn(BaseModel):
+    model: str = CHAT_DEFAULT
+
+
+class ChatEditIn(BaseModel):
+    title: str | None = None
+    model: str | None = None
+
+
+class SayIn(BaseModel):
+    text: str
+
+
+class PrefsIn(BaseModel):
+    values: dict
 
 
 class ModelsIn(BaseModel):
@@ -653,19 +720,45 @@ AGENTS: dict[str, Agent] = {}
 
 
 def agent_for(session):
-    """Агент диалога: живой из словаря, а если его там нет — поднятый из базы."""
+    """Агент диалога: живой из словаря, а если его там нет — поднятый из базы.
+
+    Если диалог — чат недели 3, агент тут же настраивается под этот чат: так
+    общие эндпоинты агента работают и для чатов, не зная про них.
+    """
     agent = AGENTS.get(session)
     if agent is None:
         agent = AGENTS[session] = Agent(AGENT_KEY, url=AGENT_URL, model=AGENT_MODEL,
-                                        prices=PRICES,
+                                        prices=CHAT_PRICES,
                                         settings={"context_limit": AGENT_LIMIT})
         saved = store.load(session)
         if saved:
             agent.restore(saved)
-        # Долговременная память лежит отдельно от диалога и поднимается
-        # отдельно: диалог могли забыть, а пользователь остался тем же.
-        agent.profile = store.load_profile(session)
+    # Долговременная память лежит отдельно от диалога и общая на весь стенд:
+    # её могли пополнить в другом диалоге, поэтому она поднимается на каждый
+    # запрос, а не один раз при создании агента.
+    agent.profile = store.load_profile()
+    entry = store.chat(session)
+    if entry:
+        tune(agent, entry)
     return agent
+
+
+def chat_prefs():
+    """Общие настройки чатов: сохранённые поверх значений по умолчанию."""
+    saved = store.load_prefs("chat")
+    return {key: saved.get(key, default) for key, default in PREF_DEFAULTS.items()}
+
+
+def tune(agent, entry):
+    """Агент под чат: модель и провайдер — от чата, ручки дня 11 — из общих
+    настроек, остальное — как у ассистента."""
+    model = CHAT_BY_ID.get(entry["model"]) or CHAT_BY_ID[CHAT_DEFAULT]
+    provider = PROVIDERS[model["provider"]]
+    agent.url, agent.key = provider["url"], provider["key"]
+    prefs = chat_prefs()
+    agent.configure({**ASSISTANT, **prefs,
+                     "memory": prefs["memory"] if prefs["send_short"] else 0,
+                     "model": model["id"], "context_limit": model["context"]})
 
 
 @app.post("/api/agent")
@@ -687,7 +780,7 @@ def agent_chat(body: AgentIn):
         # Реплика дошла до конца — диалог целиком уходит в базу, профиль
         # в свою таблицу: маршрутизатор мог дописать в него новое.
         store.save(body.session, agent.state())
-        store.save_profile(body.session, agent.profile)
+        store.save_profile(agent.profile)
         yield line({"t": "done", **agent.report()})
 
     return StreamingResponse(run(), media_type="application/x-ndjson")
@@ -748,11 +841,12 @@ def agent_newtask(body: SessionIn):
 
 @app.post("/api/agent/forget-profile")
 def agent_forget_profile(body: SessionIn):
-    """Забыть пользователя: долговременная память уходит вместе со своей строкой."""
+    """Забыть пользователя: долговременная память уходит вместе со своей строкой.
+    Профиль общий, поэтому забывается во всех диалогах сразу."""
     agent = agent_for(body.session)
     gone = len(agent.profile)
     agent.profile = {}
-    store.drop_profile(body.session)
+    store.drop_profile()
     return {"gone": gone, "metrics": agent.report()}
 
 
@@ -766,7 +860,7 @@ def agent_move(body: MemoryIn):
     agent = agent_for(body.session)
     moved = agent.move(body.layer, body.key, body.to)
     store.save(body.session, agent.state())
-    store.save_profile(body.session, agent.profile)
+    store.save_profile(agent.profile)
     return {"moved": moved, "metrics": agent.report()}
 
 
@@ -779,6 +873,142 @@ def agent_history(body: SessionIn):
     """
     agent = agent_for(body.session)
     return {"messages": agent.history, "metrics": agent.report()}
+
+
+@app.get("/chat.js")
+def chat_script():
+    return FileResponse(HERE / "chat.js")
+
+
+@app.get("/chat.css")
+def chat_style():
+    return FileResponse(HERE / "chat.css")
+
+
+@app.get("/api/chat/config")
+def chat_config():
+    """Всё, что нужно чату при открытии: модели, окно настроек и его значения."""
+    return {
+        "models": [{**model, "vendor": PROVIDERS[model["provider"]]["title"],
+                    "ready": bool(PROVIDERS[model["provider"]]["key"])}
+                   for model in CHAT_MODELS],
+        "default": CHAT_DEFAULT,
+        "blocks": CHAT_BLOCKS,
+        "prefs": chat_prefs(),
+    }
+
+
+@app.post("/api/chat/prefs")
+def chat_save_prefs(body: PrefsIn):
+    """Общие настройки чатов. Чужие ключи и значения не того типа отсекаются."""
+    prefs = chat_prefs()
+    for key, default in PREF_DEFAULTS.items():
+        value = body.values.get(key)
+        if isinstance(default, bool):
+            if isinstance(value, bool):
+                prefs[key] = value
+            continue
+        try:
+            prefs[key] = max(0, int(float(value)))
+        except (TypeError, ValueError):
+            continue
+    store.save_prefs("chat", prefs)
+    return prefs
+
+
+@app.get("/api/chats")
+def chat_list():
+    return store.chats()
+
+
+@app.post("/api/chats")
+def chat_new(body: NewChatIn):
+    model = body.model if body.model in CHAT_BY_ID else CHAT_DEFAULT
+    return store.add_chat(uuid.uuid4().hex, model)
+
+
+def known_chat(chat_id):
+    entry = store.chat(chat_id)
+    if entry is None:
+        raise HTTPException(404, "такого чата нет")
+    return entry
+
+
+@app.patch("/api/chats/{chat_id}")
+def chat_edit(chat_id: str, body: ChatEditIn):
+    """Переименовать чат или сменить у него модель."""
+    known_chat(chat_id)
+    fields = {}
+    if body.title is not None and body.title.strip():
+        fields["title"] = " ".join(body.title.split())[:80]
+    if body.model in CHAT_BY_ID:
+        fields["model"] = body.model
+    return store.edit_chat(chat_id, **fields)
+
+
+@app.delete("/api/chats/{chat_id}")
+def chat_drop(chat_id: str):
+    AGENTS.pop(chat_id, None)
+    store.drop_chat(chat_id)
+    return {"ok": True}
+
+
+async def name_chat(client, agent, question):
+    """Название чата по первой реплике: один короткий запрос к модели чата.
+
+    Не вышло — первые слова реплики: чат без названия в списке не найти.
+    Предел ответа с запасом: GPT-OSS сначала рассуждает, и на это уходит
+    170–180 токенов ещё до названия. Остальным хватает пяти.
+    """
+    spent, text = new_metrics(), []
+    async for _ in call(client, agent.key, chat(question[:1000], TITLER), "title",
+                        spent, text, url=agent.url, model=agent.settings["model"],
+                        max_tokens=800, **agent.quirks()):
+        pass
+    title = " ".join("".join(text).split()).strip(" .«»\"'")[:60]
+    if not title:
+        words = " ".join(question.split())
+        title = words if len(words) <= 40 else words[:40].rsplit(" ", 1)[0] + "…"
+    cost = agent.price_of(spent["prompt_tokens"], spent["completion_tokens"]) or 0.0
+    return title, cost
+
+
+@app.post("/api/chats/{chat_id}/send")
+def chat_send(chat_id: str, body: SayIn):
+    """Реплика в чат. Поток тот же, что у агента недели 2, плюс название чата
+    после первого ответа и счётчики для списка слева в конце."""
+    entry = known_chat(chat_id)
+    agent = agent_for(chat_id)
+
+    async def run():
+        mark = None
+        async with httpx.AsyncClient(timeout=180, default_encoding="utf-8",
+                                     proxy=PROXY) as client:
+            try:
+                async for event in agent.ask(client, body.text):
+                    # Бюджет приходит прямо перед главным запросом: весь вход,
+                    # что набежит после него, — сам ответ, без маршрутизатора.
+                    if event["t"] == "budget":
+                        mark = agent.usage["prompt"]
+                    yield line(event)
+            except AgentError as error:
+                yield line({"t": "error", "message": str(error)})
+                return
+            report = agent.report()
+            cost = report["turn"]["cost"] or 0.0
+            title = entry["title"]
+            if not title and report["turns"]:
+                title, spent = await name_chat(client, agent, body.text)
+                cost += spent
+                yield line({"t": "title", "title": title})
+        store.save(chat_id, agent.state())
+        store.save_profile(agent.profile)
+        used = agent.usage["prompt"] - mark if mark is not None else 0
+        updated = store.after_turn(chat_id, title=title, turns=report["turns"],
+                                   context=used or entry["context"], cost=cost)
+        yield line({"t": "done", **report, "chat": updated})
+
+    return StreamingResponse(run(), media_type="application/x-ndjson")
 
 
 @app.get("/api/config")

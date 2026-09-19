@@ -1,0 +1,345 @@
+/* Чат недели 3. Страница остальных недель тёмная, а чат — светлый и тёплый,
+   с тёмной парой для системной тёмной темы. Переменные переопределены на body:
+   общие правила страницы (вкладки, окно настроек, подсказки) берут цвета из
+   тех же имён и перекрашиваются вместе с чатом. Всё остальное — под #week3,
+   чтобы не задеть недели 1 и 2. */
+
+body.app {
+  --bg: #fbfaf7;
+  --side: #f3f0ea;
+  --card: #ffffff;
+  --line: #e6e1d8;
+  --text: #25221e;
+  --dim: #847e74;
+  --accent: #7b6cf6;
+  --accent-ink: #ffffff;
+  --soft: #eceafd;
+  --bubble: #efebe4;
+  --hover: #ebe7df;
+  --code: #f2efe9;
+  --warn: #b0741a;
+  --bad: #c43d3d;
+  --shadow: 0 1px 2px rgba(40, 30, 10, .06), 0 8px 28px rgba(40, 30, 10, .08);
+  color-scheme: light;
+
+  margin: 0; padding: 0;
+  height: 100vh; height: 100dvh;
+  display: flex; flex-direction: column; overflow: hidden;
+  background: var(--bg); color: var(--text);
+  font: 15px/1.6 system-ui, "Segoe UI", sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  body.app {
+    --bg: #1c1b19;
+    --side: #161513;
+    --card: #252320;
+    --line: #36332e;
+    --text: #ece8e0;
+    --dim: #9c968c;
+    --accent: #9d91ff;
+    --accent-ink: #16141f;
+    --soft: #2c2945;
+    --bubble: #2d2b27;
+    --hover: #2b2926;
+    --code: #2a2825;
+    --warn: #e0ae5f;
+    --bad: #ee8d8d;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 10px 30px rgba(0, 0, 0, .4);
+    color-scheme: dark;
+  }
+}
+
+/* Вкладки недель остаются сверху, но в теме чата и потоньше. */
+body.app .tabs { margin: 0; padding: 8px 16px 0; gap: 4px; background: var(--side); }
+body.app .tab { padding: 5px 14px; font-size: 13.5px; background: transparent; color: var(--dim); }
+body.app .tab.on { background: var(--bg); color: var(--text); border-color: var(--line); }
+
+body.app #week3 { flex: 1; min-height: 0; }
+
+#week3 .app { display: flex; height: 100%; position: relative; }
+
+/* Кнопки страницы нарисованы для тёмной темы с рамкой: здесь с чистого листа. */
+#week3 button {
+  background: none; border: 0; border-radius: 8px; padding: 0;
+  color: inherit; font: inherit; cursor: pointer;
+}
+#week3 button:disabled { opacity: .45; cursor: default; }
+#week3 input[type=checkbox] { width: 15px; height: 15px; margin: 0; padding: 0;
+                              accent-color: var(--accent); }
+
+#week3 .i { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor;
+            stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+#week3 .i.small { width: 15px; height: 15px; }
+#week3 .icon { width: 32px; height: 32px; display: inline-grid; place-items: center;
+               color: var(--dim); }
+#week3 .icon:hover { background: var(--hover); color: var(--text); }
+
+/* ── Чаты слева ── */
+#week3 .side {
+  width: 272px; flex: none; min-height: 0;
+  display: flex; flex-direction: column; gap: 12px;
+  padding: 14px 12px 10px; background: var(--side);
+  border-right: 1px solid var(--line);
+}
+#week3 .app.folded .side { display: none; }
+#week3 .brand { display: flex; align-items: center; gap: 10px; padding: 2px 2px 0 4px; }
+#week3 .brand b { flex: 1; font-size: 17px; }
+#week3 .logo { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center;
+               background: var(--accent); color: var(--accent-ink); }
+#week3 .new {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  height: 40px; border-radius: 10px; font-weight: 500;
+  background: var(--accent); color: var(--accent-ink);
+}
+#week3 .new:hover { filter: brightness(1.06); }
+
+#week3 .list { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column;
+               gap: 2px; margin: 0 -6px; padding: 0 6px; }
+#week3 .item { position: relative; }
+#week3 .item .pick {
+  display: block; width: 100%; text-align: left;
+  padding: 7px 34px 7px 10px; border-radius: 10px;
+  border-left: 3px solid transparent;
+}
+#week3 .item:hover .pick { background: var(--hover); }
+#week3 .item.on .pick { background: var(--hover); border-left-color: var(--accent); }
+#week3 .item .title, #week3 .item .meta {
+  display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+#week3 .item .title { font-size: 14px; }
+#week3 .item .title.untitled { font-style: italic; color: var(--dim); }
+#week3 .item .meta { font-size: 12px; line-height: 1.45; color: var(--dim); }
+#week3 .item .more {
+  position: absolute; right: 6px; top: 8px; width: 24px; height: 24px;
+  display: grid; place-items: center; color: var(--dim); opacity: 0;
+}
+#week3 .item:hover .more, #week3 .item.on .more,
+#week3 .item .more[aria-expanded=true] { opacity: 1; }
+#week3 .item .more:hover { background: var(--line); color: var(--text); }
+#week3 .item .rename { width: 100%; padding: 6px 8px; font-size: 14px; border-radius: 8px;
+                       background: var(--card); color: var(--text); border: 1px solid var(--accent); }
+
+#week3 .pop {
+  position: absolute; right: 6px; top: 34px; z-index: 20; min-width: 180px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+  box-shadow: var(--shadow); padding: 4px;
+}
+#week3 .pop button { display: flex; align-items: center; gap: 8px; width: 100%;
+                     padding: 7px 10px; border-radius: 7px; font-size: 14px; text-align: left; }
+#week3 .pop button:hover { background: var(--hover); }
+#week3 .pop .danger { color: var(--bad); }
+
+#week3 .gear { display: flex; align-items: center; gap: 10px; padding: 12px 8px 4px;
+               border-top: 1px solid var(--line); border-radius: 0; font-size: 14.5px; }
+#week3 .gear:hover { color: var(--accent); }
+
+#week3 .scrim { display: none; }
+
+/* ── Шапка чата ── */
+#week3 .main { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column;
+               background: var(--bg); }
+#week3 .top { display: flex; align-items: center; gap: 10px; min-height: 56px;
+              padding: 10px 16px; border-bottom: 1px solid var(--line); }
+#week3 #unfold { display: none; }
+#week3 .app.folded #unfold { display: inline-grid; }
+
+#week3 .picker { position: relative; min-width: 0; }
+#week3 .model {
+  display: flex; align-items: center; gap: 8px; height: 36px; max-width: 100%;
+  padding: 0 12px 0 7px; border: 1px solid var(--line); border-radius: 999px;
+  background: var(--card); font-size: 14px; font-weight: 500; white-space: nowrap;
+}
+#week3 .model:hover { background: var(--hover); }
+#week3 .badge {
+  width: 22px; height: 22px; border-radius: 6px; flex: none;
+  display: grid; place-items: center; font-size: 11px; font-weight: 700;
+  color: #fff; background: var(--vendor, var(--accent));
+}
+#week3 [data-vendor=deepseek] { --vendor: #4d6bfe; }
+#week3 [data-vendor=gemini] { --vendor: #1f8a70; }
+#week3 [data-vendor=groq] { --vendor: #f0522e; }
+
+#week3 .menu {
+  position: absolute; left: 0; top: calc(100% + 6px); z-index: 30; min-width: 310px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+  box-shadow: var(--shadow); padding: 6px;
+}
+#week3 .menu .group { display: flex; align-items: center; gap: 8px; padding: 8px 10px 4px;
+                      font-size: 11.5px; letter-spacing: .05em; text-transform: uppercase;
+                      color: var(--dim); }
+#week3 .menu .group .badge { width: 16px; height: 16px; font-size: 9px; border-radius: 4px; }
+#week3 .menu .opt { display: flex; align-items: center; gap: 10px; width: 100%;
+                    padding: 7px 10px; border-radius: 8px; text-align: left; }
+#week3 .menu .opt:hover:not(:disabled) { background: var(--hover); }
+#week3 .menu .opt .name { flex: 1; font-size: 14px; }
+#week3 .menu .opt .note { font-size: 12px; color: var(--dim); }
+#week3 .menu .opt .check { width: 16px; color: var(--accent); visibility: hidden; }
+#week3 .menu .opt.on .check { visibility: visible; }
+
+#week3 .gauges { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+#week3 .pill {
+  display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px;
+  border: 1px solid var(--line); border-radius: 999px; background: var(--card);
+  font-size: 13.5px; white-space: nowrap;
+}
+#week3 .pill:hover:not(:disabled) { background: var(--hover); }
+#week3 .pill b { color: var(--accent); font-weight: 600; }
+#week3 #memoryButton[aria-expanded=true] { background: var(--soft); border-color: transparent; }
+#week3 .ring, #week3 .cost { display: inline-flex; align-items: center; gap: 6px;
+                             font-size: 13px; color: var(--dim);
+                             font-variant-numeric: tabular-nums; white-space: nowrap; }
+#week3 .ring svg { width: 18px; height: 18px; transform: rotate(-90deg); }
+#week3 .ring circle { fill: none; stroke: var(--line); stroke-width: 2.6; }
+/* Длина окружности r=8 — 50.27: столько штрих и сдвигается, пока не заполнит круг. */
+#week3 .ring .fill { stroke: var(--accent); stroke-linecap: round;
+                     stroke-dasharray: 50.27; stroke-dashoffset: 50.27;
+                     transition: stroke-dashoffset .3s; }
+
+/* ── Лента ── */
+#week3 .feed { flex: 1; min-height: 0; overflow-y: auto; }
+#week3 .thread { max-width: 780px; margin: 0 auto; padding: 28px 24px 24px;
+                 display: flex; flex-direction: column; gap: 22px; }
+#week3 .empty { max-width: 440px; margin: 32px auto 0; text-align: center; color: var(--dim); }
+#week3 .me {
+  align-self: flex-end; max-width: 80%; padding: 10px 16px; border-radius: 18px;
+  background: var(--bubble); white-space: pre-wrap; overflow-wrap: anywhere;
+}
+#week3 .bot { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+#week3 .text { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.65; }
+#week3 .text:empty { display: none; }
+#week3 .text code { background: var(--code); border-radius: 5px; padding: 1px 5px;
+                    font: 13.5px ui-monospace, Consolas, monospace; }
+#week3 .text pre.code {
+  margin: 8px 0; padding: 12px 14px; overflow-x: auto; white-space: pre;
+  background: var(--code); border: 1px solid var(--line); border-radius: 10px;
+  font: 13px/1.5 ui-monospace, Consolas, monospace;
+}
+#week3 .text b.head { display: block; margin: 12px 0 2px; font-size: 16px; }
+#week3 .text hr { border: 0; border-top: 1px solid var(--line); margin: 12px 0; }
+#week3 .err { color: var(--bad); }
+
+/* Журнал коробки: одна серая строка над ответом, раскрывается по клику. */
+#week3 .trace { font-size: 13px; color: var(--dim); }
+#week3 .trace summary {
+  display: inline-flex; align-items: center; gap: 6px; max-width: 100%;
+  padding: 2px 8px 2px 4px; border-radius: 6px; cursor: pointer; list-style: none;
+  user-select: none;
+}
+#week3 .trace summary::-webkit-details-marker { display: none; }
+#week3 .trace summary:hover { background: var(--hover); color: var(--text); }
+#week3 .trace summary .i { transition: transform .15s; }
+#week3 .trace[open] summary .i { transform: rotate(90deg); }
+#week3 .trace.live summary .gist::after { content: " …"; }
+#week3 .trace .lines {
+  margin: 6px 0 2px 10px; padding-left: 12px; border-left: 2px solid var(--line);
+  font: 12.5px/1.6 ui-monospace, Consolas, monospace;
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+#week3 .trace .lines .budget { color: var(--accent); }
+#week3 .trace .lines .spend { color: var(--warn); }
+#week3 .notice { align-self: center; max-width: 90%; padding: 4px 14px; border-radius: 999px;
+                 background: var(--hover); color: var(--dim); font-size: 13px; text-align: center; }
+
+/* ── Поле ввода ── */
+#week3 .composer { padding: 0 24px 10px; }
+#week3 .box {
+  max-width: 780px; margin: 0 auto; padding: 14px 12px 10px 18px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 22px;
+  box-shadow: var(--shadow);
+}
+#week3 .box:focus-within { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+#week3 .box textarea {
+  display: block; width: 100%; min-height: 24px; max-height: 220px; padding: 0 6px 0 0;
+  border: 0; background: transparent; color: var(--text); resize: none; outline: none;
+  font: inherit; font-size: 15px; line-height: 1.55;
+}
+#week3 .box textarea::placeholder { color: var(--dim); }
+#week3 .bar { display: flex; align-items: center; justify-content: flex-end; gap: 12px;
+              margin-top: 8px; }
+#week3 .estimate { font-size: 12.5px; color: var(--dim); font-variant-numeric: tabular-nums; }
+#week3 .send { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center;
+               background: var(--accent); color: var(--accent-ink); }
+#week3 .keys { margin: 8px 0 0; text-align: center; font-size: 12px; color: var(--dim); }
+
+/* ── Панель памяти ── */
+#week3 .drawer {
+  width: 340px; flex: none; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 12px; padding: 14px 16px 20px;
+  background: var(--side); border-left: 1px solid var(--line);
+}
+#week3 .drawer[hidden] { display: none; }
+#week3 .drawer header { display: flex; align-items: center; justify-content: space-between; }
+#week3 .drawer header b { font-size: 16px; }
+#week3 .drawer .lead { margin: 0; font-size: 13px; color: var(--dim); }
+#week3 .layer { padding: 12px 14px; background: var(--card); border: 1px solid var(--line);
+                border-top: 3px solid var(--tone); border-radius: 12px; }
+#week3 .layer.short { --tone: var(--dim); }
+#week3 .layer.work { --tone: var(--warn); }
+#week3 .layer.profile { --tone: var(--accent); }
+#week3 .layer .head { display: flex; align-items: baseline; gap: 8px; }
+#week3 .layer h3 { margin: 0; font-size: 15px; }
+#week3 .layer .kind { font-size: 11px; letter-spacing: .05em; text-transform: uppercase;
+                      color: var(--dim); }
+#week3 .toggle { margin-left: auto; display: inline-flex; align-items: center; gap: 6px;
+                 font-size: 12.5px; color: var(--dim); cursor: pointer; }
+#week3 .layer .life { margin: 3px 0 8px; font-size: 12px; color: var(--dim); }
+#week3 .layer .count { font-size: 12.5px; font-variant-numeric: tabular-nums; }
+#week3 .record { padding: 7px 0 6px; border-top: 1px solid var(--line); }
+#week3 .record:first-child { margin-top: 8px; }
+#week3 .record .rhead { display: flex; align-items: baseline; gap: 8px; }
+#week3 .record .name { font-size: 12px; color: var(--dim); overflow-wrap: anywhere; }
+#week3 .record .ops { margin-left: auto; display: flex; gap: 2px; }
+#week3 .record .ops button { width: 24px; height: 22px; border-radius: 6px; color: var(--dim); }
+#week3 .record .ops button:hover { background: var(--hover); color: var(--text); }
+#week3 .record .value { font-size: 13.5px; overflow-wrap: anywhere; }
+#week3 .peek { margin: 8px 0 0; padding: 0; list-style: none; font-size: 12.5px; }
+#week3 .peek li { padding: 2px 0; overflow-wrap: anywhere; }
+#week3 .peek b { color: var(--dim); font-weight: 500; }
+#week3 .wipe { margin-top: 10px; padding: 5px 12px; font-size: 13px;
+               border: 1px solid var(--line); border-radius: 8px; }
+#week3 .wipe:hover:not(:disabled) { background: var(--hover); }
+#week3 .armed { color: var(--bad); border-color: var(--bad); }
+
+/* ── Окно настроек: каркас общий со страницей, здесь только отличия ── */
+#week3 .modal { background: rgba(20, 16, 10, .35); }
+#week3 .sheet { width: min(600px, 100%); border-radius: 16px; box-shadow: var(--shadow); }
+#week3 .sheethead { display: flex; align-items: center; justify-content: space-between; }
+#week3 .sheethead h2 { margin: 0; }
+#week3 .block legend { color: var(--accent); }
+#week3 .field { grid-template-columns: 1fr auto; }
+#week3 .field label { color: var(--text); font-size: 14px; }
+#week3 .field .hint { grid-column: 1 / -1; margin-top: -6px; }
+#week3 .field input[type=number] { width: 110px; padding: 6px 10px; font-size: 14px; }
+#week3 .field input[type=checkbox] { justify-self: end; width: 17px; height: 17px; }
+#week3 .actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
+#week3 .primary { padding: 8px 16px; border-radius: 10px; font-weight: 500;
+                  background: var(--accent); color: var(--accent-ink); }
+#week3 .plain { padding: 8px 14px; border-radius: 10px; border: 1px solid var(--line); }
+#week3 .plain:hover { background: var(--hover); }
+
+/* ── Узкий экран: чаты и память выезжают поверх ленты ── */
+@media (max-width: 900px) {
+  #week3 .side {
+    position: absolute; left: 0; top: 0; bottom: 0; z-index: 40;
+    transform: translateX(-100%); transition: transform .2s; box-shadow: var(--shadow);
+  }
+  #week3 .app.folded .side { display: flex; }
+  #week3 .app.open .side { transform: none; }
+  #week3 .app.open .scrim { display: block; position: absolute; inset: 0; z-index: 39;
+                            background: rgba(20, 16, 10, .3); }
+  #week3 #unfold { display: inline-grid; }
+  #week3 .drawer { position: absolute; right: 0; top: 0; bottom: 0; z-index: 35;
+                   width: min(340px, 92vw); box-shadow: var(--shadow); }
+  #week3 .top { padding: 8px 10px; gap: 6px; }
+  #week3 .gauges { gap: 6px; }
+  #week3 .thread { padding: 20px 16px; }
+  #week3 .composer { padding: 0 12px 8px; }
+}
+@media (max-width: 640px) {
+  #week3 .word, #week3 .cost { display: none; }
+  #week3 .pill { padding: 0 9px; }
+  #week3 .menu { min-width: min(310px, calc(100vw - 24px)); }
+  #week3 .me { max-width: 92%; }
+  #week3 .keys { display: none; }
+}
