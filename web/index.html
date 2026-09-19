@@ -447,7 +447,7 @@
         <label class="toggle"><input type="checkbox" data-pref="send_short">в запрос</label></div>
       <p class="life">последние реплики дословно · живёт до края окна</p>
       <div class="count"></div>
-      <ul class="peek"></ul>
+      <details class="stash"><summary></summary><ul class="peek"></ul></details>
     </section>
 
     <section class="layer work">
@@ -455,7 +455,7 @@
         <label class="toggle"><input type="checkbox" data-pref="send_work">в запрос</label></div>
       <p class="life">данные текущей задачи · живёт до «Новой задачи»</p>
       <div class="count"></div>
-      <div class="records"></div>
+      <details class="stash"><summary></summary><div class="records"></div></details>
       <button class="wipe" data-act="newtask">Новая задача</button>
     </section>
 
@@ -464,7 +464,7 @@
         <label class="toggle"><input type="checkbox" data-pref="send_profile">в запрос</label></div>
       <p class="life">одна на все чаты · живёт до «Забыть профиль»</p>
       <div class="count"></div>
-      <div class="records"></div>
+      <details class="stash"><summary></summary><div class="records"></div></details>
       <button class="wipe" data-act="forget">Забыть профиль</button>
     </section>
   </aside>
@@ -1234,7 +1234,7 @@ function forget(chat) {
     showBranches(chat, { branch: "", branches: [] });
     // Профиль переживает забытый диалог, поэтому на экране он остаётся:
     // счётчики придут с сервера следующей репликой.
-    showLayers(chat, { work: {}, messages: 0, window: 0, window_peek: [] });
+    showLayers(chat, { work: {} });
     chat.tokens.value = chat.view.ballast(limit());
   });
 }

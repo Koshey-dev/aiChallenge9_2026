@@ -450,13 +450,20 @@
   function showMemory() {
     const m = metrics || {};
     const short = $(".layer.short", ui.drawer);
+    const tail = m.tail || [];
+    // Окно — конец истории: в запрос уходят последние `window` сообщений.
+    // Хвост показан и при выключенной короткой памяти, только бледным: так
+    // карточка не меняет высоту, и видно, какие именно реплики не уходят.
+    const out = tail.length - Math.min(m.window || 0, tail.length);
     $(".count", short).textContent = m.messages
-      ? `${m.window} из ${m.messages} сообщений уходят дословно · `
+      ? `в запросе ${m.window} из ${m.messages} сообщений · `
         + `вся история ~${number(m.history_tokens)} ток.`
       : "диалог пуст";
-    $(".peek", short).innerHTML = (m.window_peek || []).map(item =>
-      `<li><b>${item.role === "user" ? "вы" : "агент"}:</b> ${escapeHtml(item.text)}`
+    $(".peek", short).innerHTML = tail.map((item, index) =>
+      `<li${index < out ? " class='out' title='в запрос не уходит'" : ""}>`
+      + `<b>${item.role === "user" ? "вы" : "агент"}:</b> ${escapeHtml(item.text)}`
       + `${item.text.length >= 60 ? "…" : ""}</li>`).join("");
+    stash(short, tail.length, `последние реплики (${tail.length})`);
     fillLayer("work", m.work, m.work_tokens);
     fillLayer("profile", m.profile, m.profile_tokens);
     ui.memoryCount.textContent =
@@ -496,6 +503,15 @@
       });
       host.append(record);
     });
+    stash(layer, rows.length, `записи (${rows.length})`);
+  }
+
+  // Накопленное в слое лежит под раскрывашкой: всё время на виду оно не нужно,
+  // а счётчик над ней и так говорит, сколько там. Пустой слой её не показывает.
+  function stash(layer, count, label) {
+    const box = $(".stash", layer);
+    box.hidden = !count;
+    $("summary", box).textContent = label;
   }
 
   function syncToggles() {

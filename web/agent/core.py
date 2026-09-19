@@ -602,13 +602,14 @@ class Agent:
             "profile": self.profile,
             "profile_tokens": tokens.of(self.profilesheet()),
             # Короткая память: сколько сообщений уходит дословно и из скольких.
-            # Первые слова каждого — чтобы в шапке было видно, что именно
-            # держит окно, а не только сколько там строк.
+            # Хвост — первые слова последних сообщений истории, а не только
+            # окна: окно всегда её конец, и что из хвоста уходит в запрос, видно
+            # по `window`. При нулевом окне хвост не пустеет, и в интерфейсе
+            # видно, какие именно реплики выключены.
             "window": len(self.remembered()),
             "messages": len(self.history),
-            "window_peek": [{"role": message["role"],
-                             "text": message["content"][:60]}
-                            for message in self.remembered()[-8:]],
+            "tail": [{"role": message["role"], "text": message["content"][:60]}
+                     for message in self.history[-8:]],
             "branch": self.branch,
             "branches": self.lines(),
             "point": len(self.point["history"]) if self.point else None,
