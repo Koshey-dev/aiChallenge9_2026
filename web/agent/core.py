@@ -528,9 +528,17 @@ class Agent:
                 return
 
         yield {"t": "budget", **budget}
+        # Слои памяти стоят после окна, прямо перед вопросом. Модель сильнее
+        # опирается на то, что ближе к вопросу, и справка из слоёв не должна
+        # проигрывать старой реплике окна, которая ей противоречит: со слоями
+        # перед окном deepseek-flash повторял свой прошлый ответ «имени нет»
+        # в 11 прогонах из 12, после окна — ни разу. Цена — кэш провайдера:
+        # слои теперь идут после растущей истории и каждый раз считаются
+        # заново вместе с прошлым вопросом. На 14 репликах из кэша 37% входа
+        # против 45% при слоях перед окном.
         messages = [*pieces["role"], *pieces["summary"], *pieces["facts"],
-                    *pieces["profile"], *pieces["work"],
-                    *pieces["ballast"], *pieces["memory"], *pieces["question"]]
+                    *pieces["ballast"], *pieces["memory"],
+                    *pieces["profile"], *pieces["work"], *pieces["question"]]
 
         raw = []
         async for piece in self.answer(client, messages):

@@ -307,12 +307,13 @@
     }
   }
 
-  // Из чего сложился запрос — до того, как он ушёл к провайдеру.
+  // Из чего сложился запрос — до того, как он ушёл к провайдеру. Части
+  // в том порядке, в каком стоят в запросе: слои памяти — после окна.
   function budgetText(b) {
-    const parts = [`роль ${b.role}`];
+    const parts = [`роль ${b.role}`, `память ${b.memory}`];
     if (b.profile) parts.push(`профиль ${b.profile}`);
     if (b.work) parts.push(`задача ${b.work}`);
-    parts.push(`память ${b.memory}`, `вопрос ${b.question}`);
+    parts.push(`вопрос ${b.question}`);
     return `запрос ~${b.predicted} ток. (${parts.join(" · ")}) + ${b.reply_max} на ответ`
       + (b.limit ? ` при пределе ${number(b.limit)}` : "");
   }
