@@ -492,6 +492,7 @@
   // в том порядке, в каком стоят в запросе: слои памяти — после окна.
   function budgetText(b) {
     const parts = [`роль ${b.role}`, `память ${b.memory}`];
+    if (b.note) parts.push(`правило памяти ${b.note}`);
     if (b.persona) parts.push(`анкета ${b.persona}`);
     if (b.profile) parts.push(`профиль ${b.profile}`);
     if (b.work) parts.push(`задача ${b.work}`);

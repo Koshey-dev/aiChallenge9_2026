@@ -1451,8 +1451,10 @@ function budgetLine(chat, b) {
   const parts = [`роль ${b.role}`];
   if (b.summary) parts.push(`конспект ${b.summary}`);
   if (b.facts) parts.push(`факты ${b.facts}`);
+  if (b.persona) parts.push(`анкета ${b.persona}`);
   if (b.profile) parts.push(`профиль ${b.profile}`);
   if (b.work) parts.push(`задача ${b.work}`);
+  if (b.note) parts.push(`правило памяти ${b.note}`);
   if (b.ballast) parts.push(`балласт ${b.ballast}`);
   parts.push(`память ${b.memory}`, `вопрос ${b.question}`);
   logLine(chat, `запрос ~${b.predicted} ток. (${parts.join(" · ")}) + ${b.reply_max}` +

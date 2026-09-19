@@ -482,6 +482,7 @@ class Agent:
                         if layered and self.settings["send_profile"] else []),
             "work": (self.worksheet()
                      if layered and self.settings["send_work"] else []),
+            "note": [{"role": "system", "content": layers.NOTE}] if layered else [],
             "ballast": self.padding(),
             "memory": list(memory),
             "question": [{"role": "user", "content": question}],
@@ -505,10 +506,15 @@ class Agent:
         у deepseek-flash дала «списками» в 14 прогонах из 14, сразу после
         роли — в 11; у GPT-OSS и Gemini разницы нет. Кэшу это стоит самой
         анкеты — около 200 токенов на запрос.
+
+        Правило «память ведёшь не ты» (`layers.NOTE`) — сразу после окна:
+        ниже прошлых ответов, которым оно противоречит, но выше анкеты и слоёв,
+        чтобы не отодвигать их от вопроса. Замер — в `layers.NOTE`.
         """
         return [*pieces["role"], *pieces["summary"], *pieces["facts"],
-                *pieces["ballast"], *pieces["memory"], *pieces["persona"],
-                *pieces["profile"], *pieces["work"], *pieces["question"]]
+                *pieces["ballast"], *pieces["memory"], *pieces["note"],
+                *pieces["persona"], *pieces["profile"], *pieces["work"],
+                *pieces["question"]]
 
     async def ask(self, client, text):
         """Полный проход коробки. Отдаёт события: журнал, куски ответа, вердикт."""
@@ -565,6 +571,7 @@ class Agent:
                 "facts": [],
                 "profile": [],
                 "work": [],
+                "note": [],
                 "ballast": [],
                 "memory": [],
                 "question": [{"role": "user",
