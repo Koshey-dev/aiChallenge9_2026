@@ -382,8 +382,8 @@
 <section class="pane" id="week3" hidden>
 
 <!-- Неделя 3: чат-ассистент, которого курс собирает по шагам. Слева чаты,
-     по центру разговор, справа по кнопке — слои памяти дня 11. Поведение
-     в chat.js, оформление в chat.css. -->
+     по центру разговор, справа по кнопке — слои памяти дня 11, профили дня 12 —
+     в своём окне. Поведение в chat.js, оформление в chat.css. -->
 <div class="app" id="app">
   <aside class="side" id="side">
     <div class="brand">
@@ -393,20 +393,31 @@
     </div>
     <button class="new" id="newChat"><svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Новый чат</button>
     <nav class="list" id="chatList" aria-label="Чаты"></nav>
+    <div class="foot">
+    <button class="gear" id="openProfiles"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>Профили</button>
     <button class="gear" id="openPrefs"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.9 4.9 7 7M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1 7 17M17 7l2.1-2.1"/></svg>Настройки</button>
+    </div>
   </aside>
   <div class="scrim" id="scrim"></div>
 
   <main class="main">
     <header class="top">
       <button class="icon" id="unfold" title="Показать чаты" aria-label="Показать чаты"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg></button>
-      <div class="picker">
+      <div class="picker" id="modelPicker">
         <button class="model" id="modelButton" aria-haspopup="menu" aria-expanded="false">
           <span class="badge" id="modelBadge"></span>
           <span id="modelName">…</span>
           <svg class="i small" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>
         </button>
         <div class="menu" id="modelMenu" role="menu" hidden></div>
+      </div>
+      <div class="picker" id="profilePicker">
+        <button class="model" id="profileButton" aria-haspopup="menu" aria-expanded="false">
+          <svg class="i small" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+          <span id="profileName">…</span>
+          <svg class="i small" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+        <div class="menu" id="profileMenu" role="menu" hidden></div>
       </div>
       <div class="gauges">
         <button class="pill" id="newTask" title="Стереть рабочую память: профиль и история останутся"><svg class="i small" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg><span class="word">Новая задача</span></button>
@@ -462,12 +473,30 @@
     <section class="layer profile">
       <div class="head"><h3>Долговременная</h3><span class="kind">профиль</span>
         <label class="toggle"><input type="checkbox" data-pref="send_profile">в запрос</label></div>
-      <p class="life">одна на все чаты · живёт до «Забыть профиль»</p>
+      <p class="life">у профиля чата, во всех его чатах · живёт до «Забыть профиль»</p>
       <div class="count"></div>
       <details class="stash"><summary></summary><div class="records"></div></details>
       <button class="wipe" data-act="forget">Забыть профиль</button>
     </section>
   </aside>
+</div>
+
+<!-- Профили дня 12: слева список, справа анкета выбранного и то, что
+     ассистент заметил сам. Поля анкеты приходят с сервера. -->
+<div class="modal" id="profiles" hidden>
+  <div class="sheet wide">
+    <div class="sheethead">
+      <h2>Профили</h2>
+      <button class="icon" id="closeProfiles" title="Закрыть" aria-label="Закрыть профили"><svg class="i" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+    </div>
+    <p class="fine">Профиль — это вы для ассистента: анкета, которую заполняете вы, и то,
+      что ассистент заметил в разговорах сам. У каждого чата свой профиль, он
+      выбирается в шапке чата и уходит в каждый запрос.</p>
+    <div class="people">
+      <nav class="who" id="profileList" aria-label="Профили"></nav>
+      <div class="card" id="profileCard"></div>
+    </div>
+  </div>
 </div>
 
 <div class="modal" id="prefs" hidden>

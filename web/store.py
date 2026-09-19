@@ -9,13 +9,19 @@
 
 Долговременная память живёт в своей таблице: её смысл в том, чтобы пережить
 забытый диалог, а строку диалога кнопка «Забыть диалог» удаляет целиком. Слои
-памяти разделены не только в коробке, но и на диске. Профиль один на весь стенд:
-он про пользователя, а не про разговор, и новый чат должен знать то, что сказали
-в старом.
+памяти разделены не только в коробке, но и на диске. Профиль — про пользователя,
+а не про разговор: новый чат должен знать то, что сказали в старом.
+
+Профилей несколько (день 12): у каждого название, анкета, которую заполняет
+пользователь, и долговременная память, которую пополняет ассистент. Строка `*`
+— «Основной» профиль: его видит неделя 2 и берёт чат, у которого профиль
+удалили. Строки под идентификаторами диалогов — профили самой первой версии,
+когда он был у каждого диалога свой; названия у них нет, и в список они
+не попадают.
 
 Чат недели 3 — строка в `chats` поверх строки диалога с тем же идентификатором:
-в `chats` то, что нужно списку слева, — название, модель, расход. Настройки чата
-общие на все чаты и лежат в `prefs`.
+в `chats` то, что нужно списку слева, — название, модель, профиль, расход.
+Настройки чата общие на все чаты и лежат в `prefs`.
 """
 
 import json
@@ -64,11 +70,11 @@ CREATE TABLE IF NOT EXISTS prefs (
 )
 """
 
-# Строка общего профиля. Строки, которые лежат под идентификаторами диалогов, —
-# профили прежней версии, когда он был у каждого диалога свой; их никто не читает.
+# Строка «Основного» профиля.
 PROFILE = "*"
 
-CHAT_FIELDS = ("id", "title", "model", "turns", "context", "cost", "created", "updated")
+CHAT_FIELDS = ("id", "title", "model", "profile", "turns", "context", "cost",
+               "created", "updated")
 
 
 # Поля состояния, у которых в таблице своя колонка. Остальное едет в `extra`.
@@ -87,6 +93,14 @@ def connect():
     known = {row[1] for row in db.execute("PRAGMA table_info(dialogs)")}
     if "extra" not in known:
         db.execute("ALTER TABLE dialogs ADD COLUMN extra TEXT NOT NULL DEFAULT '{}'")
+    # День 12: у профиля появились название и анкета, у чата — свой профиль.
+    known = {row[1] for row in db.execute("PRAGMA table_info(profiles)")}
+    if "title" not in known:
+        db.execute("ALTER TABLE profiles ADD COLUMN title TEXT NOT NULL DEFAULT ''")
+        db.execute("ALTER TABLE profiles ADD COLUMN card TEXT NOT NULL DEFAULT '{}'")
+    known = {row[1] for row in db.execute("PRAGMA table_info(chats)")}
+    if "profile" not in known:
+        db.execute(f"ALTER TABLE chats ADD COLUMN profile TEXT NOT NULL DEFAULT '{PROFILE}'")
     return db
 
 
@@ -122,27 +136,100 @@ def drop(session):
         db.execute("DELETE FROM dialogs WHERE session = ?", (session,))
 
 
-def load_profile():
-    """Долговременная память. Пустой словарь, если её ещё нет."""
+def load_profile(profile=PROFILE):
+    """Долговременная память профиля. Пустой словарь, если её ещё нет."""
     with closing(connect()) as db:
         row = db.execute("SELECT data FROM profiles WHERE session = ?",
-                         (PROFILE,)).fetchone()
+                         (profile,)).fetchone()
     return json.loads(row[0]) if row else {}
 
 
-def save_profile(profile):
+def save_profile(data, profile=PROFILE):
+    """Долговременная память профиля. Название и анкета остаются как были."""
     with closing(connect()) as db, db:
         db.execute(
             "INSERT INTO profiles (session, data, updated) "
             "VALUES (?, ?, datetime('now')) "
             "ON CONFLICT(session) DO UPDATE SET data = excluded.data, "
             "updated = excluded.updated",
-            (PROFILE, json.dumps(profile, ensure_ascii=False)))
+            (profile, json.dumps(data, ensure_ascii=False)))
 
 
-def drop_profile():
+def forget_profile(profile=PROFILE):
+    """Забыть, что ассистент узнал сам. Анкету заполнял пользователь — она остаётся."""
+    save_profile({}, profile)
+
+
+PROFILE_FIELDS = ("session", "title", "card", "data", "updated")
+
+
+def unpack(row):
+    item = dict(zip(PROFILE_FIELDS, row))
+    return {"id": item["session"], "title": item["title"],
+            "card": json.loads(item["card"]), "learned": json.loads(item["data"]),
+            "updated": item["updated"]}
+
+
+def profiles():
+    """Профили для списков: «Основной» первым, остальные в порядке создания."""
+    with closing(connect()) as db:
+        rows = db.execute(f"SELECT {', '.join(PROFILE_FIELDS)} FROM profiles "
+                          "WHERE title != '' ORDER BY session = ? DESC, rowid",
+                          (PROFILE,)).fetchall()
+    return [unpack(row) for row in rows]
+
+
+def profile(profile_id):
+    with closing(connect()) as db:
+        row = db.execute(f"SELECT {', '.join(PROFILE_FIELDS)} FROM profiles "
+                         "WHERE session = ? AND title != ''", (profile_id,)).fetchone()
+    return unpack(row) if row else None
+
+
+def add_profile(profile_id, title, card):
     with closing(connect()) as db, db:
-        db.execute("DELETE FROM profiles WHERE session = ?", (PROFILE,))
+        db.execute("INSERT INTO profiles (session, title, card, data, updated) "
+                   "VALUES (?, ?, ?, '{}', datetime('now'))",
+                   (profile_id, title, json.dumps(card, ensure_ascii=False)))
+    return profile(profile_id)
+
+
+def edit_profile(profile_id, title, card):
+    with closing(connect()) as db, db:
+        db.execute("UPDATE profiles SET title = ?, card = ?, updated = datetime('now') "
+                   "WHERE session = ?",
+                   (title, json.dumps(card, ensure_ascii=False), profile_id))
+    return profile(profile_id)
+
+
+def delete_profile(profile_id):
+    """Удалить профиль. Его чаты переходят на «Основной»: без профиля чат не живёт."""
+    with closing(connect()) as db, db:
+        db.execute("DELETE FROM profiles WHERE session = ?", (profile_id,))
+        db.execute("UPDATE chats SET profile = ? WHERE profile = ?", (PROFILE, profile_id))
+
+
+def seed_profiles(title, presets):
+    """Первый запуск дня 12: «Основному» — название, рядом — заготовки.
+
+    Долговременная память, накопленная до дня 12, остаётся в «Основном»: это
+    та же строка `*`. Если у неё уже есть название, стенд здесь бывал, и
+    удалённые руками заготовки не возвращаются.
+    """
+    with closing(connect()) as db, db:
+        row = db.execute("SELECT title FROM profiles WHERE session = ?",
+                         (PROFILE,)).fetchone()
+        if row and row[0]:
+            return
+        db.execute("INSERT INTO profiles (session, title, card, data, updated) "
+                   "VALUES (?, ?, '{}', '{}', datetime('now')) "
+                   "ON CONFLICT(session) DO UPDATE SET title = excluded.title",
+                   (PROFILE, title))
+        for preset in presets:
+            db.execute("INSERT INTO profiles (session, title, card, data, updated) "
+                       "VALUES (?, ?, ?, '{}', datetime('now'))",
+                       (preset["id"], preset["title"],
+                        json.dumps(preset["card"], ensure_ascii=False)))
 
 
 def chats():
@@ -160,16 +247,18 @@ def chat(chat_id):
     return dict(zip(CHAT_FIELDS, row)) if row else None
 
 
-def add_chat(chat_id, model):
+def add_chat(chat_id, model, profile=PROFILE):
     with closing(connect()) as db, db:
-        db.execute("INSERT INTO chats (id, model, created, updated) "
-                   "VALUES (?, ?, datetime('now'), datetime('now'))", (chat_id, model))
+        db.execute("INSERT INTO chats (id, model, profile, created, updated) "
+                   "VALUES (?, ?, ?, datetime('now'), datetime('now'))",
+                   (chat_id, model, profile))
     return chat(chat_id)
 
 
 def edit_chat(chat_id, **fields):
-    """Название или модель. Порядок в списке не меняется: он по последней реплике."""
-    names = [name for name in fields if name in ("title", "model")]
+    """Название, модель или профиль. Порядок в списке не меняется: он по
+    последней реплике."""
+    names = [name for name in fields if name in ("title", "model", "profile")]
     if not names:
         return chat(chat_id)
     with closing(connect()) as db, db:
@@ -192,7 +281,7 @@ def after_turn(chat_id, *, title, turns, context, cost):
 
 
 def drop_chat(chat_id):
-    """Удалить чат вместе с его диалогом. Профиль общий и остаётся."""
+    """Удалить чат вместе с его диалогом. Профиль не его и остаётся."""
     with closing(connect()) as db, db:
         db.execute("DELETE FROM chats WHERE id = ?", (chat_id,))
         db.execute("DELETE FROM dialogs WHERE session = ?", (chat_id,))

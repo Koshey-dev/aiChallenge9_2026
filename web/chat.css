@@ -130,8 +130,10 @@ body.app #week3 { flex: 1; min-height: 0; }
 #week3 .pop button:hover { background: var(--hover); }
 #week3 .pop .danger { color: var(--bad); }
 
-#week3 .gear { display: flex; align-items: center; gap: 10px; padding: 12px 8px 4px;
-               border-top: 1px solid var(--line); border-radius: 0; font-size: 14.5px; }
+#week3 .side .foot { display: flex; flex-direction: column; gap: 2px; padding-top: 6px;
+                     border-top: 1px solid var(--line); }
+#week3 .gear { display: flex; align-items: center; gap: 10px; padding: 6px 8px;
+               font-size: 14.5px; }
 #week3 .gear:hover { color: var(--accent); }
 
 #week3 .scrim { display: none; }
@@ -141,6 +143,7 @@ body.app #week3 { flex: 1; min-height: 0; }
                background: var(--bg); }
 #week3 .top { display: flex; align-items: center; gap: 10px; min-height: 56px;
               padding: 10px 16px; border-bottom: 1px solid var(--line); }
+#week3 .top .icon { flex: none; }
 #week3 #unfold { display: none; }
 #week3 .app.folded #unfold { display: inline-grid; }
 
@@ -176,6 +179,18 @@ body.app #week3 { flex: 1; min-height: 0; }
 #week3 .menu .opt .note { font-size: 12px; color: var(--dim); }
 #week3 .menu .opt .check { width: 16px; color: var(--accent); visibility: hidden; }
 #week3 .menu .opt.on .check { visibility: visible; }
+#week3 .menu .opt.edit { margin-top: 4px; border-top: 1px solid var(--line); border-radius: 0 0 8px 8px;
+                         color: var(--accent); font-size: 14px; }
+
+/* Профиль чата — рядом с моделью: у каждого чата свои. */
+#week3 #profileButton { padding: 0 10px; }
+#week3 #profileButton > .i:first-child { color: var(--accent); }
+/* На узком экране сжимаются имена в кнопках, а не кнопки справа. */
+#week3 #profileName, #week3 #modelName { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+#week3 .gauges { flex: none; }
+#week3 #profileName { max-width: 150px; }
+#week3 #profileMenu, #week3 .retell .menu { min-width: 360px; }
+#week3 #profileMenu .note, #week3 .retell .note { white-space: nowrap; }
 
 #week3 .gauges { margin-left: auto; display: flex; align-items: center; gap: 10px; }
 #week3 .pill {
@@ -240,6 +255,34 @@ body.app #week3 { flex: 1; min-height: 0; }
 #week3 .trace .lines .spend { color: var(--warn); }
 #week3 .notice { align-self: center; max-width: 90%; padding: 4px 14px; border-radius: 999px;
                  background: var(--hover); color: var(--dim); font-size: 13px; text-align: center; }
+
+/* День 12: плашка «профиль пополнен» над ответом и строка под ним — чей
+   профиль, что из него ушло в запрос, варианты для других профилей. */
+#week3 .learned {
+  align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; max-width: 100%;
+  padding: 3px 10px; border-radius: 8px; background: var(--soft); color: var(--accent);
+  font-size: 12.5px; text-align: left;
+}
+#week3 .learned span { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2;
+                       -webkit-box-orient: vertical; }
+#week3 .bot .foot { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px;
+                    font-size: 12.5px; color: var(--dim); }
+#week3 .bot .foot[hidden] { display: none; }
+#week3 .marks { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+#week3 .chip { padding: 1px 8px; border: 1px solid var(--line); border-radius: 999px;
+               background: var(--card); white-space: nowrap; }
+#week3 .chip.who { background: var(--soft); border-color: transparent; color: var(--accent);
+                   font-weight: 500; }
+#week3 .pager { display: inline-flex; align-items: center; gap: 2px; color: var(--text);
+                font-variant-numeric: tabular-nums; }
+#week3 .pager button { width: 22px; height: 22px; border-radius: 6px; font-size: 16px; line-height: 1; }
+#week3 .pager button:hover:not(:disabled) { background: var(--hover); }
+#week3 .retell { position: relative; }
+#week3 .again { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px;
+                border-radius: 6px; font-size: 12.5px; color: var(--dim); }
+#week3 .again:hover, #week3 .again[aria-expanded=true] { background: var(--hover); color: var(--text); }
+/* Последний ответ — у самого поля ввода, поэтому меню раскрывается вверх. */
+#week3 .retell .menu { top: auto; bottom: calc(100% + 6px); min-width: 280px; }
 
 /* ── Поле ввода ── */
 #week3 .composer { padding: 0 24px 10px; }
@@ -328,6 +371,54 @@ body.app #week3 { flex: 1; min-height: 0; }
                   background: var(--accent); color: var(--accent-ink); }
 #week3 .plain { padding: 8px 14px; border-radius: 10px; border: 1px solid var(--line); }
 #week3 .plain:hover { background: var(--hover); }
+#week3 .plain.danger { color: var(--bad); }
+
+/* Блок прошлого дня в настройках свёрнут. */
+#week3 .block.fold { padding: 10px 14px; }
+#week3 .block.fold summary { cursor: pointer; color: var(--accent); font-size: 14px;
+                             list-style: none; user-select: none; }
+#week3 .block.fold summary::-webkit-details-marker { display: none; }
+#week3 .block.fold summary::before { content: "›"; display: inline-block; width: 14px;
+                                     transition: transform .15s; }
+#week3 .block.fold[open] summary::before { transform: rotate(90deg); }
+
+/* ── Окно профилей: слева список, справа анкета ── */
+#week3 .sheet.wide { width: min(880px, 100%); }
+#week3 .people { display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 18px;
+                 margin-top: 14px; }
+#week3 .who { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+#week3 .person { display: block; width: 100%; text-align: left; padding: 7px 10px;
+                 border-radius: 10px; border-left: 3px solid transparent; }
+#week3 .person:hover { background: var(--hover); }
+#week3 .person.on { background: var(--hover); border-left-color: var(--accent); }
+#week3 .person .title, #week3 .person .meta { display: block; white-space: nowrap;
+                                              overflow: hidden; text-overflow: ellipsis; }
+#week3 .person .title { font-size: 14px; }
+#week3 .person .meta { font-size: 12px; color: var(--dim); }
+#week3 .person.add { margin-top: 6px; color: var(--accent); font-size: 14px; }
+#week3 .card { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+#week3 .card .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+                     gap: 10px 14px; }
+/* .row у страницы — строка по центру; здесь это подпись над полем. */
+#week3 .card .row { display: flex; flex-direction: column; align-items: stretch;
+                    flex-wrap: nowrap; gap: 4px; min-width: 0; }
+#week3 .card .row > span { font-size: 12.5px; color: var(--dim); }
+#week3 .card input, #week3 .card select, #week3 .card textarea {
+  width: 100%; min-width: 0; padding: 7px 10px; font-size: 14px; border-radius: 8px;
+}
+#week3 .card textarea { min-height: 64px; resize: vertical; }
+#week3 .card .left { align-self: flex-end; font-size: 11.5px; color: var(--dim);
+                     font-variant-numeric: tabular-nums; }
+#week3 .card .prompt { margin-top: 0; }
+#week3 .card .prompt pre { margin: 8px 0 0; padding: 10px 12px; white-space: pre-wrap;
+                           background: var(--code); border-radius: 8px;
+                           font: 12.5px/1.55 ui-monospace, Consolas, monospace; }
+#week3 .noticed { padding: 12px 14px; border: 1px solid var(--line);
+                  border-top: 3px solid var(--accent); border-radius: 12px; }
+#week3 .noticed h3 { margin: 0; font-size: 14.5px; }
+#week3 .noticed .fine { margin: 4px 0 0; }
+#week3 .card .actions { align-items: center; margin-top: 0; }
+#week3 .unsaved { margin-right: auto; font-size: 12.5px; color: var(--warn); }
 
 /* ── Узкий экран: чаты и память выезжают поверх ленты ── */
 @media (max-width: 900px) {
@@ -353,4 +444,16 @@ body.app #week3 { flex: 1; min-height: 0; }
   #week3 .menu { min-width: min(310px, calc(100vw - 24px)); }
   #week3 .me { max-width: 92%; }
   #week3 .keys { display: none; }
+  /* Имена в шапке важнее стрелок и значка; меню — во всю ширину, а не от кнопки. */
+  #week3 .model > .i.small:last-child, #week3 #profileButton > .i:first-child { display: none; }
+  #week3 .top { position: relative; }
+  #week3 #profilePicker { position: static; }
+  #week3 #profileMenu { left: 10px; right: 10px; min-width: 0; }
+  #week3 .bot .foot { position: relative; }
+  #week3 .retell { position: static; }
+  #week3 .retell .menu { left: 0; right: 0; min-width: 0; }
+  #week3 .people { grid-template-columns: 1fr; }
+  #week3 .who { flex-direction: row; overflow-x: auto; }
+  #week3 .person { flex: none; width: auto; max-width: 170px; }
+  #week3 .card .grid { grid-template-columns: 1fr; }
 }

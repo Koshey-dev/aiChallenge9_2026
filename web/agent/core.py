@@ -8,7 +8,7 @@
 import asyncio
 import time
 
-from . import crew, facts, judge, layers, policy, recap, tokens
+from . import crew, facts, judge, layers, persona, policy, recap, tokens
 from .llm import AgentError, new_usage, stream_chat
 from .settings import DEFAULTS, coerce
 
@@ -57,6 +57,16 @@ class Agent:
         # исчезать вместе с забытым диалогом, поэтому лежит в своей таблице.
         self.work = {}
         self.profile = {}
+        # Анкета профиля и его название: их заполняет пользователь, в запрос
+        # они уходят указанием. Лежат вместе с профилем, а не в диалоге.
+        self.persona = {}
+        # Что маршрутизатор дописал в профиль на этой реплике и что из профиля
+        # ушло в запрос — для плашки и меток под ответом.
+        self.fresh = {}
+        self.told = {}
+        # Ответы для других профилей: номер реплики — список вариантов.
+        # В историю они не идут: разговор продолжается от исходного ответа.
+        self.variants = {}
         # Ветки диалога: имя активной линии, снимки остальных и контрольная
         # точка — снимок, от которого отводится новая ветка.
         self.branch = MAIN
@@ -74,11 +84,12 @@ class Agent:
         self.folded = 0
         self.facts = {}
         self.work = {}
+        self.variants = {}
         self.branch = MAIN
         self.branches = {}
         self.point = None
 
-    def remembered(self):
+    def remembered(self, history=None):
         """Реплики, которые уходят в запрос дословно.
 
         Без сжатия это окно памяти, всё за ним теряется. Со сжатием окно — нижняя
@@ -86,10 +97,11 @@ class Agent:
         окном, но ещё не свёрнуто, едет как есть — иначе реплика пропадала бы
         в промежутке между двумя пересборками конспекта.
         """
+        history = self.history if history is None else history
         if self.settings["compress"]:
-            return self.history[self.folded:]
+            return history[self.folded:]
         window = max(0, int(self.settings["memory"]))
-        return self.history[-window:] if window else []
+        return history[-window:] if window else []
 
     def briefing(self):
         """Конспект как одно системное сообщение. Пустой места не занимает.
@@ -206,8 +218,8 @@ class Agent:
         return {"history": self.history, "usage": self.usage,
                 "ballast": self.ballast, "ledger": self.ledger, "scale": self.scale,
                 "summary": self.summary, "folded": self.folded,
-                "facts": self.facts, "work": self.work, "branch": self.branch,
-                "branches": self.branches, "point": self.point}
+                "facts": self.facts, "work": self.work, "variants": self.variants,
+                "branch": self.branch, "branches": self.branches, "point": self.point}
 
     def restore(self, state):
         """Поднять диалог из сохранённого состояния — как будто не выключались."""
@@ -222,6 +234,7 @@ class Agent:
         self.folded = int(state.get("folded") or 0)
         self.facts = dict(state.get("facts") or {})
         self.work = dict(state.get("work") or {})
+        self.variants = dict(state.get("variants") or {})
         self.branch = str(state.get("branch") or MAIN)
         self.branches = dict(state.get("branches") or {})
         self.point = state.get("point") or None
@@ -305,6 +318,8 @@ class Agent:
             "cost": self.price_of(spent["prompt"], spent["completion"]),
             "total_cost": self.price_of(self.usage["prompt"], self.usage["completion"]),
             "saved": self.savings(),
+            "persona": self.told,
+            "learned": self.fresh,
         })
 
     async def answer(self, client, messages):
@@ -408,7 +423,8 @@ class Agent:
             client, url=self.url, key=self.key, model=self.settings["model"],
             work=self.work, profile=self.profile, question=question,
             usage=self.usage, work_limit=int(self.settings["work_max"]),
-            profile_limit=int(self.settings["profile_max"]), **self.quirks())
+            profile_limit=int(self.settings["profile_max"]),
+            persona=persona.text(self.persona), **self.quirks())
 
         # Пустой слой значит «менять нечего», а не «сотри»: модель отдаёт
         # пустое и когда реплика ничего не добавила, и когда ответ не
@@ -417,21 +433,90 @@ class Agent:
             self.work = card
         fresh = {name: value for name, value in added.items()
                  if self.profile.get(name) != value}
-        for name, value in fresh.items():
-            if name in self.profile or len(self.profile) < layers.MAX_KEYS:
-                self.profile[name] = value
+        # Учёба выключена — профиль меняется только руками. Маршрутизатор
+        # всё равно зовётся: рабочую память кроме него никто не ведёт.
+        asked = len(fresh)
+        if not self.settings["learn"]:
+            fresh = {}
+        fresh = {name: value for name, value in fresh.items()
+                 if name in self.profile or len(self.profile) < layers.MAX_KEYS}
+        self.profile.update(fresh)
+        self.fresh = fresh
 
         changed = [name for name, value in self.work.items()
                    if before.get(name) != value]
-        yield self.note(
-            f"маршрут: в рабочую {len(changed)} ({layers.names(changed)}), "
-            f"в профиль {len(fresh)} ({layers.names(fresh)})")
+        into = (f"в профиль {len(fresh)} ({layers.names(fresh)})" if self.settings["learn"]
+                else f"в профиль не пишу — учёба выключена (просилось {asked})")
+        yield self.note(f"маршрут: в рабочую {len(changed)} ({layers.names(changed)}), "
+                        + into)
+
+    def tell(self, card, profile):
+        """Что из профиля ушло в запрос: метки анкеты и число замеченных записей.
+
+        Строится из тех же настроек, что и сам запрос, — метки под ответом
+        показывают не профиль вообще, а то, что модель на самом деле получила.
+        """
+        on = bool(self.settings["send_persona"])
+        noticed = (len(profile) if self.settings["strategy"] == "layers"
+                   and self.settings["send_profile"] else 0)
+        return {"title": str(card.get("title") or ""),
+                "marks": persona.marks(card) if on else [],
+                "off": not on, "noticed": noticed}
+
+    def layout(self, question, memory, card, profile):
+        """Части запроса без бригады: чей профиль и какая память — решает вызывающий.
+
+        Слой заполняется маршрутизатором всегда, а уходит в запрос по галочке:
+        заполненный, но отключённый слой — это и есть проверка, на что он
+        влияет в ответе. С анкетой так же.
+        """
+        layered = self.settings["strategy"] == "layers"
+        return {
+            "role": [{"role": "system", "content": self.settings["role"]}],
+            "persona": (persona.sheet(card, self.settings["persona_max"])
+                        if self.settings["send_persona"] else []),
+            "summary": self.briefing() if self.settings["compress"] else [],
+            "facts": (self.factsheet()
+                      if self.settings["strategy"] == "facts" else []),
+            "profile": (layers.sheet(layers.PROFILE_FRAME, profile)
+                        if layered and self.settings["send_profile"] else []),
+            "work": (self.worksheet()
+                     if layered and self.settings["send_work"] else []),
+            "ballast": self.padding(),
+            "memory": list(memory),
+            "question": [{"role": "user", "content": question}],
+        }
+
+    @staticmethod
+    def arrange(pieces):
+        """Части запроса в том порядке, в каком они уходят модели.
+
+        Слои памяти стоят после окна, прямо перед вопросом. Модель сильнее
+        опирается на то, что ближе к вопросу, и справка из слоёв не должна
+        проигрывать старой реплике окна, которая ей противоречит: со слоями
+        перед окном deepseek-flash повторял свой прошлый ответ «имени нет»
+        в 11 прогонах из 12, после окна — ни разу. Цена — кэш провайдера:
+        слои идут после растущей истории и каждый раз считаются заново вместе
+        с прошлым вопросом. На 14 репликах из кэша 37% входа против 45% при
+        слоях перед окном.
+
+        Анкета — там же, перед слоями, по той же причине: после смены профиля
+        посреди чата окно полно ответов в чужом стиле. Анкета после окна
+        у deepseek-flash дала «списками» в 14 прогонах из 14, сразу после
+        роли — в 11; у GPT-OSS и Gemini разницы нет. Кэшу это стоит самой
+        анкеты — около 200 токенов на запрос.
+        """
+        return [*pieces["role"], *pieces["summary"], *pieces["facts"],
+                *pieces["ballast"], *pieces["memory"], *pieces["persona"],
+                *pieces["profile"], *pieces["work"], *pieces["question"]]
 
     async def ask(self, client, text):
         """Полный проход коробки. Отдаёт события: журнал, куски ответа, вердикт."""
         started = time.monotonic()
         self.log = []
         self.results = []
+        self.fresh = {}
+        self.told = {}
         self.before = dict(self.usage)
 
         try:
@@ -475,6 +560,7 @@ class Agent:
             yield self.note("свожу результаты в один ответ")
             pieces = {
                 "role": [{"role": "system", "content": crew.SUMMARY}],
+                "persona": [],
                 "summary": [],
                 "facts": [],
                 "profile": [],
@@ -485,23 +571,8 @@ class Agent:
                               "content": crew.digest(question, self.results)}],
             }
         else:
-            # Слой заполняется маршрутизатором всегда, а уходит в запрос
-            # по галочке: заполненный, но отключённый слой — это и есть
-            # проверка, на что он влияет в ответе.
-            layered = self.settings["strategy"] == "layers"
-            pieces = {
-                "role": [{"role": "system", "content": self.settings["role"]}],
-                "summary": self.briefing() if self.settings["compress"] else [],
-                "facts": (self.factsheet()
-                          if self.settings["strategy"] == "facts" else []),
-                "profile": (self.profilesheet()
-                            if layered and self.settings["send_profile"] else []),
-                "work": (self.worksheet()
-                         if layered and self.settings["send_work"] else []),
-                "ballast": self.padding(),
-                "memory": list(self.remembered()),
-                "question": [{"role": "user", "content": question}],
-            }
+            pieces = self.layout(question, self.remembered(), self.persona, self.profile)
+            self.told = self.tell(self.persona, self.profile)
 
         budget = self.weigh(pieces)
         if self.settings["context_guard"]:
@@ -528,20 +599,8 @@ class Agent:
                 return
 
         yield {"t": "budget", **budget}
-        # Слои памяти стоят после окна, прямо перед вопросом. Модель сильнее
-        # опирается на то, что ближе к вопросу, и справка из слоёв не должна
-        # проигрывать старой реплике окна, которая ей противоречит: со слоями
-        # перед окном deepseek-flash повторял свой прошлый ответ «имени нет»
-        # в 11 прогонах из 12, после окна — ни разу. Цена — кэш провайдера:
-        # слои теперь идут после растущей истории и каждый раз считаются
-        # заново вместе с прошлым вопросом. На 14 репликах из кэша 37% входа
-        # против 45% при слоях перед окном.
-        messages = [*pieces["role"], *pieces["summary"], *pieces["facts"],
-                    *pieces["ballast"], *pieces["memory"],
-                    *pieces["profile"], *pieces["work"], *pieces["question"]]
-
         raw = []
-        async for piece in self.answer(client, messages):
+        async for piece in self.answer(client, self.arrange(pieces)):
             raw.append(piece)
             yield {"t": "delta", "text": piece}
 
@@ -569,6 +628,29 @@ class Agent:
 
         self.record(budget)
         self.seconds = round(time.monotonic() - started, 1)
+
+    async def retell(self, client, card, profile):
+        """Последний ответ заново — для другого профиля.
+
+        Всё остальное как у исходного ответа: тот же вопрос, то же окно памяти,
+        та же рабочая память. Меняются только анкета и долговременная память,
+        поэтому разница между ответами — это и есть вклад профиля. В историю
+        вариант не идёт, маршрутизатор не зовётся: профиль чужой, и учить его
+        на чужом разговоре незачем.
+        """
+        if len(self.history) < 2:
+            raise AgentError("в чате ещё нет ответа")
+        question = self.history[-2]["content"]
+        pieces = self.layout(question, self.remembered(self.history[:-2]), card, profile)
+        raw = []
+        async for piece in self.answer(client, self.arrange(pieces)):
+            raw.append(piece)
+            yield {"t": "delta", "text": piece}
+        clean, _ = policy.clean_output("".join(raw).strip(), self.settings,
+                                       self.settings["role"])
+        variant = {"persona": self.tell(card, profile), "text": clean}
+        self.variants.setdefault(str(len(self.history) // 2), []).append(variant)
+        yield {"t": "variant", **variant}
 
     def price_of(self, prompt, completion):
         price = self.prices.get(self.settings["model"])
@@ -609,6 +691,8 @@ class Agent:
             "work_tokens": tokens.of(self.worksheet()),
             "profile": self.profile,
             "profile_tokens": tokens.of(self.profilesheet()),
+            "persona": self.persona,
+            "variants": self.variants,
             # Короткая память: сколько сообщений уходит дословно и из скольких.
             # Хвост — первые слова последних сообщений истории, а не только
             # окна: окно всегда её конец, и что из хвоста уходит в запрос, видно

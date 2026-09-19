@@ -14,7 +14,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
 import store
-from agent import Agent, AgentError, blocks
+from agent import Agent, AgentError, blocks, persona
 from models import MAX_TOKENS, MODELS, MODEL_TASKS, RUNS_PER_MODEL, SCALES, URLS, cost_of
 
 load_dotenv()
@@ -97,7 +97,18 @@ CHAT_PRICES = {**PRICES, **{model["id"]: model["price"]
 # Чат — ассистент, а не стенд для опытов: ручки прошлых дней стоят как у обычного
 # помощника и в окне настроек не видны. Память — модель слоёв дня 11, бригада
 # не поднимается, предел контекста — настоящий у модели (его ставит `tune`).
-ASSISTANT = {"strategy": "layers", "crew": False, "judge": False, "compress": False}
+# Роль своя: у недели 2 длина прибита к «два-три абзаца максимум», и роль
+# спорила бы с анкетой «подробно». Здесь стиль — только умолчание, которое
+# уступает настройкам пользователя.
+CHAT_ROLE = (
+    "Ты — ассистент AI Challenge. Отвечай по делу, без пересказа вопроса. "
+    "Обращение, тон, длину и формат ответа задаёт пользователь в своих настройках; "
+    "если он их не задал — два-три абзаца, нейтральный тон. "
+    "Если вопрос читается по-разному — назови прочтения и спроси, какое имелось в виду. "
+    "Если чего-то не знаешь — скажи прямо, не придумывай."
+)
+ASSISTANT = {"strategy": "layers", "crew": False, "judge": False, "compress": False,
+             "role": CHAT_ROLE}
 
 # Окно настроек показывает только ручки текущего дня курса. Короткая память
 # уходит в запрос по своей галочке: снятая ставит окно в ноль, а число реплик
@@ -106,15 +117,50 @@ SHORT = {"key": "send_short", "label": "Слать короткую память
          "type": "bool", "default": True,
          "hint": "выключено — реплики в запрос не уходят вовсе, ответ собирается "
                  "из рабочей памяти и профиля"}
+MARKS = {"key": "show_marks", "label": "Метки «что учтено» под ответом",
+         "type": "bool", "default": True,
+         "hint": "что из профиля ушло в запрос: пункты анкеты и сколько записей, "
+                 "которые ассистент заметил сам"}
 FIELDS = {field["key"]: field for block in blocks(CHAT_DEFAULT) for field in block["fields"]}
+# Текущий день сверху. Прошлый остаётся — день 12 стоит на его слоях, — но
+# свёрнутым: его ручки нужны реже.
 CHAT_BLOCKS = [{
+    "title": "День 12 · персонализация",
+    "note": "Профиль выбирается у каждого чата в шапке, правится в окне «Профили». "
+            "Анкета уходит в запрос указанием, замеченное ассистентом — "
+            "долговременной памятью профиля.",
+    "fields": [FIELDS["send_persona"], FIELDS["learn"], MARKS, FIELDS["persona_max"]],
+}, {
     "title": "День 11 · модель памяти",
+    "folded": True,
     "note": "Три слоя с разным сроком жизни. Слой заполняется всегда, а в запрос "
             "уходит по галочке — так видно, на что он влияет в ответе.",
     "fields": [SHORT, FIELDS["memory"], FIELDS["send_work"], FIELDS["work_max"],
                FIELDS["send_profile"], FIELDS["profile_max"]],
 }]
-PREF_DEFAULTS = {field["key"]: field["default"] for field in CHAT_BLOCKS[0]["fields"]}
+PREF_DEFAULTS = {field["key"]: field["default"]
+                 for block in CHAT_BLOCKS for field in block["fields"]}
+
+# Заготовки дня 12: три профиля, которые расходятся по всем осям анкеты, — разница
+# в ответах видна с первого вопроса. Их можно править и удалять, как свои.
+PERSONAS = [
+    {"id": "senior", "title": "Сеньор", "card": {
+        "address": "ты", "tone": "formal", "length": "short", "format": "lists",
+        "level": "expert",
+        "about": "бэкенд-разработчик, десять лет в профессии, Python и PostgreSQL",
+        "limits": "примеры кода — только на Python\nбез вступлений и оговорок"}},
+    {"id": "student", "title": "Студент", "card": {
+        "address": "вы", "tone": "friendly", "length": "long", "level": "novice",
+        "about": "студент второго курса, только начинает программировать",
+        "limits": "каждый новый термин — простыми словами\n"
+                  "в конце — один вопрос для самопроверки"}},
+    {"id": "manager", "title": "Руководитель", "card": {
+        "address": "вы", "tone": "formal", "length": "short", "format": "tables",
+        "about": "руководитель отдела: решает, во что вкладывать время команды",
+        "limits": "без кода\nсначала вывод, потом сроки и риски"}},
+]
+store.seed_profiles("Основной", [{**preset, "card": persona.clean(preset["card"])}
+                                 for preset in PERSONAS])
 
 TITLER = ("Назови разговор в двух-четырёх словах по первой реплике пользователя. "
           "Верни только название: без кавычек, без точки в конце, с большой буквы.")
@@ -271,11 +317,27 @@ class MemoryIn(BaseModel):
 
 class NewChatIn(BaseModel):
     model: str = CHAT_DEFAULT
+    profile: str = store.PROFILE
 
 
 class ChatEditIn(BaseModel):
     title: str | None = None
     model: str | None = None
+    profile: str | None = None
+
+
+class ProfileIn(BaseModel):
+    title: str = ""
+    card: dict = {}
+
+
+class RecordIn(BaseModel):
+    key: str
+    keep: bool = False
+
+
+class VariantIn(BaseModel):
+    profile: str
 
 
 class SayIn(BaseModel):
@@ -733,14 +795,23 @@ def agent_for(session):
         saved = store.load(session)
         if saved:
             agent.restore(saved)
-    # Долговременная память лежит отдельно от диалога и общая на весь стенд:
-    # её могли пополнить в другом диалоге, поэтому она поднимается на каждый
-    # запрос, а не один раз при создании агента.
-    agent.profile = store.load_profile()
+    # Профиль лежит отдельно от диалога, и не один: его могли пополнить или
+    # поправить в другом чате, а у чата — сменить на другой. Поэтому он
+    # поднимается на каждый запрос, а не один раз при создании агента.
+    owner = profile_of(session)
+    row = store.profile(owner)
+    agent.profile = store.load_profile(owner)
+    agent.persona = {"title": row["title"], **row["card"]} if row else {}
     entry = store.chat(session)
     if entry:
         tune(agent, entry)
     return agent
+
+
+def profile_of(session):
+    """Чей профиль у диалога: у чата — выбранный, у недели 2 — «Основной»."""
+    entry = store.chat(session)
+    return entry["profile"] if entry else store.PROFILE
 
 
 def chat_prefs():
@@ -841,12 +912,12 @@ def agent_newtask(body: SessionIn):
 
 @app.post("/api/agent/forget-profile")
 def agent_forget_profile(body: SessionIn):
-    """Забыть пользователя: долговременная память уходит вместе со своей строкой.
-    Профиль общий, поэтому забывается во всех диалогах сразу."""
+    """Забыть пользователя: долговременная память профиля стирается во всех
+    чатах с этим профилем сразу. Анкета остаётся — её заполнял пользователь."""
     agent = agent_for(body.session)
     gone = len(agent.profile)
     agent.profile = {}
-    store.drop_profile()
+    store.forget_profile(profile_of(body.session))
     return {"gone": gone, "metrics": agent.report()}
 
 
@@ -860,7 +931,7 @@ def agent_move(body: MemoryIn):
     agent = agent_for(body.session)
     moved = agent.move(body.layer, body.key, body.to)
     store.save(body.session, agent.state())
-    store.save_profile(agent.profile)
+    store.save_profile(agent.profile, profile_of(body.session))
     return {"moved": moved, "metrics": agent.report()}
 
 
@@ -895,6 +966,8 @@ def chat_config():
         "default": CHAT_DEFAULT,
         "blocks": CHAT_BLOCKS,
         "prefs": chat_prefs(),
+        "persona": {"choices": persona.CHOICES, "texts": persona.TEXTS},
+        "profiles": profile_list(),
     }
 
 
@@ -916,6 +989,69 @@ def chat_save_prefs(body: PrefsIn):
     return prefs
 
 
+def shown(row):
+    """Профиль для браузера: вместе с указанием, в которое превращается анкета,
+    и метками для меню и списка."""
+    return {**row, "prompt": persona.text(row["card"]), "marks": persona.marks(row["card"])}
+
+
+def known_profile(profile_id):
+    row = store.profile(profile_id)
+    if row is None:
+        raise HTTPException(404, "такого профиля нет")
+    return row
+
+
+@app.get("/api/profiles")
+def profile_list():
+    return [shown(row) for row in store.profiles()]
+
+
+@app.post("/api/profiles")
+def profile_new(body: ProfileIn):
+    title = " ".join(body.title.split())[:40] or "Новый профиль"
+    return shown(store.add_profile(uuid.uuid4().hex, title, persona.clean(body.card)))
+
+
+@app.patch("/api/profiles/{profile_id}")
+def profile_edit(profile_id: str, body: ProfileIn):
+    row = known_profile(profile_id)
+    title = " ".join(body.title.split())[:40] or row["title"]
+    return shown(store.edit_profile(profile_id, title, persona.clean(body.card)))
+
+
+@app.delete("/api/profiles/{profile_id}")
+def profile_drop(profile_id: str):
+    known_profile(profile_id)
+    if profile_id == store.PROFILE:
+        raise HTTPException(400, "«Основной» профиль не удаляется: его берёт неделя 2")
+    store.delete_profile(profile_id)
+    return {"ok": True}
+
+
+@app.post("/api/profiles/{profile_id}/record")
+def profile_record(profile_id: str, body: RecordIn):
+    """Запись, которую ассистент заметил сам: ✓ переносит её в анкету, × забывает.
+
+    Перенесённая запись становится строкой «О себе»: теперь за неё отвечает
+    пользователь, и маршрутизатор её уже не трогает.
+    """
+    row = known_profile(profile_id)
+    learned = row["learned"]
+    if body.key not in learned:
+        return shown(row)
+    value = learned.pop(body.key)
+    if body.keep:
+        card = row["card"]
+        about = "\n".join(filter(None, [card.get("about", ""), f"{body.key}: {value}"]))
+        limit = next(field["max"] for field in persona.TEXTS if field["key"] == "about")
+        if len(about) > limit:
+            raise HTTPException(400, f"в «О себе» не хватает места: предел {limit} символов")
+        store.edit_profile(profile_id, row["title"], persona.clean({**card, "about": about}))
+    store.save_profile(learned, profile_id)
+    return shown(store.profile(profile_id))
+
+
 @app.get("/api/chats")
 def chat_list():
     return store.chats()
@@ -924,7 +1060,8 @@ def chat_list():
 @app.post("/api/chats")
 def chat_new(body: NewChatIn):
     model = body.model if body.model in CHAT_BY_ID else CHAT_DEFAULT
-    return store.add_chat(uuid.uuid4().hex, model)
+    owner = body.profile if store.profile(body.profile) else store.PROFILE
+    return store.add_chat(uuid.uuid4().hex, model, owner)
 
 
 def known_chat(chat_id):
@@ -936,13 +1073,15 @@ def known_chat(chat_id):
 
 @app.patch("/api/chats/{chat_id}")
 def chat_edit(chat_id: str, body: ChatEditIn):
-    """Переименовать чат или сменить у него модель."""
+    """Переименовать чат, сменить у него модель или профиль."""
     known_chat(chat_id)
     fields = {}
     if body.title is not None and body.title.strip():
         fields["title"] = " ".join(body.title.split())[:80]
     if body.model in CHAT_BY_ID:
         fields["model"] = body.model
+    if body.profile and store.profile(body.profile):
+        fields["profile"] = body.profile
     return store.edit_chat(chat_id, **fields)
 
 
@@ -1002,11 +1141,43 @@ def chat_send(chat_id: str, body: SayIn):
                 cost += spent
                 yield line({"t": "title", "title": title})
         store.save(chat_id, agent.state())
-        store.save_profile(agent.profile)
+        store.save_profile(agent.profile, entry["profile"])
         used = agent.usage["prompt"] - mark if mark is not None else 0
         updated = store.after_turn(chat_id, title=title, turns=report["turns"],
                                    context=used or entry["context"], cost=cost)
         yield line({"t": "done", **report, "chat": updated})
+
+    return StreamingResponse(run(), media_type="application/x-ndjson")
+
+
+@app.post("/api/chats/{chat_id}/variant")
+def chat_variant(chat_id: str, body: VariantIn):
+    """Последний ответ чата заново — для другого профиля.
+
+    Вариант ложится рядом с ответом, а не в историю, но стоит денег, и его
+    цена идёт в цену чата.
+    """
+    entry = known_chat(chat_id)
+    row = known_profile(body.profile)
+    agent = agent_for(chat_id)
+
+    async def run():
+        before = dict(agent.usage)
+        async with httpx.AsyncClient(timeout=180, default_encoding="utf-8",
+                                     proxy=PROXY) as client:
+            try:
+                async for event in agent.retell(client, {"title": row["title"], **row["card"]},
+                                                row["learned"]):
+                    yield line(event)
+            except AgentError as error:
+                yield line({"t": "error", "message": str(error)})
+                return
+        cost = agent.price_of(agent.usage["prompt"] - before["prompt"],
+                              agent.usage["completion"] - before["completion"]) or 0.0
+        store.save(chat_id, agent.state())
+        updated = store.after_turn(chat_id, title=entry["title"], turns=entry["turns"],
+                                   context=entry["context"], cost=cost)
+        yield line({"t": "done", "cost": cost, "chat": updated})
 
     return StreamingResponse(run(), media_type="application/x-ndjson")
 

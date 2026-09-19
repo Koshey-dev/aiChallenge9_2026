@@ -16,6 +16,9 @@
     newTask: $("#newTask"), memoryButton: $("#memoryButton"),
     memoryCount: $("#memoryCount"), drawer: $("#drawer"),
     prefs: $("#prefs"), prefFields: $("#prefFields"),
+    profileButton: $("#profileButton"), profileMenu: $("#profileMenu"),
+    profileName: $("#profileName"), people: $("#profiles"),
+    profileList: $("#profileList"), profileCard: $("#profileCard"),
   };
 
   let order = [];        // модели в порядке меню, сгруппированы по провайдеру
@@ -26,6 +29,12 @@
   let chats = [];        // список слева, свежие сверху
   let currentId = "";    // открытый чат
   let metrics = null;    // счётчики агента открытого чата
+  let persona = { choices: [], texts: [] };  // поля анкеты с сервера
+  let profiles = [];     // профили, «Основной» первым
+  let editing = "";      // профиль, открытый в окне «Профили»
+  let dirty = false;     // в анкете есть несохранённые правки
+  let turns = [];        // реплики открытого чата на экране
+  let last = null;       // последняя из них: только у неё кнопка варианта
   const busy = new Set();   // чаты, в которых сейчас идёт ответ
   // Узлы реплики, на которую ещё идёт ответ: уйдёшь в другой чат и вернёшься —
   // лента перерисуется из базы, а эта реплика в базе появится только в конце.
@@ -33,6 +42,9 @@
 
   const here = () => chats.find(item => item.id === currentId);
   const modelOf = item => models[item.model] || models[fallback];
+  const profileOf = item => profiles.find(one => one.id === item.profile) || profiles[0];
+  const CHECK = "<svg class='i small check' viewBox='0 0 24 24'><path d='m5 12 5 5 9-11'/></svg>";
+  const CHEVRON = "<svg class='i small' viewBox='0 0 24 24'><path d='m6 9 6 6 6-6'/></svg>";
   const number = value => Number(value || 0).toLocaleString("ru");
 
   async function api(method, url, payload) {
@@ -86,7 +98,7 @@
       const model = modelOf(item);
       title.textContent = item.title || "Новый чат";
       title.classList.toggle("untitled", !item.title);
-      where.textContent = `${model.vendor} · ${model.title} · ${when(item.updated)}`;
+      where.textContent = `${model.title} · ${profileOf(item).title} · ${when(item.updated)}`;
       spend.textContent = item.turns
         ? `контекст ${number(item.context)} · ${money(item.cost)}` : "ответов пока нет";
       ui.list.append(row);
@@ -195,13 +207,14 @@
   }
 
   // Пустых чатов не плодим: если чат без ответов уже есть, новым будет он.
-  // Модель новый чат берёт у открытого — её обычно и выбирают заново.
+  // Модель и профиль новый чат берёт у открытого — их обычно и выбирают заново.
   async function newChat() {
     const empty = chats.find(item => !item.turns && !busy.has(item.id));
     if (empty) {
       open(empty);
     } else {
-      const item = await api("POST", "/api/chats", { model: here()?.model || fallback });
+      const item = await api("POST", "/api/chats",
+        { model: here()?.model || fallback, profile: here()?.profile || profiles[0].id });
       chats.unshift(item);
       open(item);
     }
@@ -221,7 +234,7 @@
     const data = await post("/api/agent/history", { session: item.id }).then(r => r.json());
     if (currentId !== item.id) return;  // пока ждали, открыли другой чат
     metrics = data.metrics;
-    draw(data.messages, data.metrics.ledger || []);
+    draw(data.messages, data.metrics.ledger || [], data.metrics.variants || {});
     if (live.has(item.id)) {
       clearEmpty();
       ui.thread.append(...live.get(item.id));
@@ -235,8 +248,8 @@
   function empty() {
     ui.thread.innerHTML = "<p class='empty'>Чат пустой. Спроси что-нибудь — вопрос "
       + "и ответ лягут на диск, и после перезапуска разговор продолжится с этого "
-      + "места. Профиль общий: что агент узнал о тебе в других чатах, он знает "
-      + "и здесь.</p>";
+      + "места. Профиль чата — в шапке: его анкета и то, что ассистент о тебе "
+      + "заметил в других чатах с этим профилем, уходят в каждый запрос.</p>";
   }
 
   function clearEmpty() {
@@ -257,10 +270,15 @@
     bot.innerHTML = "<details class='trace'><summary>"
       + "<svg class='i small' viewBox='0 0 24 24'><path d='m9 6 6 6-6 6'/></svg>"
       + "<span class='gist'></span></summary><div class='lines'></div></details>"
-      + "<div class='text'></div>";
+      + "<div class='text'></div><div class='foot' hidden></div>";
     ui.thread.append(me, bot);
-    return { me, bot, raw: "", trace: $(".trace", bot), gist: $(".gist", bot),
-             lines: $(".lines", bot), text: $(".text", bot) };
+    // Варианты ответа: первый — тот, что в истории, остальные — для других
+    // профилей. У каждого своя строка меток: что из профиля ушло в запрос.
+    const turn = { me, bot, raw: "", trace: $(".trace", bot), gist: $(".gist", bot),
+                   lines: $(".lines", bot), text: $(".text", bot), foot: $(".foot", bot),
+                   variants: [], index: 0 };
+    turns.push(turn);
+    return turn;
   }
 
   function render(turn, raw) {
@@ -293,17 +311,173 @@
 
   // Журнал живёт только у реплик этой сессии страницы. У восстановленных из
   // базы есть строка расхода — по ней и собрана сводка.
-  function draw(messages, ledger) {
+  function draw(messages, ledger, variants) {
     ui.thread.textContent = "";
+    turns = [];
+    last = null;
     if (!messages.length && !live.has(currentId)) { empty(); return; }
     for (let i = 0; i < messages.length; i += 2) {
       const turn = addTurn(messages[i].content);
-      render(turn, (messages[i + 1] || {}).content || "");
+      const answer = (messages[i + 1] || {}).content || "";
       const row = ledger.find(item => item.turn === i / 2 + 1);
+      turn.variants = [{ persona: told(row), text: answer },
+                       ...(variants[i / 2 + 1] || [])];
+      render(turn, answer);
+      last = turn;
       if (!row) { turn.trace.hidden = true; continue; }
+      learned(turn, row);
       turn.gist.textContent = `${number(row.tokens_in)} ток. · ${money(row.cost)}`;
       line(turn, `вход ${row.tokens_in} ток. · выход ${row.tokens_out} ток. · `
                + `история ~${row.history} ток. · оценка была ~${row.estimated}`, "spend");
+    }
+    turns.forEach(foot);
+  }
+
+  // Что из профиля ушло в запрос — из строки расхода. У реплик до дня 12
+  // этого нет, и меток у них нет.
+  const told = row => (row && row.persona && row.persona.title !== undefined ? row.persona : null);
+
+  // Плашка «профиль пополнен» — над ответом, как «память обновлена» у ChatGPT:
+  // маршрутизатор решил это до ответа, и ответ уже шёл с новой записью.
+  function learned(turn, row) {
+    const fresh = Object.entries(row.learned || {});
+    if (!fresh.length) return;
+    const plaque = document.createElement("button");
+    plaque.className = "learned";
+    plaque.title = "Открыть профиль";
+    plaque.innerHTML = "<svg class='i small' viewBox='0 0 24 24'><path d='M12 20h9'/>"
+      + "<path d='M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z'/></svg><span></span>";
+    $("span", plaque).textContent = `Профиль «${(told(row) || {}).title || "чата"}» пополнен: `
+      + fresh.map(([name, value]) => `${name} — ${value}`).join("; ");
+    plaque.addEventListener("click", () => openProfiles(here()?.profile));
+    turn.text.before(plaque);
+  }
+
+  // Метки под ответом: чей профиль и что из него ушло в запрос.
+  function cues(persona) {
+    const chips = persona.off ? ["анкета не в запросе"]
+      : persona.marks.length ? [...persona.marks] : ["анкета пустая"];
+    if (persona.noticed) chips.push(`замечено: ${persona.noticed}`);
+    return chips;
+  }
+
+  // Строка под ответом: листалка вариантов, метки профиля и — только у
+  // последней реплики — «Ответить для профиля». Вариант строится на той же
+  // памяти, поэтому для старых реплик его уже не собрать честно.
+  function foot(turn) {
+    turn.foot.textContent = "";
+    const many = turn.variants.length > 1;
+    const persona = (turn.variants[turn.index] || {}).persona;
+    if (many) {
+      const pager = document.createElement("span");
+      pager.className = "pager";
+      pager.innerHTML = "<button aria-label='Предыдущий вариант'>‹</button><span></span>"
+                      + "<button aria-label='Следующий вариант'>›</button>";
+      const [back, next] = pager.querySelectorAll("button");
+      $("span", pager).textContent = `${turn.index + 1}/${turn.variants.length}`;
+      back.disabled = turn.index === 0;
+      next.disabled = turn.index === turn.variants.length - 1;
+      back.addEventListener("click", () => show(turn, turn.index - 1));
+      next.addEventListener("click", () => show(turn, turn.index + 1));
+      turn.foot.append(pager);
+    }
+    if (persona && (prefs.show_marks || many)) {
+      const marks = document.createElement("span");
+      marks.className = "marks";
+      marks.title = "Что из профиля ушло в запрос";
+      [persona.title, ...(prefs.show_marks ? cues(persona) : [])].forEach((text, index) => {
+        const chip = document.createElement("span");
+        chip.className = index ? "chip" : "chip who";
+        chip.textContent = text;
+        marks.append(chip);
+      });
+      turn.foot.append(marks);
+    }
+    if (turn === last && !busy.has(currentId) && profiles.length > 1 && turn.variants.length) {
+      const box = document.createElement("span");
+      box.className = "retell";
+      box.innerHTML = "<button class='again' aria-haspopup='menu' aria-expanded='false'>"
+        + "<svg class='i small' viewBox='0 0 24 24'><path d='M3 12a9 9 0 1 0 3-6.7L3 8'/>"
+        + "<path d='M3 3v5h5'/></svg>Ответить для профиля" + CHEVRON + "</button>";
+      $(".again", box).addEventListener("click", () => retellMenu(turn, box));
+      turn.foot.append(box);
+    }
+    turn.foot.hidden = !turn.foot.childElementCount;
+  }
+
+  function show(turn, index) {
+    turn.index = index;
+    render(turn, turn.variants[index].text);
+    foot(turn);
+  }
+
+  function closeRetell() {
+    ui.thread.querySelectorAll(".retell .menu").forEach(menu => menu.remove());
+    ui.thread.querySelectorAll(".retell .again")
+      .forEach(button => button.setAttribute("aria-expanded", "false"));
+  }
+
+  function retellMenu(turn, box) {
+    const opened = box.querySelector(".menu");
+    closeRetell();
+    if (opened) return;
+    const item = here();
+    const menu = document.createElement("div");
+    menu.className = "menu";
+    menu.setAttribute("role", "menu");
+    profiles.filter(profile => profile.id !== item.profile).forEach(profile => {
+      const option = document.createElement("button");
+      option.className = "opt";
+      option.setAttribute("role", "menuitem");
+      option.innerHTML = "<span class='name'></span><span class='note'></span>";
+      $(".name", option).textContent = profile.title;
+      $(".note", option).textContent = profile.marks.slice(0, 3).join(" · ") || "анкета пустая";
+      option.addEventListener("click", () => { closeRetell(); retell(turn, profile); });
+      menu.append(option);
+    });
+    $(".again", box).setAttribute("aria-expanded", "true");
+    box.append(menu);
+  }
+
+  // Тот же вопрос, та же память, другой профиль. Вариант ложится рядом
+  // с ответом, а разговор продолжается от исходного.
+  async function retell(turn, profile) {
+    const item = here();
+    if (!item || busy.has(item.id)) return;
+    busy.add(item.id);
+    lock();
+    const before = turn.index;
+    turn.variants.push({ persona: { title: profile.title, marks: profile.marks,
+                                    off: !prefs.send_persona, noticed: 0 }, text: "" });
+    turn.index = turn.variants.length - 1;
+    render(turn, "");
+    foot(turn);
+    let done = false;
+    try {
+      await stream(`/api/chats/${item.id}/variant`, { profile: profile.id }, event => {
+        const variant = turn.variants[turn.variants.length - 1];
+        if (event.t === "delta") {
+          variant.text += event.text;
+          if (turn.index === turn.variants.length - 1) render(turn, variant.text);
+        } else if (event.t === "variant") {
+          Object.assign(variant, { persona: event.persona, text: event.text });
+          done = true;
+        } else if (event.t === "error") {
+          fail(turn, event.message);
+        } else if (event.t === "done") {
+          patch(item.id, event.chat);
+        }
+      });
+    } catch (error) {
+      fail(turn, "сбой: " + error.message);
+    } finally {
+      busy.delete(item.id);
+      if (!done) {
+        turn.variants.pop();
+        turn.index = before;
+      }
+      show(turn, turn.index);
+      lock();
     }
   }
 
@@ -311,6 +485,7 @@
   // в том порядке, в каком стоят в запросе: слои памяти — после окна.
   function budgetText(b) {
     const parts = [`роль ${b.role}`, `память ${b.memory}`];
+    if (b.persona) parts.push(`анкета ${b.persona}`);
     if (b.profile) parts.push(`профиль ${b.profile}`);
     if (b.work) parts.push(`задача ${b.work}`);
     parts.push(`вопрос ${b.question}`);
@@ -327,6 +502,9 @@
     count();
 
     busy.add(item.id);
+    const before = item.turns;
+    const previous = last;
+    if (previous) foot(previous);
     const turn = addTurn(text);
     live.set(item.id, [turn.me, turn.bot]);
     turn.trace.classList.add("live");
@@ -364,7 +542,17 @@
                    + `выход · ${spent.requests} запр. · ${money(spent.cost)}`, "spend");
           turn.gist.textContent = [route, `${number(spent.tokens_in)} ток.`, money(spent.cost)]
             .filter(Boolean).join(" · ");
-          if (currentId === item.id) metrics = event;
+          const row = (event.ledger || []).at(-1);
+          // Отказ политики строку расхода не пишет: последняя тогда — от
+          // прошлой реплики, и чужие метки сюда не нужны.
+          if (row && event.turns === before + 1 && row.turn === event.turns) {
+            turn.variants = [{ persona: told(row), text: turn.raw }];
+            learned(turn, row);
+          }
+          if (currentId === item.id) {
+            metrics = event;
+            last = turn;
+          }
           patch(item.id, event.chat);
           if (currentId === item.id) showMemory();
         }
@@ -377,6 +565,8 @@
       live.delete(item.id);
       turn.trace.classList.remove("live");
       if (turn.gist.textContent === "агент работает") turn.gist.textContent = "журнал";
+      foot(turn);
+      if (previous && previous !== last) foot(previous);
       lock();
     }
   }
@@ -402,6 +592,47 @@
                   + `${number(model.context)} токенов`;
     ui.cost.textContent = money(item.cost);
     renderMenu();
+
+    const owner = profileOf(item);
+    ui.profileName.textContent = owner.title;
+    ui.profileButton.title = owner.prompt
+      ? "Профиль чата. Уходит в запрос:\n" + owner.prompt : "Профиль чата. Анкета пустая";
+    renderProfileMenu();
+  }
+
+  function renderProfileMenu() {
+    const item = here();
+    ui.profileMenu.textContent = "";
+    profiles.forEach(profile => {
+      const option = document.createElement("button");
+      option.className = "opt" + (item && item.profile === profile.id ? " on" : "");
+      option.setAttribute("role", "menuitemradio");
+      option.dataset.profile = profile.id;
+      option.innerHTML = "<span class='name'></span><span class='note'></span>" + CHECK;
+      $(".name", option).textContent = profile.title;
+      $(".note", option).textContent = profile.marks.slice(0, 3).join(" · ") || "анкета пустая";
+      ui.profileMenu.append(option);
+    });
+    const edit = document.createElement("button");
+    edit.className = "opt edit";
+    edit.dataset.act = "edit";
+    edit.textContent = "Править профили…";
+    ui.profileMenu.append(edit);
+  }
+
+  function showPeople(on) {
+    ui.profileMenu.hidden = !on;
+    ui.profileButton.setAttribute("aria-expanded", String(on));
+  }
+
+  // Профиль, как и модель, меняется со следующей реплики. Панель памяти
+  // перечитывается сразу: долговременная память у нового профиля своя.
+  async function pickProfile(id) {
+    const item = here();
+    if (!item || id === item.profile) return;
+    patch(item.id, await api("PATCH", `/api/chats/${item.id}`, { profile: id }));
+    notice(`профиль: ${profileOf(item).title} — со следующей реплики`);
+    await reload();
   }
 
   function renderMenu() {
@@ -425,8 +656,7 @@
       option.setAttribute("role", "menuitemradio");
       option.dataset.model = model.id;
       option.disabled = !model.ready;
-      option.innerHTML = "<span class='name'></span><span class='note'></span>"
-        + "<svg class='i small check' viewBox='0 0 24 24'><path d='m5 12 5 5 9-11'/></svg>";
+      option.innerHTML = "<span class='name'></span><span class='note'></span>" + CHECK;
       $(".name", option).textContent = model.title;
       $(".note", option).textContent = model.ready
         ? `контекст ${short(model.context)}` : "нет ключа на сервере";
@@ -465,6 +695,9 @@
       + `<b>${item.role === "user" ? "вы" : "агент"}:</b> ${escapeHtml(item.text)}`
       + `${item.text.length >= 60 ? "…" : ""}</li>`).join("");
     stash(short, tail.length, `последние реплики (${tail.length})`);
+    const item = here();
+    $(".layer.profile .kind", ui.drawer).textContent =
+      item && profiles.length ? `профиль «${profileOf(item).title}»` : "профиль";
     fillLayer("work", m.work, m.work_tokens);
     fillLayer("profile", m.profile, m.profile_tokens);
     ui.memoryCount.textContent =
@@ -543,7 +776,8 @@
   async function forgetProfile(button) {
     if (!arm(button, "Точно забыть?")) return;
     const data = await memoryCall("/api/agent/forget-profile", {});
-    notice(`Профиль забыт во всех чатах: записей было ${data.gone}.`);
+    notice(`Профиль «${profileOf(here()).title}»: забыто записей ${data.gone} — во всех `
+         + "его чатах. Анкета на месте.");
   }
 
   // ── Настройки ─────────────────────────────────────────────────────
@@ -552,6 +786,11 @@
   async function savePrefs(values) {
     prefs = await api("POST", "/api/chat/prefs", { values });
     syncToggles();
+    turns.forEach(foot);
+    await reload();
+  }
+
+  async function reload() {
     const item = here();
     if (!item || busy.has(item.id)) return;
     const data = await post("/api/agent/history", { session: item.id }).then(r => r.json());
@@ -560,13 +799,15 @@
     showMemory();
   }
 
+  // Блок прошлого дня свёрнут: его ручки остаются, но место занимает текущий.
   function renderPrefs() {
     ui.prefFields.textContent = "";
     blocks.forEach(block => {
-      const part = document.createElement("fieldset");
-      part.className = "block";
-      part.innerHTML = "<legend></legend><p class='fine'></p>";
-      $("legend", part).textContent = block.title;
+      const part = document.createElement(block.folded ? "details" : "fieldset");
+      part.className = "block" + (block.folded ? " fold" : "");
+      part.innerHTML = block.folded ? "<summary></summary><p class='fine'></p>"
+                                    : "<legend></legend><p class='fine'></p>";
+      $(block.folded ? "summary" : "legend", part).textContent = block.title;
       $(".fine", part).textContent = block.note || "";
 
       block.fields.forEach(field => {
@@ -609,6 +850,204 @@
     return values;
   }
 
+  // ── Профили ───────────────────────────────────────────────────────
+  // Список перечитывается при каждом открытии: маршрутизатор мог дописать
+  // в профиль новое, пока окно было закрыто.
+  async function openProfiles(id) {
+    profiles = await api("GET", "/api/profiles");
+    editing = profiles.some(one => one.id === id) ? id : profileOf(here() || {}).id;
+    dirty = false;
+    renderPeople();
+    renderCard();
+    ui.people.hidden = false;
+  }
+
+  function renderPeople() {
+    ui.profileList.textContent = "";
+    profiles.forEach(profile => {
+      const row = document.createElement("button");
+      row.className = "person" + (profile.id === editing ? " on" : "");
+      row.dataset.id = profile.id;
+      row.innerHTML = "<span class='title'></span><span class='meta'></span>";
+      $(".title", row).textContent = profile.title;
+      const used = chats.filter(item => item.profile === profile.id).length;
+      $(".meta", row).textContent = [profile.marks.slice(0, 2).join(" · ") || "анкета пустая",
+                                     used ? `чатов ${used}` : ""].filter(Boolean).join(" · ");
+      ui.profileList.append(row);
+    });
+    const add = document.createElement("button");
+    add.className = "person add";
+    add.dataset.act = "add";
+    add.textContent = "+ Новый профиль";
+    ui.profileList.append(add);
+  }
+
+  function labelled(label, control, wide) {
+    const box = document.createElement("label");
+    box.className = "row" + (wide ? " wide" : "");
+    const name = document.createElement("span");
+    name.textContent = label;
+    box.append(name, control);
+    return box;
+  }
+
+  // Анкета строится по описанию полей с сервера: там же, где из неё
+  // собирается указание модели, так что поле не разойдётся с фразой.
+  function renderCard() {
+    const profile = profiles.find(one => one.id === editing);
+    ui.profileCard.textContent = "";
+    if (!profile) return;
+
+    const title = document.createElement("input");
+    title.dataset.card = "title";
+    title.maxLength = 40;
+    title.value = profile.title;
+    const grid = document.createElement("div");
+    grid.className = "grid";
+    persona.texts.filter(field => field.max <= 100).forEach(field => {
+      const input = document.createElement("input");
+      input.dataset.card = field.key;
+      input.maxLength = field.max;
+      input.placeholder = field.placeholder || "";
+      input.value = profile.card[field.key] || "";
+      grid.append(labelled(field.label, input));
+    });
+    persona.choices.forEach(field => {
+      const select = document.createElement("select");
+      select.dataset.card = field.key;
+      [{ value: "", label: "не важно" }, ...field.options].forEach(option => {
+        select.append(new Option(option.label, option.value));
+      });
+      select.value = profile.card[field.key] || "";
+      grid.append(labelled(field.label, select));
+    });
+    ui.profileCard.append(labelled("Название профиля", title), grid);
+
+    persona.texts.filter(field => field.max > 100).forEach(field => {
+      const area = document.createElement("textarea");
+      area.dataset.card = field.key;
+      area.maxLength = field.max;
+      area.rows = 3;
+      area.placeholder = field.placeholder || "";
+      area.value = profile.card[field.key] || "";
+      const left = document.createElement("small");
+      left.className = "left";
+      const box = labelled(field.label, area, true);
+      box.append(left);
+      ui.profileCard.append(box);
+    });
+    counters();
+
+    const prompt = document.createElement("details");
+    prompt.className = "stash prompt";
+    prompt.innerHTML = "<summary>как анкета уходит в запрос</summary><pre></pre>";
+    $("pre", prompt).textContent = profile.prompt || "Анкета пустая — в запрос из неё ничего не уходит.";
+    ui.profileCard.append(prompt);
+
+    const noticed = document.createElement("section");
+    noticed.className = "noticed";
+    noticed.innerHTML = "<h3>Замечено ассистентом</h3><p class='fine'></p><div class='records'></div>";
+    const records = Object.entries(profile.learned || {});
+    $(".fine", noticed).textContent = records.length
+      ? "Ассистент записал это сам по вашим репликам и шлёт в запрос долговременной "
+        + "памятью. ✓ — перенести в «О себе», × — забыть."
+      : "Пока ничего. Скажите в чате с этим профилем что-то о себе или попросите "
+        + "«дальше без эмодзи» — запись появится здесь.";
+    records.forEach(([name, value]) => {
+      const record = document.createElement("div");
+      record.className = "record";
+      record.innerHTML = "<div class='rhead'><span class='name'></span><span class='ops'>"
+        + "<button data-keep='1' title='Перенести в «О себе»' aria-label='Перенести в «О себе»'>✓</button>"
+        + "<button data-keep='' title='Забыть' aria-label='Забыть запись'>×</button>"
+        + "</span></div><div class='value'></div>";
+      $(".name", record).textContent = name;
+      $(".value", record).textContent = value;
+      record.querySelectorAll("button").forEach(button => (button.dataset.key = name));
+      $(".records", noticed).append(record);
+    });
+    ui.profileCard.append(noticed);
+
+    const actions = document.createElement("div");
+    actions.className = "actions";
+    actions.innerHTML = "<span class='unsaved' hidden>есть несохранённые правки</span>"
+      + "<button class='plain danger' data-act='delete'>Удалить профиль</button>"
+      + "<button class='primary' data-act='save'>Сохранить</button>";
+    // «Основной» не удаляется: его берёт неделя 2 и чаты удалённых профилей.
+    $("[data-act=delete]", actions).hidden = profile.id === profiles[0].id;
+    ui.profileCard.append(actions);
+  }
+
+  function counters() {
+    ui.profileCard.querySelectorAll(".row.wide").forEach(box => {
+      const area = $("textarea", box);
+      $(".left", box).textContent = `${area.value.length} / ${area.maxLength}`;
+    });
+  }
+
+  function readCard() {
+    const values = {};
+    ui.profileCard.querySelectorAll("[data-card]")
+      .forEach(input => (values[input.dataset.card] = input.value));
+    const { title, ...card } = values;
+    return { title, card };
+  }
+
+  function replaceProfile(saved) {
+    profiles = profiles.map(one => (one.id === saved.id ? saved : one));
+    dirty = false;
+    renderPeople();
+    renderCard();
+    renderHeader();
+  }
+
+  async function saveCard() {
+    replaceProfile(await api("PATCH", `/api/profiles/${editing}`, readCard()));
+  }
+
+  // Правки не теряются молча: перед переходом к другому профилю и перед
+  // действием с записью анкета сохраняется. Закрытие окна — отмена.
+  async function settle() {
+    if (dirty) await saveCard();
+  }
+
+  async function addProfile() {
+    await settle();
+    const made = await api("POST", "/api/profiles", { title: "Новый профиль" });
+    profiles.push(made);
+    editing = made.id;
+    renderPeople();
+    renderCard();
+    const title = $("[data-card=title]", ui.profileCard);
+    title.focus();
+    title.select();
+  }
+
+  async function deleteProfile(button) {
+    if (!arm(button, "Точно удалить?")) return;
+    const id = editing;
+    await api("DELETE", `/api/profiles/${id}`);
+    profiles = profiles.filter(one => one.id !== id);
+    chats.forEach(item => { if (item.profile === id) item.profile = profiles[0].id; });
+    editing = profiles[0].id;
+    dirty = false;
+    renderPeople();
+    renderCard();
+    renderList();
+    renderHeader();
+    await reload();
+  }
+
+  async function keepRecord(key, keep) {
+    await settle();
+    try {
+      replaceProfile(await api("POST", `/api/profiles/${editing}/record`, { key, keep }));
+    } catch (error) {
+      notice("запись не перенесена: " + error.message);
+      return;
+    }
+    if (here()?.profile === editing) await reload();
+  }
+
   // ── Поле ввода ────────────────────────────────────────────────────
   function fit() {
     ui.prompt.style.height = "auto";
@@ -626,6 +1065,7 @@
     const on = busy.has(currentId);
     ui.send.disabled = on || !ui.prompt.value.trim();
     ui.newTask.disabled = on;
+    ui.profileButton.disabled = on;
     ui.drawer.querySelectorAll(".layer button").forEach(button => (button.disabled = on));
   }
 
@@ -666,6 +1106,53 @@
     showMenu(false);
     pickModel(option.dataset.model).catch(error =>
       notice("модель не сменилась: " + error.message));
+  });
+
+  ui.profileButton.addEventListener("click", () => showPeople(ui.profileMenu.hidden));
+  ui.profileMenu.addEventListener("click", event => {
+    const option = event.target.closest(".opt");
+    if (!option) return;
+    showPeople(false);
+    if (option.dataset.act === "edit") {
+      openProfiles(here()?.profile);
+      return;
+    }
+    pickProfile(option.dataset.profile).catch(error =>
+      notice("профиль не сменился: " + error.message));
+  });
+
+  $("#openProfiles").addEventListener("click", () => {
+    openProfiles();
+    if (narrow.matches) showSide(false);
+  });
+  $("#closeProfiles").addEventListener("click", () => (ui.people.hidden = true));
+  ui.people.addEventListener("click", event => {
+    if (event.target === ui.people) ui.people.hidden = true;
+  });
+  ui.profileList.addEventListener("click", async event => {
+    const button = event.target.closest("button");
+    if (!button) return;
+    if (button.dataset.act === "add") {
+      addProfile();
+    } else if (button.dataset.id !== editing) {
+      await settle();
+      editing = button.dataset.id;
+      renderPeople();
+      renderCard();
+    }
+  });
+  ui.profileCard.addEventListener("input", () => {
+    dirty = true;
+    counters();
+    $(".unsaved", ui.profileCard).hidden = false;
+  });
+  ui.profileCard.addEventListener("click", event => {
+    const button = event.target.closest("button");
+    if (!button) return;
+    const failed = error => notice("профиль не сохранён: " + error.message);
+    if (button.dataset.act === "save") saveCard().catch(failed);
+    else if (button.dataset.act === "delete") deleteProfile(button).catch(failed);
+    else if (button.dataset.key !== undefined) keepRecord(button.dataset.key, Boolean(button.dataset.keep));
   });
 
   ui.newTask.addEventListener("click", newTask);
@@ -716,14 +1203,19 @@
   });
 
   document.addEventListener("click", event => {
-    if (!event.target.closest("#week3 .picker")) showMenu(false);
+    if (!event.target.closest("#modelPicker")) showMenu(false);
+    if (!event.target.closest("#profilePicker")) showPeople(false);
+    if (!event.target.closest("#week3 .retell")) closeRetell();
     if (!event.target.closest("#week3 .pop, #week3 .more")) closePops();
   });
   document.addEventListener("keydown", event => {
     if (event.key !== "Escape") return;
     showMenu(false);
+    showPeople(false);
+    closeRetell();
     closePops();
     ui.prefs.hidden = true;
+    ui.people.hidden = true;
   });
 
   async function boot() {
@@ -733,6 +1225,8 @@
     fallback = config.default;
     blocks = config.blocks;
     prefs = config.prefs;
+    persona = config.persona;
+    profiles = config.profiles;
     chats = await api("GET", "/api/chats");
 
     ui.app.classList.toggle("folded", localStorage.getItem(FOLD) === "1");
