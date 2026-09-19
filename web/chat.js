@@ -25,7 +25,6 @@
   let models = {};       // id → модель
   let fallback = "";     // модель, если у чата она неизвестна
   let blocks = [];       // окно настроек: описание полей с сервера
-  let prefs = {};        // значения настроек, общие для всех чатов
   let chats = [];        // список слева, свежие сверху
   let currentId = "";    // открытый чат
   let metrics = null;    // счётчики агента открытого чата
@@ -41,6 +40,8 @@
   const live = new Map();
 
   const here = () => chats.find(item => item.id === currentId);
+  // Настройки открытого чата: у каждого чата свои, сервер отдаёт их целиком.
+  const prefs = () => (here() || {}).prefs || {};
   const modelOf = item => models[item.model] || models[fallback];
   const profileOf = item => profiles.find(one => one.id === item.profile) || profiles[0];
   const CHECK = "<svg class='i small check' viewBox='0 0 24 24'><path d='m5 12 5 5 9-11'/></svg>";
@@ -208,9 +209,15 @@
 
   // Пустых чатов не плодим: если чат без ответов уже есть, новым будет он.
   // Модель и профиль новый чат берёт у открытого — их обычно и выбирают заново.
+  // Настройки — нет: новый чат начинает с умолчаний, где всё включено. Пустой
+  // чат, который берётся вместо нового, к ним и возвращается.
   async function newChat() {
     const empty = chats.find(item => !item.turns && !busy.has(item.id));
     if (empty) {
+      const fresh = defaults();
+      if (Object.keys(fresh).some(key => empty.prefs[key] !== fresh[key])) {
+        patch(empty.id, await api("POST", `/api/chats/${empty.id}/prefs`, { values: fresh }));
+      }
       open(empty);
     } else {
       const item = await api("POST", "/api/chats",
@@ -381,11 +388,11 @@
       next.addEventListener("click", () => show(turn, turn.index + 1));
       turn.foot.append(pager);
     }
-    if (persona && (prefs.show_marks || many)) {
+    if (persona && (prefs().show_marks || many)) {
       const marks = document.createElement("span");
       marks.className = "marks";
       marks.title = "Что из профиля ушло в запрос";
-      [persona.title, ...(prefs.show_marks ? cues(persona) : [])].forEach((text, index) => {
+      [persona.title, ...(prefs().show_marks ? cues(persona) : [])].forEach((text, index) => {
         const chip = document.createElement("span");
         chip.className = index ? "chip" : "chip who";
         chip.textContent = text;
@@ -448,7 +455,7 @@
     lock();
     const before = turn.index;
     turn.variants.push({ persona: { title: profile.title, marks: profile.marks,
-                                    off: !prefs.send_persona, noticed: 0 }, text: "" });
+                                    off: !prefs().send_persona, noticed: 0 }, text: "" });
     turn.index = turn.variants.length - 1;
     render(turn, "");
     foot(turn);
@@ -750,7 +757,7 @@
 
   function syncToggles() {
     ui.drawer.querySelectorAll("[data-pref]")
-      .forEach(box => (box.checked = Boolean(prefs[box.dataset.pref])));
+      .forEach(box => (box.checked = Boolean(prefs()[box.dataset.pref])));
   }
 
   function showDrawer(on) {
@@ -781,10 +788,12 @@
   }
 
   // ── Настройки ─────────────────────────────────────────────────────
-  // Короткая память считается агентом по настройкам, поэтому после их смены
-  // счётчики открытого чата перечитываются.
+  // Настройки — у открытого чата. Короткая память считается агентом по ним,
+  // поэтому после смены счётчики чата перечитываются.
   async function savePrefs(values) {
-    prefs = await api("POST", "/api/chat/prefs", { values });
+    const item = here();
+    if (!item) return;
+    patch(item.id, await api("POST", `/api/chats/${item.id}/prefs`, { values }));
     syncToggles();
     turns.forEach(foot);
     await reload();
@@ -821,12 +830,12 @@
         input.dataset.key = field.key;
         if (field.type === "bool") {
           input.type = "checkbox";
-          input.checked = Boolean(prefs[field.key]);
+          input.checked = Boolean(prefs()[field.key]);
         } else {
           input.type = "number";
           input.min = 0;
           input.step = 1;
-          input.value = prefs[field.key];
+          input.value = prefs()[field.key];
         }
         row.append(label, input);
         if (field.hint) {
@@ -839,6 +848,12 @@
       });
       ui.prefFields.append(part);
     });
+  }
+
+  function defaults() {
+    const values = {};
+    blocks.forEach(block => block.fields.forEach(field => (values[field.key] = field.default)));
+    return values;
   }
 
   function readPrefs() {
@@ -1196,9 +1211,7 @@
     ui.prefs.hidden = true;
   });
   $("#resetPrefs").addEventListener("click", async () => {
-    const values = {};
-    blocks.forEach(block => block.fields.forEach(field => (values[field.key] = field.default)));
-    await savePrefs(values);
+    await savePrefs(defaults());
     renderPrefs();
   });
 
@@ -1224,7 +1237,6 @@
     models = Object.fromEntries(order.map(model => [model.id, model]));
     fallback = config.default;
     blocks = config.blocks;
-    prefs = config.prefs;
     persona = config.persona;
     profiles = config.profiles;
     chats = await api("GET", "/api/chats");

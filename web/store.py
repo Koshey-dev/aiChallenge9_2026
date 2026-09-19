@@ -20,8 +20,11 @@
 не попадают.
 
 Чат недели 3 — строка в `chats` поверх строки диалога с тем же идентификатором:
-в `chats` то, что нужно списку слева, — название, модель, профиль, расход.
-Настройки чата общие на все чаты и лежат в `prefs`.
+в `chats` то, что нужно списку слева, — название, модель, профиль, расход, — и
+настройки чата. Настройки у каждого чата свои: снятая для опыта галочка не должна
+ехать в соседний разговор. Новый чат начинает с пустых, то есть с умолчаний,
+которые знает стенд. Таблица `prefs` осталась от версии, где настройки были
+общими: при переходе её значения достались чатам, которые уже были.
 """
 
 import json
@@ -62,18 +65,10 @@ CREATE TABLE IF NOT EXISTS chats (
 )
 """
 
-PREFS = """
-CREATE TABLE IF NOT EXISTS prefs (
-    name    TEXT PRIMARY KEY,
-    data    TEXT NOT NULL,
-    updated TEXT NOT NULL
-)
-"""
-
 # Строка «Основного» профиля.
 PROFILE = "*"
 
-CHAT_FIELDS = ("id", "title", "model", "profile", "turns", "context", "cost",
+CHAT_FIELDS = ("id", "title", "model", "profile", "prefs", "turns", "context", "cost",
                "created", "updated")
 
 
@@ -88,7 +83,6 @@ def connect():
     db.execute(SCHEMA)
     db.execute(PROFILES)
     db.execute(CHATS)
-    db.execute(PREFS)
     # База могла остаться от версии без журнала расхода — доводим её на месте.
     known = {row[1] for row in db.execute("PRAGMA table_info(dialogs)")}
     if "extra" not in known:
@@ -101,6 +95,17 @@ def connect():
     known = {row[1] for row in db.execute("PRAGMA table_info(chats)")}
     if "profile" not in known:
         db.execute(f"ALTER TABLE chats ADD COLUMN profile TEXT NOT NULL DEFAULT '{PROFILE}'")
+    # Настройки переехали из общей таблицы в строку чата. Чаты, что уже были,
+    # забирают общие значения себе — у них ничего не меняется. Commit явный:
+    # ALTER применяется сразу, а UPDATE без него откатился бы при закрытии
+    # соединения на чтение, и перенос потерялся бы молча.
+    if "prefs" not in known:
+        db.execute("ALTER TABLE chats ADD COLUMN prefs TEXT NOT NULL DEFAULT '{}'")
+        if db.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' "
+                      "AND name = 'prefs'").fetchone():
+            db.execute("UPDATE chats SET prefs = COALESCE("
+                       "(SELECT data FROM prefs WHERE name = 'chat'), '{}')")
+            db.commit()
     return db
 
 
@@ -232,19 +237,24 @@ def seed_profiles(title, presets):
                         json.dumps(preset["card"], ensure_ascii=False)))
 
 
+def chat_row(row):
+    item = dict(zip(CHAT_FIELDS, row))
+    return {**item, "prefs": json.loads(item["prefs"])}
+
+
 def chats():
     """Чаты для списка слева: свежие сверху."""
     with closing(connect()) as db:
         rows = db.execute(f"SELECT {', '.join(CHAT_FIELDS)} FROM chats "
                           "ORDER BY updated DESC").fetchall()
-    return [dict(zip(CHAT_FIELDS, row)) for row in rows]
+    return [chat_row(row) for row in rows]
 
 
 def chat(chat_id):
     with closing(connect()) as db:
         row = db.execute(f"SELECT {', '.join(CHAT_FIELDS)} FROM chats WHERE id = ?",
                          (chat_id,)).fetchone()
-    return dict(zip(CHAT_FIELDS, row)) if row else None
+    return chat_row(row) if row else None
 
 
 def add_chat(chat_id, model, profile=PROFILE):
@@ -256,14 +266,16 @@ def add_chat(chat_id, model, profile=PROFILE):
 
 
 def edit_chat(chat_id, **fields):
-    """Название, модель или профиль. Порядок в списке не меняется: он по
-    последней реплике."""
-    names = [name for name in fields if name in ("title", "model", "profile")]
+    """Название, модель, профиль или настройки. Порядок в списке не меняется:
+    он по последней реплике."""
+    names = [name for name in fields if name in ("title", "model", "profile", "prefs")]
     if not names:
         return chat(chat_id)
+    values = [json.dumps(fields[name], ensure_ascii=False) if name == "prefs"
+              else fields[name] for name in names]
     with closing(connect()) as db, db:
         db.execute(f"UPDATE chats SET {', '.join(f'{name} = ?' for name in names)} "
-                   "WHERE id = ?", (*(fields[name] for name in names), chat_id))
+                   "WHERE id = ?", (*values, chat_id))
     return chat(chat_id)
 
 
@@ -286,17 +298,3 @@ def drop_chat(chat_id):
         db.execute("DELETE FROM chats WHERE id = ?", (chat_id,))
         db.execute("DELETE FROM dialogs WHERE session = ?", (chat_id,))
 
-
-def load_prefs(name):
-    with closing(connect()) as db:
-        row = db.execute("SELECT data FROM prefs WHERE name = ?", (name,)).fetchone()
-    return json.loads(row[0]) if row else {}
-
-
-def save_prefs(name, data):
-    with closing(connect()) as db, db:
-        db.execute(
-            "INSERT INTO prefs (name, data, updated) VALUES (?, ?, datetime('now')) "
-            "ON CONFLICT(name) DO UPDATE SET data = excluded.data, "
-            "updated = excluded.updated",
-            (name, json.dumps(data, ensure_ascii=False)))

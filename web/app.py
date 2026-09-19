@@ -814,19 +814,25 @@ def profile_of(session):
     return entry["profile"] if entry else store.PROFILE
 
 
-def chat_prefs():
-    """Общие настройки чатов: сохранённые поверх значений по умолчанию."""
-    saved = store.load_prefs("chat")
+def chat_prefs(entry):
+    """Настройки чата: сохранённые у него поверх значений по умолчанию. Новый
+    чат ничего не хранит — у него всё по умолчанию, то есть всё включено."""
+    saved = entry["prefs"]
     return {key: saved.get(key, default) for key, default in PREF_DEFAULTS.items()}
 
 
+def chat_view(entry):
+    """Чат для браузера: с настройками целиком, а не только изменёнными."""
+    return {**entry, "prefs": chat_prefs(entry)}
+
+
 def tune(agent, entry):
-    """Агент под чат: модель и провайдер — от чата, ручки дня 11 — из общих
-    настроек, остальное — как у ассистента."""
+    """Агент под чат: модель, провайдер и ручки дней — от чата, остальное —
+    как у ассистента."""
     model = CHAT_BY_ID.get(entry["model"]) or CHAT_BY_ID[CHAT_DEFAULT]
     provider = PROVIDERS[model["provider"]]
     agent.url, agent.key = provider["url"], provider["key"]
-    prefs = chat_prefs()
+    prefs = chat_prefs(entry)
     agent.configure({**ASSISTANT, **prefs,
                      "memory": prefs["memory"] if prefs["send_short"] else 0,
                      "model": model["id"], "context_limit": model["context"]})
@@ -958,23 +964,23 @@ def chat_style():
 
 @app.get("/api/chat/config")
 def chat_config():
-    """Всё, что нужно чату при открытии: модели, окно настроек и его значения."""
+    """Всё, что нужно чату при открытии: модели, окно настроек, профили.
+    Значения настроек — у каждого чата свои, они приходят со списком чатов."""
     return {
         "models": [{**model, "vendor": PROVIDERS[model["provider"]]["title"],
                     "ready": bool(PROVIDERS[model["provider"]]["key"])}
                    for model in CHAT_MODELS],
         "default": CHAT_DEFAULT,
         "blocks": CHAT_BLOCKS,
-        "prefs": chat_prefs(),
         "persona": {"choices": persona.CHOICES, "texts": persona.TEXTS},
         "profiles": profile_list(),
     }
 
 
-@app.post("/api/chat/prefs")
-def chat_save_prefs(body: PrefsIn):
-    """Общие настройки чатов. Чужие ключи и значения не того типа отсекаются."""
-    prefs = chat_prefs()
+@app.post("/api/chats/{chat_id}/prefs")
+def chat_save_prefs(chat_id: str, body: PrefsIn):
+    """Настройки одного чата. Чужие ключи и значения не того типа отсекаются."""
+    prefs = chat_prefs(known_chat(chat_id))
     for key, default in PREF_DEFAULTS.items():
         value = body.values.get(key)
         if isinstance(default, bool):
@@ -985,8 +991,7 @@ def chat_save_prefs(body: PrefsIn):
             prefs[key] = max(0, int(float(value)))
         except (TypeError, ValueError):
             continue
-    store.save_prefs("chat", prefs)
-    return prefs
+    return chat_view(store.edit_chat(chat_id, prefs=prefs))
 
 
 def shown(row):
@@ -1054,14 +1059,14 @@ def profile_record(profile_id: str, body: RecordIn):
 
 @app.get("/api/chats")
 def chat_list():
-    return store.chats()
+    return [chat_view(entry) for entry in store.chats()]
 
 
 @app.post("/api/chats")
 def chat_new(body: NewChatIn):
     model = body.model if body.model in CHAT_BY_ID else CHAT_DEFAULT
     owner = body.profile if store.profile(body.profile) else store.PROFILE
-    return store.add_chat(uuid.uuid4().hex, model, owner)
+    return chat_view(store.add_chat(uuid.uuid4().hex, model, owner))
 
 
 def known_chat(chat_id):
@@ -1082,7 +1087,7 @@ def chat_edit(chat_id: str, body: ChatEditIn):
         fields["model"] = body.model
     if body.profile and store.profile(body.profile):
         fields["profile"] = body.profile
-    return store.edit_chat(chat_id, **fields)
+    return chat_view(store.edit_chat(chat_id, **fields))
 
 
 @app.delete("/api/chats/{chat_id}")
@@ -1145,7 +1150,7 @@ def chat_send(chat_id: str, body: SayIn):
         used = agent.usage["prompt"] - mark if mark is not None else 0
         updated = store.after_turn(chat_id, title=title, turns=report["turns"],
                                    context=used or entry["context"], cost=cost)
-        yield line({"t": "done", **report, "chat": updated})
+        yield line({"t": "done", **report, "chat": chat_view(updated)})
 
     return StreamingResponse(run(), media_type="application/x-ndjson")
 
@@ -1177,7 +1182,7 @@ def chat_variant(chat_id: str, body: VariantIn):
         store.save(chat_id, agent.state())
         updated = store.after_turn(chat_id, title=entry["title"], turns=entry["turns"],
                                    context=entry["context"], cost=cost)
-        yield line({"t": "done", "cost": cost, "chat": updated})
+        yield line({"t": "done", "cost": cost, "chat": chat_view(updated)})
 
     return StreamingResponse(run(), media_type="application/x-ndjson")
 
