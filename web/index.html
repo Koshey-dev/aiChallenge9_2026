@@ -927,12 +927,14 @@ const STANDS = {
 };
 
 let stand = STANDS.week2;
+let shown = "";     // какая вкладка открыта: разбор живёт только у стендов
 let ready = false;  // настройки пришли — колонки можно поднимать
 const node = name => $("#" + stand.ids[name]);
 
 // У вкладки со стендом свой набор узлов и свой режим сравнения: переключение
 // поднимает колонки заново, иначе они остались бы в чужой вкладке.
 function showPane(name) {
+  shown = name;
   document.querySelectorAll(".pane").forEach(p => (p.hidden = p.id !== name));
   // Чат недели 3 занимает весь экран под вкладками и красит страницу в свою тему.
   document.body.classList.toggle("app", name === "week3");
@@ -1185,10 +1187,12 @@ function showCue(index) {
   $("#cues .count").textContent = `${cue + 1} из ${steps.length}`;
 }
 
-// Панель показана там, где для режима написан разбор.
+// Панель показана там, где для режима написан разбор, и только на вкладке
+// стенда: колонки поднимаются и когда открыта неделя 3 — настройки приходят
+// с сервера позже, чем выбрана вкладка.
 function showCues(mode) {
   steps = CUES[mode] || [];
-  $("#cues").hidden = !steps.length;
+  $("#cues").hidden = !steps.length || !STANDS[shown];
   if (steps.length) showCue(0);
 }
 
