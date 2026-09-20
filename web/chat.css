@@ -274,7 +274,7 @@ body.app #week3 { flex: 1; min-height: 0; }
 
 /* Схема переходов: разрешённое из текущего этапа подсвечено, отклонённый
    переход держится красным до следующего хода — видно, что именно нельзя. */
-#week3 .fsm { width: 260px; height: 70px; }
+#week3 .fsm { width: 300px; height: 70px; }
 #week3 .fsm .node rect { fill: var(--card); stroke: var(--line); }
 #week3 .fsm .node text { fill: var(--dim); font-size: 9px; text-anchor: middle; }
 #week3 .fsm .node.now rect { fill: var(--soft); stroke: var(--accent); }

@@ -471,36 +471,37 @@
         <h3>Автомат</h3>
         <!-- Разрешённые переходы нарисованы, а не описаны: видно, что «готово»
              достижимо только через проверку, и что с проверки можно вернуться. -->
-        <svg viewBox="0 0 260 70" class="fsm" aria-label="Схема переходов">
+        <svg viewBox="0 0 300 70" class="fsm" aria-label="Схема переходов">
           <defs>
             <marker id="tip" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="5"
                     markerHeight="5" orient="auto">
               <path d="M0 1l6 3-6 3z" fill="context-stroke"/>
             </marker>
           </defs>
-          <path class="edge" data-edge="planning-execution" d="M58 22h34"/>
-          <path class="edge" data-edge="execution-validation" d="M126 22h34"/>
-          <path class="edge" data-edge="validation-done" d="M194 22h28"/>
+          <path class="edge" data-edge="planning-execution" d="M58 22h28"/>
+          <path class="edge" data-edge="execution-validation" d="M138 22h28"/>
+          <path class="edge" data-edge="validation-done" d="M218 22h28"/>
           <path class="edge back" data-edge="validation-execution"
-                d="M160 34c-12 22-46 22-58 0"/>
-          <!-- День 15: ворота. Замок висит на переходе, пока его условие не
-               выполнено, и снимается, когда ворота открылись. -->
+                d="M184 34c-16 26-64 26-80 0"/>
+          <g class="node" data-stage="planning"><rect x="6" y="8" width="52" height="28" rx="8"/><text x="32" y="26">план</text></g>
+          <g class="node" data-stage="execution"><rect x="86" y="8" width="52" height="28" rx="8"/><text x="112" y="26">работа</text></g>
+          <g class="node" data-stage="validation"><rect x="166" y="8" width="52" height="28" rx="8"/><text x="192" y="26">проверка</text></g>
+          <g class="node" data-stage="done"><rect x="246" y="8" width="44" height="28" rx="8"/><text x="268" y="26">готово</text></g>
+          <!-- День 15: ворота. Замок стоит в просвете между этапами и рисуется
+               последним, поверх блоков: в узком просвете и ниже по разметке его
+               наполовину закрывал соседний блок. -->
           <g class="latch" data-edge="planning-execution">
-            <path class="shackle" d="M72.5 13v-2a2.5 2.5 0 0 1 5 0v2"/>
-            <rect x="71" y="13" width="8" height="6.5" rx="1.5"/>
+            <path class="shackle" d="M69.5 13v-2a2.5 2.5 0 0 1 5 0v2"/>
+            <rect x="68" y="13" width="8" height="6.5" rx="1.5"/>
           </g>
           <g class="latch" data-edge="execution-validation">
-            <path class="shackle" d="M140.5 13v-2a2.5 2.5 0 0 1 5 0v2"/>
-            <rect x="139" y="13" width="8" height="6.5" rx="1.5"/>
+            <path class="shackle" d="M149.5 13v-2a2.5 2.5 0 0 1 5 0v2"/>
+            <rect x="148" y="13" width="8" height="6.5" rx="1.5"/>
           </g>
           <g class="latch" data-edge="validation-done">
-            <path class="shackle" d="M205.5 13v-2a2.5 2.5 0 0 1 5 0v2"/>
-            <rect x="204" y="13" width="8" height="6.5" rx="1.5"/>
+            <path class="shackle" d="M229.5 13v-2a2.5 2.5 0 0 1 5 0v2"/>
+            <rect x="228" y="13" width="8" height="6.5" rx="1.5"/>
           </g>
-          <g class="node" data-stage="planning"><rect x="6" y="8" width="52" height="28" rx="8"/><text x="32" y="26">план</text></g>
-          <g class="node" data-stage="execution"><rect x="74" y="8" width="52" height="28" rx="8"/><text x="100" y="26">работа</text></g>
-          <g class="node" data-stage="validation"><rect x="142" y="8" width="52" height="28" rx="8"/><text x="168" y="26">проверка</text></g>
-          <g class="node" data-stage="done"><rect x="210" y="8" width="44" height="28" rx="8"/><text x="232" y="26">готово</text></g>
         </svg>
       </div>
       <div class="moves">
