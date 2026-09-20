@@ -450,6 +450,17 @@
         <h3>План</h3>
         <ol class="steps"></ol>
         <p class="expect"></p>
+        <p class="barrier" hidden></p>
+        <!-- День 15: ключи ворот. Их ставит только человек — в полях заявки
+             диспетчера их нет, и попросить их модель не может. -->
+        <div class="keys">
+          <button class="key" data-act="approved">
+            <span class="lock"></span><span class="name">Утвердить план</span>
+          </button>
+          <button class="key" data-act="checked">
+            <span class="lock"></span><span class="name">Проверка пройдена</span>
+          </button>
+        </div>
         <div class="ops">
           <button class="plain" data-act="back">Назад на этап</button>
           <button class="plain" data-act="finish">Завершить</button>
@@ -472,6 +483,20 @@
           <path class="edge" data-edge="validation-done" d="M194 22h28"/>
           <path class="edge back" data-edge="validation-execution"
                 d="M160 34c-12 22-46 22-58 0"/>
+          <!-- День 15: ворота. Замок висит на переходе, пока его условие не
+               выполнено, и снимается, когда ворота открылись. -->
+          <g class="latch" data-edge="planning-execution">
+            <path class="shackle" d="M72.5 13v-2a2.5 2.5 0 0 1 5 0v2"/>
+            <rect x="71" y="13" width="8" height="6.5" rx="1.5"/>
+          </g>
+          <g class="latch" data-edge="execution-validation">
+            <path class="shackle" d="M140.5 13v-2a2.5 2.5 0 0 1 5 0v2"/>
+            <rect x="139" y="13" width="8" height="6.5" rx="1.5"/>
+          </g>
+          <g class="latch" data-edge="validation-done">
+            <path class="shackle" d="M205.5 13v-2a2.5 2.5 0 0 1 5 0v2"/>
+            <rect x="204" y="13" width="8" height="6.5" rx="1.5"/>
+          </g>
           <g class="node" data-stage="planning"><rect x="6" y="8" width="52" height="28" rx="8"/><text x="32" y="26">план</text></g>
           <g class="node" data-stage="execution"><rect x="74" y="8" width="52" height="28" rx="8"/><text x="100" y="26">работа</text></g>
           <g class="node" data-stage="validation"><rect x="142" y="8" width="52" height="28" rx="8"/><text x="168" y="26">проверка</text></g>

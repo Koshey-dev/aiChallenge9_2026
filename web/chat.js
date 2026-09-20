@@ -344,13 +344,15 @@
       const answer = (messages[i + 1] || {}).content || "";
       const row = ledger.find(item => item.turn === i / 2 + 1);
       turn.variants = [{ persona: told(row), text: answer },
-                       ...rejected(row), ...(variants[i / 2 + 1] || [])];
+                       ...rejected(row), ...ahead(row),
+                       ...(variants[i / 2 + 1] || [])];
       render(turn, answer);
       last = turn;
       if (!row) { turn.trace.hidden = true; continue; }
       learned(turn, row);
       stepped(turn, row);
       broke(turn, row);
+      overran(turn, row);
       turn.gist.textContent = `${number(row.tokens_in)} ток. · ${money(row.cost)}`;
       line(turn, `вход ${row.tokens_in} ток. · выход ${row.tokens_out} ток. · `
                + `история ~${row.history} ток. · оценка была ~${row.estimated}`, "spend");
@@ -402,6 +404,12 @@
   const rejected = row => (row && row.rejected
     ? [{ persona: told(row), text: row.rejected, rejected: true }] : []);
 
+  // То же для сторожа этапа: ответ, который делал работу следующего этапа,
+  // остаётся рядом с переписанным. Свод судит о содержании, сторож — о том,
+  // чей это этап, поэтому вариантов может оказаться и два сразу.
+  const ahead = row => (row && row.ahead
+    ? [{ persona: told(row), text: row.ahead, ahead: true }] : []);
+
   // Плашка свода — над ответом, рядом с плашкой перехода. Нарушил сам ответ —
   // красная; спорит с инвариантом сама просьба, а ответ отказал — обычная:
   // это не сбой, а ровно та работа, ради которой свод заводится.
@@ -420,6 +428,22 @@
         + (row.rejected ? " — ответ переписан" : "")
       : `Запрос против свода: ${clash.map(hit => hit.text).join("; ")}`;
     plaque.addEventListener("click", () => showVaultPanel(true));
+    turn.text.before(plaque);
+  }
+
+  // Плашка сторожа этапа. Ворота держат переходы, но не текст: автомат стоит
+  // на планировании, а ответ уже выдал готовую реализацию. Плашка говорит,
+  // чем именно ответ забежал вперёд, и переписанный лежит рядом с прежним.
+  function overran(turn, row) {
+    if (!row.jumped) return;
+    const plaque = document.createElement("button");
+    plaque.className = "guarded no";
+    plaque.title = "Показать план и журнал переходов";
+    plaque.innerHTML = "<svg class='i small' viewBox='0 0 24 24'>"
+      + "<path d='M4 18h6M14 18h6M7 18V9l5 4 5-4v9'/></svg><span></span>";
+    $("span", plaque).textContent = `Ответ перепрыгнул этап: ${row.jumped}`
+      + (row.ahead ? " — переписан под этап" : "");
+    plaque.addEventListener("click", () => showStagebox(true));
     turn.text.before(plaque);
   }
 
@@ -451,10 +475,11 @@
       next.addEventListener("click", () => show(turn, turn.index + 1));
       turn.foot.append(pager);
     }
-    if ((turn.variants[turn.index] || {}).rejected) {
+    const shown = turn.variants[turn.index] || {};
+    if (shown.rejected || shown.ahead) {
       const chip = document.createElement("span");
       chip.className = "chip no";
-      chip.textContent = "отклонён сводом";
+      chip.textContent = shown.rejected ? "отклонён сводом" : "перепрыгнул этап";
       turn.foot.append(chip);
     }
     if (persona && (prefs().show_marks || many)) {
@@ -625,10 +650,12 @@
           // Отказ политики строку расхода не пишет: последняя тогда — от
           // прошлой реплики, и чужие метки сюда не нужны.
           if (row && event.turns === before + 1 && row.turn === event.turns) {
-            turn.variants = [{ persona: told(row), text: turn.raw }, ...rejected(row)];
+            turn.variants = [{ persona: told(row), text: turn.raw },
+                             ...rejected(row), ...ahead(row)];
             learned(turn, row);
             stepped(turn, row);
             broke(turn, row);
+            overran(turn, row);
           }
           if (currentId === item.id) {
             metrics = event;
@@ -1023,8 +1050,37 @@
       node.classList.toggle("now", here);
       node.classList.toggle("no", here && refused);
     });
-    ui.stagebox.querySelectorAll(".edge").forEach(edge =>
-      edge.classList.toggle("can", edge.dataset.edge.split("-")[0] === state.stage));
+    // Ворота: замок на переходе, пока его условие не выполнено. Условие
+    // считает сервер — тем же кодом, которым он отклоняет переход, — иначе
+    // схема рассказывала бы о своём наборе правил.
+    const shut = (metrics || {}).task_shut || [];
+    const locked = new Set(shut.map(barrier => `${state.stage}-${barrier.to}`));
+    const barrier = $(".barrier", ui.stagebox);
+    barrier.hidden = !shut.length;
+    barrier.textContent = shut
+      .map(item => `Дальше закрыто: ${item.why}`
+                 + (item.key ? ` — откроет только кнопка «${item.key}»` : ""))
+      .join(" · ");
+    ui.stagebox.querySelectorAll(".edge").forEach(edge => {
+      edge.classList.toggle("can", edge.dataset.edge.split("-")[0] === state.stage);
+      edge.classList.toggle("shut", locked.has(edge.dataset.edge));
+    });
+    ui.stagebox.querySelectorAll(".latch").forEach(latch =>
+      latch.classList.toggle("shut", locked.has(latch.dataset.edge)));
+
+    // Ключи ворот. Кнопка неактивна там, где ключ ещё ни на что не влияет:
+    // утверждать нечего, пока плана нет, и отмечать проверку — пока до неё
+    // не дошли. Нажатая кнопка гасит замок на схеме.
+    ui.stagebox.querySelectorAll(".key").forEach(button => {
+      const key = button.dataset.act;
+      button.classList.toggle("on", Boolean(state[key]));
+      button.disabled = key === "approved"
+        ? !steps.length || state.stage !== "planning"
+        : state.stage !== "validation";
+      $(".name", button).textContent = state[key]
+        ? (key === "approved" ? "План утверждён" : "Проверка отмечена")
+        : (key === "approved" ? "Утвердить план" : "Проверка пройдена");
+    });
 
     const moves = $(".moves ul", ui.stagebox);
     moves.textContent = "";

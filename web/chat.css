@@ -249,6 +249,22 @@ body.app #week3 { flex: 1; min-height: 0; }
 #week3 .stagebox .steps li.past { color: var(--dim); text-decoration: line-through; }
 #week3 .stagebox .steps li.now { color: var(--accent); font-weight: 600; }
 #week3 .stagebox .expect { margin: 8px 0 0; font-size: 13px; color: var(--dim); }
+#week3 .stagebox .barrier { margin: 6px 0 0; font-size: 13px; color: var(--warn); }
+#week3 .stagebox .barrier[hidden] { display: none; }
+/* День 15: ключи ворот. Нажатая кнопка — открытые ворота, и замок на схеме
+   гаснет вместе с ней. Кнопка неактивна там, где ключ ещё ни на что не влияет:
+   утверждать нечего, пока нет плана. */
+#week3 .stagebox .keys { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+#week3 .stagebox .key { display: inline-flex; align-items: center; gap: 7px;
+                        padding: 5px 11px; border: 1px solid var(--line);
+                        border-radius: 9px; background: var(--card); color: var(--text);
+                        font: inherit; font-size: 12.5px; cursor: pointer; }
+#week3 .stagebox .key:hover:not(:disabled) { border-color: var(--accent); }
+#week3 .stagebox .key:disabled { opacity: .45; cursor: default; }
+#week3 .stagebox .key .lock { width: 12px; height: 12px; border-radius: 3px;
+                              border: 1.5px solid currentColor; opacity: .55; }
+#week3 .stagebox .key.on { border-color: var(--accent); color: var(--accent); }
+#week3 .stagebox .key.on .lock { background: currentColor; opacity: 1; }
 #week3 .stagebox .ops { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 #week3 .stagebox .moves ul { margin: 0; padding: 0; list-style: none;
                              max-height: 118px; overflow-y: auto;
@@ -268,6 +284,13 @@ body.app #week3 { flex: 1; min-height: 0; }
 #week3 .fsm .edge.can { stroke: var(--accent); }
 #week3 .fsm .node.no rect { stroke: var(--bad); }
 #week3 .fsm .node.no text { fill: var(--bad); }
+/* День 15: закрытые ворота. Замок висит на переходе, а сам переход
+   прорисован пунктиром — видно, что путь есть, но он заперт. */
+#week3 .fsm .latch { opacity: 0; }
+#week3 .fsm .latch.shut { opacity: 1; }
+#week3 .fsm .latch rect { fill: var(--warn); }
+#week3 .fsm .latch .shackle { fill: none; stroke: var(--warn); stroke-width: 1.3; }
+#week3 .fsm .edge.shut { stroke: var(--warn); stroke-dasharray: 3 3; }
 
 #week3 .feed { flex: 1; min-height: 0; overflow-y: auto; }
 #week3 .thread { max-width: 780px; margin: 0 auto; padding: 28px 24px 24px;

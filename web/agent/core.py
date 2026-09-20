@@ -78,6 +78,9 @@ class Agent:
         self.told = {}
         # Куда автомат сдвинулся на этой реплике: строка для плашки над ответом.
         self.moved = None
+        # Чем сторож счёл ответ перепрыгнувшим этап и каким ответ был до правки.
+        self.jumped = ""
+        self.ahead = ""
         # Ответы для других профилей: номер реплики — список вариантов.
         # В историю они не идут: разговор продолжается от исходного ответа.
         self.variants = {}
@@ -167,8 +170,9 @@ class Agent:
         return gone
 
     def steer(self, act):
-        """Ручной переход автомата: шаг назад и закрытие."""
-        self.task, said = task.switch(self.task, act)
+        """Ручной переход автомата: ключи ворот, шаг назад и закрытие."""
+        self.task, said = task.switch(self.task, act,
+                                      gates=bool(self.settings["task_gates"]))
         return said
 
     def move(self, layer, name, to):
@@ -393,6 +397,8 @@ class Agent:
             "broken": self.broken,
             "clash": self.clash,
             "rejected": self.rejected,
+            "jumped": self.jumped,
+            "ahead": self.ahead,
         })
 
     async def answer(self, client, messages):
@@ -538,7 +544,8 @@ class Agent:
                                  steps_max=int(self.settings["task_steps"]),
                                  **self.quirks())
         self.task, said, moved = task.apply(
-            self.task, claim, strict=bool(self.settings["task_strict"]))
+            self.task, claim, strict=bool(self.settings["task_strict"]),
+            gates=bool(self.settings["task_gates"]))
         self.moved = moved
         yield self.note(said)
 
@@ -631,6 +638,8 @@ class Agent:
         self.broken = []
         self.clash = []
         self.rejected = ""
+        self.jumped = ""
+        self.ahead = ""
         self.before = dict(self.usage)
 
         try:
@@ -768,6 +777,37 @@ class Agent:
                     yield self.note("свод: переписанный ответ пришёл пустым — "
                                     "оставляю прежний")
 
+        # Сторож этапа. Ворота держат переходы, но не текст: автомат остаётся
+        # на планировании, а ответ уже выдал готовую реализацию. Поэтому
+        # проверка идёт после ответа и по тому же очищенному тексту, что
+        # увидит пользователь.
+        if (self.settings["task"] and self.settings["task_watch"] and clean
+                and self.task["stage"] != task.IDLE):
+            over, why = await task.watch(
+                client, url=self.url, key=self.key, model=self.settings["model"],
+                state=self.task, answer=clean, usage=self.usage, **self.quirks())
+            self.jumped = (why or "работа следующего этапа") if over else ""
+            yield self.note("сторож этапа: "
+                            + (f"ответ перепрыгнул этап — {self.jumped}"
+                               if self.jumped else "ответ в рамках этапа"))
+            if self.jumped:
+                self.ahead = clean
+                again = []
+                async for piece in self.answer(
+                        client, [*sent, {"role": "assistant", "content": clean},
+                                 task.mend(self.task, self.jumped)]):
+                    again.append(piece)
+                fixed, _ = policy.clean_output("".join(again).strip(), self.settings,
+                                               self.settings["role"])
+                if fixed:
+                    clean = fixed
+                    yield self.note("сторож этапа: ответ переписан под этап")
+                    yield {"t": "replace", "text": clean}
+                else:
+                    self.ahead = ""
+                    yield self.note("сторож этапа: переписанный ответ пришёл пустым — "
+                                    "оставляю прежний")
+
         # История пополняется только после успешного ответа: оборванный запрос
         # не должен оставлять в памяти вопрос без ответа.
         self.history.append({"role": "user", "content": question})
@@ -848,6 +888,9 @@ class Agent:
             "task": self.task,
             "task_tokens": tokens.of(self.tasksheet()),
             "task_line": task.summary(self.task),
+            # Закрытые ворота считает коробка, а не браузер: условие перехода
+            # должно быть одно и то же и в запросе, и на схеме автомата.
+            "task_shut": task.shut(self.task),
             "rules": self.rules,
             "rules_tokens": tokens.of(self.rulesheet()),
             "profile": self.profile,
