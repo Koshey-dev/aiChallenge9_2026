@@ -427,6 +427,60 @@
       </div>
     </header>
 
+    <!-- День 13: состояние задачи. Полоса этапов под шапкой видна всегда,
+         пока задача идёт; план, ожидаемое действие, кнопки и журнал переходов
+         раскрываются под ней. Замирает автомат не здесь, а режимом чата —
+         кнопкой в поле ввода. -->
+    <div class="stageline" id="stageline" hidden>
+      <button class="track" id="stageTrack" aria-expanded="false"
+              title="Показать план и журнал переходов">
+        <span class="seg" data-stage="planning"><i></i><b>планирование</b></span>
+        <span class="seg" data-stage="execution"><i></i><b>выполнение</b></span>
+        <span class="seg" data-stage="validation"><i></i><b>проверка</b></span>
+        <span class="seg" data-stage="done"><i></i><b>готово</b></span>
+      </button>
+      <span class="at" id="stageStep"></span>
+    </div>
+
+    <div class="stagebox" id="stagebox" hidden>
+      <div class="plan">
+        <h3>План</h3>
+        <ol class="steps"></ol>
+        <p class="expect"></p>
+        <div class="ops">
+          <button class="plain" data-act="back">Назад на этап</button>
+          <button class="plain" data-act="finish">Завершить</button>
+          <button class="plain" data-act="newtask">Новая задача</button>
+        </div>
+      </div>
+      <div class="graph">
+        <h3>Автомат</h3>
+        <!-- Разрешённые переходы нарисованы, а не описаны: видно, что «готово»
+             достижимо только через проверку, и что с проверки можно вернуться. -->
+        <svg viewBox="0 0 260 70" class="fsm" aria-label="Схема переходов">
+          <defs>
+            <marker id="tip" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="5"
+                    markerHeight="5" orient="auto">
+              <path d="M0 1l6 3-6 3z" fill="context-stroke"/>
+            </marker>
+          </defs>
+          <path class="edge" data-edge="planning-execution" d="M58 22h34"/>
+          <path class="edge" data-edge="execution-validation" d="M126 22h34"/>
+          <path class="edge" data-edge="validation-done" d="M194 22h28"/>
+          <path class="edge back" data-edge="validation-execution"
+                d="M160 34c-12 22-46 22-58 0"/>
+          <g class="node" data-stage="planning"><rect x="6" y="8" width="52" height="28" rx="8"/><text x="32" y="26">план</text></g>
+          <g class="node" data-stage="execution"><rect x="74" y="8" width="52" height="28" rx="8"/><text x="100" y="26">работа</text></g>
+          <g class="node" data-stage="validation"><rect x="142" y="8" width="52" height="28" rx="8"/><text x="168" y="26">проверка</text></g>
+          <g class="node" data-stage="done"><rect x="210" y="8" width="44" height="28" rx="8"/><text x="232" y="26">готово</text></g>
+        </svg>
+      </div>
+      <div class="moves">
+        <h3>Переходы</h3>
+        <ul></ul>
+      </div>
+    </div>
+
     <div class="feed" id="feed">
       <div class="thread" id="thread"></div>
     </div>
@@ -435,6 +489,17 @@
       <div class="box">
         <textarea id="prompt" rows="1" placeholder="Напиши сообщение" aria-label="Сообщение"></textarea>
         <div class="bar">
+          <!-- День 13: режим чата. «Планирование» — диспетчер ведёт автомат,
+               «Общение» — автомат замирает на своём этапе и ждёт возврата.
+               Меню раскрывается вверх: строка стоит у нижнего края окна. -->
+          <div class="picker up" id="modePicker">
+            <button class="mode" id="modeButton" aria-haspopup="menu" aria-expanded="false">
+              <svg class="i small" viewBox="0 0 24 24"><path d="M4 6h10M4 12h16M4 18h7"/></svg>
+              <span id="modeName">Планирование</span>
+              <svg class="i small" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>
+            </button>
+            <div class="menu" id="modeMenu" role="menu" hidden></div>
+          </div>
           <span class="estimate" id="estimate">≈ 0 ток. · оценка</span>
           <button class="send" id="sendChat" title="Отправить" aria-label="Отправить"><svg class="i" viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
         </div>

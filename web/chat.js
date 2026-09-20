@@ -19,6 +19,10 @@
     profileButton: $("#profileButton"), profileMenu: $("#profileMenu"),
     profileName: $("#profileName"), people: $("#profiles"),
     profileList: $("#profileList"), profileCard: $("#profileCard"),
+    stageline: $("#stageline"), stageTrack: $("#stageTrack"),
+    stageStep: $("#stageStep"), stagebox: $("#stagebox"),
+    modeButton: $("#modeButton"), modeName: $("#modeName"),
+    modeMenu: $("#modeMenu"),
   };
 
   let order = [];        // модели в порядке меню, сгруппированы по провайдеру
@@ -29,6 +33,8 @@
   let currentId = "";    // открытый чат
   let metrics = null;    // счётчики агента открытого чата
   let persona = { choices: [], texts: [] };  // поля анкеты с сервера
+  let stages = [];       // этапы автомата с сервера, по порядку
+  let modes = [];        // режимы чата с сервера: планирование и общение
   let profiles = [];     // профили, «Основной» первым
   let editing = "";      // профиль, открытый в окне «Профили»
   let dirty = false;     // в анкете есть несохранённые правки
@@ -236,6 +242,7 @@
     renderList();
     renderHeader();
     showMemory();
+    renderTask();
     ui.thread.textContent = "";
 
     const data = await post("/api/agent/history", { session: item.id }).then(r => r.json());
@@ -247,6 +254,7 @@
       ui.thread.append(...live.get(item.id));
     }
     showMemory();
+    renderTask();
     renderHeader();
     toBottom();
   }
@@ -333,6 +341,7 @@
       last = turn;
       if (!row) { turn.trace.hidden = true; continue; }
       learned(turn, row);
+      stepped(turn, row);
       turn.gist.textContent = `${number(row.tokens_in)} ток. · ${money(row.cost)}`;
       line(turn, `вход ${row.tokens_in} ток. · выход ${row.tokens_out} ток. · `
                + `история ~${row.history} ток. · оценка была ~${row.estimated}`, "spend");
@@ -357,6 +366,25 @@
     $("span", plaque).textContent = `Профиль «${(told(row) || {}).title || "чата"}» пополнен: `
       + fresh.map(([name, value]) => `${name} — ${value}`).join("; ");
     plaque.addEventListener("click", () => openProfiles(here()?.profile));
+    turn.text.before(plaque);
+  }
+
+  // Плашка перехода — там же, над ответом: этап сменился до ответа, и ответ
+  // уже шёл с новым. Отклонённый переход показывается наравне с прошедшим —
+  // по нему и видно, что автомат держит порядок этапов.
+  function stepped(turn, row) {
+    const move = row.moved;
+    if (!move) return;
+    const plaque = document.createElement("button");
+    plaque.className = "moved" + (move.ok ? "" : " no");
+    plaque.title = "Показать план и журнал переходов";
+    plaque.innerHTML = "<svg class='i small' viewBox='0 0 24 24'>"
+      + "<path d='M5 12h14M13 6l6 6-6 6'/></svg><span></span>";
+    $("span", plaque).textContent = move.ok
+      ? `Этап: ${stageTitle(move.from)} → ${stageTitle(move.to)}`
+      : `Переход отклонён: ${stageTitle(move.from)} → ${stageTitle(move.to)} — `
+        + `${move.why}`;
+    plaque.addEventListener("click", () => showStagebox(true));
     turn.text.before(plaque);
   }
 
@@ -496,6 +524,7 @@
     if (b.persona) parts.push(`анкета ${b.persona}`);
     if (b.profile) parts.push(`профиль ${b.profile}`);
     if (b.work) parts.push(`задача ${b.work}`);
+    if (b.task) parts.push(`состояние ${b.task}`);
     parts.push(`вопрос ${b.question}`);
     return `запрос ~${b.predicted} ток. (${parts.join(" · ")}) + ${b.reply_max} на ответ`
       + (b.limit ? ` при пределе ${number(b.limit)}` : "");
@@ -556,13 +585,19 @@
           if (row && event.turns === before + 1 && row.turn === event.turns) {
             turn.variants = [{ persona: told(row), text: turn.raw }];
             learned(turn, row);
+            stepped(turn, row);
           }
           if (currentId === item.id) {
             metrics = event;
             last = turn;
           }
           patch(item.id, event.chat);
-          if (currentId === item.id) showMemory();
+          if (currentId === item.id) {
+            showMemory();
+            renderTask();
+            const closed = row && row.moved && row.moved.ok && row.moved.to === "done";
+            settleMode(closed).catch(() => {});
+          }
         }
         if (follow && currentId === item.id) toBottom();
       });
@@ -606,6 +641,7 @@
     ui.profileButton.title = owner.prompt
       ? "Профиль чата. Уходит в запрос:\n" + owner.prompt : "Профиль чата. Анкета пустая";
     renderProfileMenu();
+    renderMode();
   }
 
   function renderProfileMenu() {
@@ -772,13 +808,14 @@
     const data = await post(url, { session: currentId, ...payload }).then(r => r.json());
     metrics = data.metrics;
     showMemory();
+    renderTask();
     return data;
   }
 
   async function newTask() {
     const data = await memoryCall("/api/agent/newtask", {});
-    notice(`Новая задача: рабочая память стёрта (записей было ${data.gone}). `
-         + "Профиль и история на месте.");
+    notice(`Новая задача: рабочая память стёрта (записей было ${data.gone}), `
+         + "этап и шаги сброшены. Профиль и история на месте.");
   }
 
   async function forgetProfile(button) {
@@ -786,6 +823,154 @@
     const data = await memoryCall("/api/agent/forget-profile", {});
     notice(`Профиль «${profileOf(here()).title}»: забыто записей ${data.gone} — во всех `
          + "его чатах. Анкета на месте.");
+  }
+
+  // ── Состояние задачи ──────────────────────────────────────────────
+  const stageTitle = id => (stages.find(stage => stage.id === id) || {}).title || id;
+
+  // Полоса этапов появляется вместе с задачей: пока её нет, автомату нечего
+  // показывать, и места под шапкой он не занимает.
+  function renderTask() {
+    const state = (metrics || {}).task;
+    const started = state && (state.stage !== "idle" || (state.log || []).length);
+    const frozen = prefs().mode === "talk";
+    // В общении полоса не прячется, а гаснет: задача жива, и видно, куда
+    // вернёмся. Прячется она, только пока задачи нет вовсе.
+    ui.stageline.hidden = !started;
+    if (ui.stageline.hidden) {
+      showStagebox(false);
+      return;
+    }
+
+    const path = stages.map(stage => stage.id).filter(id => id !== "idle");
+    const at = path.indexOf(state.stage);
+    ui.stageline.classList.toggle("paused", frozen);
+    ui.stageTrack.querySelectorAll(".seg").forEach(seg => {
+      const index = path.indexOf(seg.dataset.stage);
+      seg.classList.toggle("past", index < at);
+      seg.classList.toggle("now", index === at);
+    });
+
+    const steps = state.steps || [];
+    // Номер шага справа от полосы нужен только на выполнении: на остальных
+    // этапах полоса и так подписана, а шаг там ещё или уже ни при чём.
+    const where = state.stage === "execution" && steps.length && state.step
+      ? `шаг ${state.step} из ${steps.length}` : stageTitle(state.stage);
+    ui.stageStep.textContent = frozen ? `замерло · ${where}` : where;
+
+    const plan = $(".steps", ui.stagebox);
+    plan.textContent = "";
+    steps.forEach((text, index) => {
+      const row = document.createElement("li");
+      row.textContent = text;
+      row.className = index + 1 < state.step ? "past"
+        : index + 1 === state.step ? "now" : "";
+      plan.append(row);
+    });
+    plan.hidden = !steps.length;
+    $(".expect", ui.stagebox).textContent = state.expect
+      ? `Ожидается: ${state.expect} — ${state.side === "agent" ? "ход ассистента" : "ваш ход"}`
+      : steps.length ? "Ожидаемое действие не названо" : "Плана ещё нет";
+
+    // Схема: горит текущий этап и стрелки, которые из него разрешены. Куда
+    // просились и не пустили, на схеме не нарисовано — нарисовано только
+    // разрешённое, — поэтому отказ помечает сам этап, с которого просились.
+    const last = (state.log || []).at(-1);
+    const refused = Boolean(last) && !last.ok && last.from === state.stage;
+    ui.stagebox.querySelectorAll(".node").forEach(node => {
+      const here = node.dataset.stage === state.stage;
+      node.classList.toggle("now", here);
+      node.classList.toggle("no", here && refused);
+    });
+    ui.stagebox.querySelectorAll(".edge").forEach(edge =>
+      edge.classList.toggle("can", edge.dataset.edge.split("-")[0] === state.stage));
+
+    const moves = $(".moves ul", ui.stagebox);
+    moves.textContent = "";
+    (state.log || []).slice().reverse().forEach(entry => {
+      const row = document.createElement("li");
+      row.className = entry.ok ? "" : "no";
+      const where = entry.from === entry.to ? entry.why
+        : `${stageTitle(entry.from)} → ${stageTitle(entry.to)}`;
+      row.textContent = `${where}${entry.ok ? "" : " — отклонён: " + entry.why}`
+        + ` · ${entry.by}`;
+      moves.append(row);
+    });
+    $(".moves", ui.stagebox).hidden = !(state.log || []).length;
+  }
+
+  function showStagebox(on) {
+    ui.stagebox.hidden = !on;
+    ui.stageTrack.setAttribute("aria-expanded", String(on));
+  }
+
+  // Ручной переход. Кнопка сильнее заявки модели, но не сильнее таблицы:
+  // что нельзя и кнопкой, сервер говорит строкой, и она идёт в ленту.
+  async function taskCall(act) {
+    const data = await post("/api/agent/task", { session: currentId, act })
+      .then(r => r.json());
+    metrics = data.metrics;
+    renderTask();
+    notice(`Состояние задачи: ${data.said}.`);
+    await settleMode(act === "finish" && (data.metrics.task || {}).stage === "done");
+  }
+
+  // ── Режим чата ────────────────────────────────────────────────────
+  const modeTitle = id => (modes.find(mode => mode.id === id) || {}).title || id;
+  const mode = () => prefs().mode || "plan";
+
+  function renderMode() {
+    const now = mode();
+    ui.modeName.textContent = modeTitle(now);
+    ui.modeButton.classList.toggle("on", now === "plan");
+    ui.modeButton.title = `Режим чата: ${(modes.find(item => item.id === now) || {}).about || ""}`;
+
+    ui.modeMenu.textContent = "";
+    modes.forEach(item => {
+      const option = document.createElement("button");
+      option.className = "opt" + (item.id === now ? " on" : "");
+      option.setAttribute("role", "menuitemradio");
+      option.dataset.mode = item.id;
+      option.innerHTML = "<span class='name'></span><span class='note'></span>" + CHECK;
+      $(".name", option).textContent = item.title;
+      $(".note", option).textContent = item.about;
+      ui.modeMenu.append(option);
+    });
+  }
+
+  function showModes(on) {
+    ui.modeMenu.hidden = !on;
+    ui.modeButton.setAttribute("aria-expanded", String(on));
+  }
+
+  // Смена режима автомат не двигает и не стирает: он замирает на своём этапе
+  // и ждёт возврата. Строка в ленте — про то, куда вернёмся, чтобы не пришлось
+  // объяснять задачу заново.
+  async function setMode(next) {
+    if (!here() || next === mode()) return;
+    const line = (metrics || {}).task_line || "";
+    const live = ((metrics || {}).task || {}).stage !== "idle";
+    await savePrefs({ mode: next });
+    if (next === "talk") {
+      notice(live ? `Режим общения: задача замерла — ${line}. Вернёшься в `
+                  + "планирование — продолжим с этого места."
+                  : "Режим общения: задача не ведётся, этап не появится.");
+    } else {
+      notice(live ? `Режим планирования: продолжаем с того же места — ${line}. `
+                  + "Объяснять заново нечего."
+                  : "Режим планирования: задача заведётся с первой же постановки.");
+    }
+  }
+
+  // Задача закрыта — держать чат в планировании незачем: новых шагов у неё
+  // не будет, а следующая задача начинается с «Новой задачи». Переключаем
+  // только на самом закрытии, а не всякий раз, когда этап «готово»: иначе
+  // возврат в планирование на закрытой задаче тут же отменялся бы сам.
+  async function settleMode(closed) {
+    if (!closed || mode() !== "plan") return;
+    await savePrefs({ mode: "talk" });
+    notice("Задача закрыта — чат перешёл в режим общения. "
+         + "Новая задача начинается кнопкой «Новая задача».");
   }
 
   // ── Настройки ─────────────────────────────────────────────────────
@@ -807,6 +992,7 @@
     if (currentId !== item.id) return;
     metrics = data.metrics;
     showMemory();
+    renderTask();
   }
 
   // Блок прошлого дня свёрнут: его ручки остаются, но место занимает текущий.
@@ -1082,6 +1268,7 @@
     ui.send.disabled = on || !ui.prompt.value.trim();
     ui.newTask.disabled = on;
     ui.profileButton.disabled = on;
+    ui.modeButton.disabled = on;
     ui.drawer.querySelectorAll(".layer button").forEach(button => (button.disabled = on));
   }
 
@@ -1172,6 +1359,23 @@
   });
 
   ui.newTask.addEventListener("click", newTask);
+  ui.stageTrack.addEventListener("click", () => showStagebox(ui.stagebox.hidden));
+  const steer = act => taskCall(act).catch(error =>
+    notice("состояние задачи не сменилось: " + error.message));
+  ui.modeButton.addEventListener("click", () => showModes(ui.modeMenu.hidden));
+  ui.modeMenu.addEventListener("click", event => {
+    const option = event.target.closest(".opt");
+    if (!option) return;
+    showModes(false);
+    setMode(option.dataset.mode)
+      .catch(error => notice("режим не сменился: " + error.message));
+  });
+  ui.stagebox.addEventListener("click", event => {
+    const act = (event.target.closest("button") || {}).dataset?.act;
+    if (!act) return;
+    if (act === "newtask") newTask();
+    else steer(act);
+  });
   ui.memoryButton.addEventListener("click", () => showDrawer(ui.drawer.hidden));
   ui.drawer.addEventListener("click", event => {
     const button = event.target.closest("button");
@@ -1217,6 +1421,7 @@
   });
 
   document.addEventListener("click", event => {
+    if (!event.target.closest("#modePicker")) showModes(false);
     if (!event.target.closest("#modelPicker")) showMenu(false);
     if (!event.target.closest("#profilePicker")) showPeople(false);
     if (!event.target.closest("#week3 .retell")) closeRetell();
@@ -1226,8 +1431,10 @@
     if (event.key !== "Escape") return;
     showMenu(false);
     showPeople(false);
+    showModes(false);
     closeRetell();
     closePops();
+    showStagebox(false);
     ui.prefs.hidden = true;
     ui.people.hidden = true;
   });
@@ -1239,6 +1446,8 @@
     fallback = config.default;
     blocks = config.blocks;
     persona = config.persona;
+    stages = config.stages;
+    modes = config.modes;
     profiles = config.profiles;
     chats = await api("GET", "/api/chats");
 

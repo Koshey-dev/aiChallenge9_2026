@@ -1,0 +1,325 @@
+"""Состояние задачи как конечный автомат: этап, шаг, ожидаемое действие.
+
+Рабочая память дня 11 отвечает на вопрос «что известно о задаче», но не на
+вопрос «где мы в ней находимся». Здесь — второе: четыре этапа, порядок между
+ними и то, чего задача ждёт прямо сейчас.
+
+Переходы разрешает код, а не модель. Диспетчер — отдельный вызов модели на
+реплику — присылает заявку: «считаю, что этап такой, шаг такой, жду того-то».
+Таблица `ALLOWED` решает, можно ли туда перейти; заявка мимо таблицы
+отклоняется и остаётся в журнале переходов. Формализованное состояние тем и
+отличается от ещё одной записи в памяти, что его нельзя перескочить, уговорив
+модель: «всё готово, закрывай» на планировании не закроет задачу.
+
+Как и маршрутизатор слоёв, диспетчер работает до ответа. Значит, о сделанном
+шаге он судит по прошлому ответу агента, а не по будущему: этап, с которым
+уходит запрос, — это этап, на котором агент отвечает.
+"""
+
+import json
+
+from .llm import stream_chat
+
+IDLE, PLANNING, EXECUTION, VALIDATION, DONE = (
+    "idle", "planning", "execution", "validation", "done")
+
+# Порядок этапов и их имена. Имена нужны и промпту диспетчера, и интерфейсу,
+# поэтому лежат здесь, а не в браузере: разойдясь, они сделали бы полосу этапов
+# рассказом о чём-то другом, чем видит модель.
+STAGES = [
+    {"id": IDLE, "title": "нет задачи",
+     "about": "задача ещё не поставлена"},
+    {"id": PLANNING, "title": "планирование",
+     "about": "уточняем условия и собираем план шагами"},
+    {"id": EXECUTION, "title": "выполнение",
+     "about": "идём по шагам плана"},
+    {"id": VALIDATION, "title": "проверка",
+     "about": "сверяем сделанное с планом"},
+    {"id": DONE, "title": "готово",
+     "about": "задача закрыта"},
+]
+TITLES = {stage["id"]: stage["title"] for stage in STAGES}
+
+# Режим чата: ведём задачу или просто разговариваем. Лежит рядом с этапами по
+# той же причине — интерфейс и коробка должны называть его одинаково, — но
+# хранится у чата: задачу начинают заново, а режим у чата остаётся свой.
+PLAN, TALK = "plan", "talk"
+MODES = [
+    {"id": PLAN, "title": "Планирование",
+     "about": "ведём задачу по этапам: диспетчер двигает автомат"},
+    {"id": TALK, "title": "Общение",
+     "about": "автомат замирает на своём этапе, ассистент отвечает как обычно"},
+]
+
+# Куда можно уйти с этапа. Возврат «проверка → выполнение» здесь не поблажка:
+# без него проверка ничего не решает, она только называет результат.
+ALLOWED = {
+    IDLE: (PLANNING,),
+    PLANNING: (EXECUTION,),
+    EXECUTION: (VALIDATION,),
+    VALIDATION: (DONE, EXECUTION),
+    DONE: (),
+}
+
+# Шаг назад кнопкой: то же, что «я передумал», а не переход автомата. Заявку
+# модели на такой переход таблица не пропустит — руками можно.
+BACK = {PLANNING: IDLE, EXECUTION: PLANNING, VALIDATION: EXECUTION, DONE: VALIDATION}
+
+# Что агент делает на этапе. Уходит в запрос вместе с состоянием: автомат нужен
+# не сам по себе, а затем, чтобы ответ соответствовал этапу.
+ORDERS = {
+    IDLE: "Задача не поставлена: отвечай на вопрос как есть.",
+    PLANNING: "Сейчас планирование: уточни недостающее и предложи план шагами. "
+              "К выполнению не переходи, пока план не приняли.",
+    EXECUTION: "Сейчас выполнение: делай текущий шаг и не забегай вперёд.",
+    VALIDATION: "Сейчас проверка: сверь сделанное с планом и назови, что осталось.",
+    DONE: "Задача закрыта: к её шагам не возвращайся, пока не поставят новую.",
+}
+FROZEN = ("Чат сейчас в режиме общения: задача замерла на этом этапе. Ответь на "
+          "текущий вопрос и к её шагам не возвращайся, пока режим не сменят.")
+
+FRAME = ("Состояние текущей задачи — его ведёт отдельный шаг до твоего ответа, "
+         "не ты. Переходы между этапами не объявляй и сам этап не пересказывай:\n")
+
+ROLE = (
+    "Ты ведёшь состояние задачи в диалоге агента с пользователем. Состояние — "
+    "конечный автомат из четырёх этапов:\n"
+    "- планирование: условия уточняются, собирается план шагами;\n"
+    "- выполнение: агент идёт по шагам плана;\n"
+    "- проверка: сделанное сверяется с планом;\n"
+    "- готово: задача закрыта.\n"
+    "До того как пользователь поставил задачу, этап — «нет задачи».\n\n"
+    "Ты не решаешь, а предлагаешь: переход разрешает код, и только на соседний "
+    "этап. Прыжок через этап будет отклонён, поэтому не проси его. С проверки "
+    "можно уйти и на «готово», и назад на «выполнение», если что-то не сошлось. "
+    "Ничего не изменилось — верни тот же этап, это нормальный ответ.\n\n"
+    "Поля ответа:\n"
+    "- «этап» — одно из: нет задачи, планирование, выполнение, проверка, готово;\n"
+    "- «цель» — одна строка, что делаем; пока задачи нет — пустая;\n"
+    "- «шаги» — план списком коротких строк; появляется на планировании, дальше "
+    "переноси его как есть и меняй, только если план изменился;\n"
+    "- «шаг» — номер текущего шага в этом списке, с единицы; вне выполнения — 0;\n"
+    "- «ожидание» — одна фраза, что должно произойти дальше;\n"
+    "- «сторона» — кто делает следующий ход: «агент» или «пользователь».\n\n"
+    "Ничего не додумывай: чего в диалоге нет, того нет и в состоянии. "
+    "Ответ — один JSON-объект, без пояснений и без markdown."
+)
+
+# Имена полей в ответе модели: русские — из промпта, английские — на случай,
+# когда модель переводит ключи сама.
+FIELDS = {"stage": ("этап", "stage"), "goal": ("цель", "goal"),
+          "steps": ("шаги", "steps"), "step": ("шаг", "step"),
+          "expect": ("ожидание", "expect"), "side": ("сторона", "side")}
+BY_TITLE = {**{stage["title"]: stage["id"] for stage in STAGES},
+            **{stage["id"]: stage["id"] for stage in STAGES},
+            "нет": IDLE, "план": PLANNING, "исполнение": EXECUTION}
+
+MAX_TEXT = 200
+MAX_LOG = 12
+
+
+def blank():
+    """Пустой автомат: задачи нет, переходов не было.
+
+    Режима здесь нет: он настройка чата, а не состояния. Задачу начинают
+    заново — «Новая задача», — а в каком режиме чат, это не меняет.
+    """
+    return {"stage": IDLE, "goal": "", "steps": [], "step": 0, "expect": "",
+            "side": "user", "log": []}
+
+
+def clean(state):
+    """Автомат из сохранённого состояния: чужие ключи и мусор отсекаются."""
+    fresh = blank()
+    if not isinstance(state, dict):
+        return fresh
+    fresh["stage"] = state.get("stage") if state.get("stage") in ALLOWED else IDLE
+    fresh["goal"] = str(state.get("goal") or "")[:MAX_TEXT]
+    fresh["steps"] = [str(step)[:MAX_TEXT] for step in (state.get("steps") or [])]
+    fresh["step"] = max(0, int(state.get("step") or 0))
+    fresh["expect"] = str(state.get("expect") or "")[:MAX_TEXT]
+    fresh["side"] = "agent" if state.get("side") == "agent" else "user"
+    fresh["log"] = [entry for entry in (state.get("log") or [])
+                    if isinstance(entry, dict)][-MAX_LOG:]
+    return fresh
+
+
+def sheet(state, frozen=False):
+    """Состояние как одно системное сообщение. Без задачи места не занимает.
+
+    В режиме общения состояние всё равно уходит — с указанием не возвращаться
+    к шагам. Замершая задача, о которой ассистент знает, и есть то, что даёт
+    вернуться к ней без повторных объяснений.
+    """
+    if state["stage"] == IDLE:
+        return []
+    lines = [f"- этап: {TITLES[state['stage']]}"]
+    if state["goal"]:
+        lines.append(f"- цель: {state['goal']}")
+    if state["steps"]:
+        plan = "; ".join(f"{number}. {step}{' ← текущий' if number == state['step'] else ''}"
+                         for number, step in enumerate(state["steps"], 1))
+        lines.append(f"- план: {plan}")
+    if state["expect"]:
+        side = "ход агента" if state["side"] == "agent" else "ход пользователя"
+        lines.append(f"- ожидается: {state['expect']} ({side})")
+    order = FROZEN if frozen else ORDERS[state["stage"]]
+    return [{"role": "system", "content": FRAME + "\n".join(lines) + "\n" + order}]
+
+
+def summary(state):
+    """Строка возврата: где остановились. Её показывает строка смены режима."""
+    if state["stage"] == IDLE:
+        return "задачи нет"
+    where = TITLES[state["stage"]]
+    if state["steps"] and state["step"]:
+        where += f" · шаг {state['step']} из {len(state['steps'])}"
+    if state["expect"]:
+        who = "агент" if state["side"] == "agent" else "вы"
+        where += f" · ждём: {state['expect']} ({who})"
+    return where
+
+
+def remember(state, gone, to, ok, why, by):
+    """Строка в журнал переходов. Отклонённые в нём наравне с прошедшими:
+    по ним и видно, что автомат — ограничитель, а не украшение."""
+    entry = {"from": gone, "to": to, "ok": ok, "why": why, "by": by}
+    state["log"] = (state["log"] + [entry])[-MAX_LOG:]
+    return entry
+
+
+def parse(raw, steps_max):
+    """Заявка диспетчера из ответа модели.
+
+    Строгую схему ответа умеет не каждый провайдер, поэтому JSON вынимается из
+    текста. Что не разобралось — пустая заявка: состояние тогда не меняется.
+    """
+    text = raw.strip()
+    start, end = text.find("{"), text.rfind("}")
+    if start < 0 or end < start:
+        return {}
+    try:
+        data = json.loads(text[start:end + 1])
+    except ValueError:
+        return {}
+    if not isinstance(data, dict):
+        return {}
+
+    found = {}
+    for field, aliases in FIELDS.items():
+        value = next((data[name] for name in aliases if name in data), None)
+        if value is not None:
+            found[field] = value
+
+    stage = BY_TITLE.get(str(found.get("stage", "")).strip().lower())
+    if not stage:
+        return {}
+    steps = found.get("steps") or []
+    steps = ([str(step).strip()[:MAX_TEXT] for step in steps if str(step).strip()][:steps_max]
+             if isinstance(steps, (list, tuple)) else [])
+    try:
+        step = int(found.get("step") or 0)
+    except (TypeError, ValueError):
+        step = 0
+    # Номер шага здесь только очищается, а к плану привязывается в `apply`:
+    # план модель может и не повторить, и тогда сверять номер не с чем.
+    return {
+        "stage": stage,
+        "goal": str(found.get("goal") or "").strip()[:MAX_TEXT],
+        "steps": steps,
+        "step": max(0, step),
+        "expect": str(found.get("expect") or "").strip()[:MAX_TEXT],
+        "side": "agent" if str(found.get("side", "")).strip().lower() in
+                ("агент", "agent", "ассистент") else "user",
+    }
+
+
+def apply(state, claim, *, strict=True):
+    """Заявку — в состояние, если таблица переходов её пропускает.
+
+    Отдаёт состояние, строку для журнала реплики и запись о переходе, если он
+    был: по ней над ответом встаёт плашка. Отклонение — это не сбой, а работа
+    автомата: состояние остаётся прежним, в журнал ложится строка, и ответ
+    уходит с тем этапом, который был. Строгость снимается настройкой: со снятой
+    видно, во что превращается состояние, когда переходы решает модель.
+    """
+    if not claim:
+        return state, "диспетчер: ответ не разобрался — этап прежний", None
+
+    gone, to = state["stage"], claim["stage"]
+    if to != gone and to not in ALLOWED[gone] and strict:
+        entry = remember(state, gone, to, False, "переход через этап", "модель")
+        return state, (f"диспетчер: переход «{TITLES[gone]} → {TITLES[to]}» отклонён — "
+                       "из этого этапа туда нельзя"), entry
+
+    # План и цель принимаются и без перехода: на выполнении меняется номер
+    # шага, а не этап, и это самое частое движение автомата.
+    state["goal"] = claim["goal"] or state["goal"]
+    state["steps"] = claim["steps"] or state["steps"]
+    state["step"] = min(claim["step"], len(state["steps"]))
+    state["expect"] = claim["expect"]
+    state["side"] = claim["side"]
+    if to == gone:
+        return state, f"диспетчер: этап прежний — {summary(state)}", None
+
+    state["stage"] = to
+    forced = to not in ALLOWED[gone]
+    entry = remember(state, gone, to, True, "строгость снята" if forced else "", "модель")
+    return state, (f"диспетчер: {TITLES[gone]} → {TITLES[to]}"
+                   + (" (строгость снята)" if forced else "")
+                   + f" · {summary(state)}"), entry
+
+
+def switch(state, act):
+    """Ручное управление автоматом: шаг назад и закрытие.
+
+    Кнопка сильнее таблицы — но только в сторону назад: «готово» руками
+    ставится с проверки, как и заявкой, иначе кнопка обошла бы то самое
+    правило, ради которого автомат и заводится. Замереть на этапе — не отсюда:
+    это режим чата, и его держит не состояние задачи.
+    """
+    gone = state["stage"]
+    if act == "back":
+        to = BACK.get(gone)
+        if not to:
+            return state, "назад некуда"
+        state["stage"] = to
+        state["step"] = 0 if to in (IDLE, PLANNING) else state["step"]
+        remember(state, gone, to, True, "руками", "вы")
+        return state, f"{TITLES[gone]} → {TITLES[to]}"
+    if act == "finish":
+        if DONE not in ALLOWED[gone]:
+            remember(state, gone, DONE, False, "закрыть можно с проверки", "вы")
+            return state, f"с этапа «{TITLES[gone]}» закрыть нельзя — сначала проверка"
+        state["stage"] = DONE
+        state["expect"] = ""
+        remember(state, gone, DONE, True, "руками", "вы")
+        return state, f"{TITLES[gone]} → {TITLES[DONE]}"
+    return state, "неизвестное действие"
+
+
+async def track(client, *, url, key, model, state, question, history, usage,
+                steps_max, **knobs):
+    """Спросить диспетчера о состоянии. Расход идёт в общий `usage` коробки.
+
+    Диспетчер видит хвост диалога, а не только реплику: шаг считается сделанным
+    по прошлому ответу агента, и без него «идём дальше» не к чему привязать.
+    """
+    tail = "\n".join(f"{'пользователь' if message['role'] == 'user' else 'агент'}: "
+                     f"{message['content'][:400]}" for message in history[-4:])
+    request = [
+        {"role": "system", "content": f"{ROLE} План — не длиннее {steps_max} шагов."},
+        {"role": "user", "content":
+            "Состояние сейчас:\n"
+            + json.dumps({"этап": TITLES[state["stage"]], "цель": state["goal"],
+                          "шаги": state["steps"], "шаг": state["step"]},
+                         ensure_ascii=False)
+            + (f"\n\nПоследние реплики:\n{tail}" if tail else "")
+            + f"\n\nНовая реплика пользователя:\n{question}"},
+    ]
+    pieces = []
+    async for piece in stream_chat(client, url=url, key=key, model=model,
+                                   messages=request, usage=usage, temperature=0,
+                                   max_tokens=600, **knobs):
+        pieces.append(piece)
+    return parse("".join(pieces), steps_max)

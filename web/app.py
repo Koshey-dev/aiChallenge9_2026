@@ -14,7 +14,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
 import store
-from agent import Agent, AgentError, blocks, persona
+from agent import Agent, AgentError, blocks, persona, task
 from models import MAX_TOKENS, MODELS, MODEL_TASKS, RUNS_PER_MODEL, SCALES, URLS, cost_of
 
 load_dotenv()
@@ -122,10 +122,17 @@ MARKS = {"key": "show_marks", "label": "Метки «что учтено» по�
          "hint": "что из профиля ушло в запрос: пункты анкеты и сколько записей, "
                  "которые ассистент заметил сам"}
 FIELDS = {field["key"]: field for block in blocks(CHAT_DEFAULT) for field in block["fields"]}
-# Текущий день сверху. Прошлый остаётся — день 12 стоит на его слоях, — но
-# свёрнутым: его ручки нужны реже.
+# Текущий день сверху. Прошлые остаются — день 13 стоит на рабочей памяти дня 11
+# и отвечает профилю дня 12, — но свёрнутыми: их ручки нужны реже.
 CHAT_BLOCKS = [{
+    "title": "День 13 · состояние задачи",
+    "note": "Автомат из четырёх этапов: планирование, выполнение, проверка, готово. "
+            "Этап предлагает отдельный вызов модели до ответа, а разрешает переход "
+            "код — по таблице соседних этапов. Полоса этапов и кнопки — в шапке чата.",
+    "fields": [FIELDS["send_task"], FIELDS["task_strict"], FIELDS["task_steps"]],
+}, {
     "title": "День 12 · персонализация",
+    "folded": True,
     "note": "Профиль выбирается у каждого чата в шапке, правится в окне «Профили». "
             "Анкета уходит в запрос указанием, замеченное ассистентом — "
             "долговременной памятью профиля.",
@@ -140,6 +147,13 @@ CHAT_BLOCKS = [{
 }]
 PREF_DEFAULTS = {field["key"]: field["default"]
                  for block in CHAT_BLOCKS for field in block["fields"]}
+# Режим чата в окне настроек не показывается: он переключается кнопкой в поле
+# ввода, рядом с «отправить». Хранится всё равно с настройками чата — у каждого
+# чата свой, и «Новая задача» его не трогает.
+PREF_DEFAULTS["mode"] = task.PLAN
+# Значения, которые может принять настройка-строка. Присланное браузером
+# сверяется с ними: иначе настройка стала бы способом передать в коробку что угодно.
+PREF_OPTIONS = {"mode": [mode["id"] for mode in task.MODES]}
 
 # Заготовки дня 12: три профиля, которые расходятся по всем осям анкеты, — разница
 # в ответах видна с первого вопроса. Их можно править и удалять, как свои.
@@ -313,6 +327,11 @@ class MemoryIn(BaseModel):
     layer: str = ""
     key: str = ""
     to: str = ""
+
+
+class TaskIn(BaseModel):
+    session: str
+    act: str = ""
 
 
 class NewChatIn(BaseModel):
@@ -835,6 +854,9 @@ def tune(agent, entry):
     prefs = chat_prefs(entry)
     agent.configure({**ASSISTANT, **prefs,
                      "memory": prefs["memory"] if prefs["send_short"] else 0,
+                     # Режим чата — это и есть ручка «вести состояние задачи»:
+                     # в общении диспетчер молчит, автомат замирает на этапе.
+                     "task": prefs["mode"] == task.PLAN,
                      "model": model["id"], "context_limit": model["context"]})
 
 
@@ -916,6 +938,20 @@ def agent_newtask(body: SessionIn):
     return {"gone": gone, "metrics": agent.report()}
 
 
+@app.post("/api/agent/task")
+def agent_task(body: TaskIn):
+    """Ручной переход автомата: пауза, продолжение, шаг назад, закрытие.
+
+    Кнопка нужна ровно затем же, зачем ручной перенос записи между слоями:
+    этап предлагает модель, а значит ошибается, и поправить это должно быть
+    можно. Что кнопке тоже нельзя — видно в журнале переходов.
+    """
+    agent = agent_for(body.session)
+    said = agent.steer(body.act)
+    store.save(body.session, agent.state())
+    return {"said": said, "metrics": agent.report()}
+
+
 @app.post("/api/agent/forget-profile")
 def agent_forget_profile(body: SessionIn):
     """Забыть пользователя: долговременная память профиля стирается во всех
@@ -972,6 +1008,11 @@ def chat_config():
                    for model in CHAT_MODELS],
         "default": CHAT_DEFAULT,
         "blocks": CHAT_BLOCKS,
+        # Этапы приходят с сервера: их имена видит и модель в промпте
+        # диспетчера, и полоса в шапке. Разойдясь, полоса рассказывала бы
+        # не о том автомате, который работает.
+        "stages": task.STAGES,
+        "modes": task.MODES,
         "persona": {"choices": persona.CHOICES, "texts": persona.TEXTS},
         "profiles": profile_list(),
     }
@@ -983,6 +1024,10 @@ def chat_save_prefs(chat_id: str, body: PrefsIn):
     prefs = chat_prefs(known_chat(chat_id))
     for key, default in PREF_DEFAULTS.items():
         value = body.values.get(key)
+        if key in PREF_OPTIONS:
+            if value in PREF_OPTIONS[key]:
+                prefs[key] = value
+            continue
         if isinstance(default, bool):
             if isinstance(value, bool):
                 prefs[key] = value

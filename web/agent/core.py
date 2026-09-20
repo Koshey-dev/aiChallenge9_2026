@@ -8,7 +8,7 @@
 import asyncio
 import time
 
-from . import crew, facts, judge, layers, persona, policy, recap, tokens
+from . import crew, facts, judge, layers, persona, policy, recap, task, tokens
 from .llm import AgentError, new_usage, stream_chat
 from .settings import DEFAULTS, coerce
 
@@ -57,6 +57,10 @@ class Agent:
         # исчезать вместе с забытым диалогом, поэтому лежит в своей таблице.
         self.work = {}
         self.profile = {}
+        # Где мы в задаче: этап, шаг, ожидаемое действие. Рабочая память
+        # говорит, что о задаче известно, автомат — на каком она ходу.
+        # Живёт столько же, сколько рабочая память: до «Новой задачи».
+        self.task = task.blank()
         # Анкета профиля и его название: их заполняет пользователь, в запрос
         # они уходят указанием. Лежат вместе с профилем, а не в диалоге.
         self.persona = {}
@@ -64,6 +68,8 @@ class Agent:
         # ушло в запрос — для плашки и меток под ответом.
         self.fresh = {}
         self.told = {}
+        # Куда автомат сдвинулся на этой реплике: строка для плашки над ответом.
+        self.moved = None
         # Ответы для других профилей: номер реплики — список вариантов.
         # В историю они не идут: разговор продолжается от исходного ответа.
         self.variants = {}
@@ -84,6 +90,7 @@ class Agent:
         self.folded = 0
         self.facts = {}
         self.work = {}
+        self.task = task.blank()
         self.variants = {}
         self.branch = MAIN
         self.branches = {}
@@ -129,16 +136,28 @@ class Agent:
         """Долговременная память как одно системное сообщение."""
         return layers.sheet(layers.PROFILE_FRAME, self.profile)
 
+    def tasksheet(self):
+        """Состояние задачи как одно системное сообщение — как в режиме
+        планирования. Счётчики показывают вес состояния, а не режим."""
+        return task.sheet(self.task)
+
     def newtask(self):
         """Новая задача: рабочая память стирается, профиль и диалог остаются.
 
         Это и есть граница между слоями: у рабочей памяти срок жизни — одна
         задача, и без способа её закончить она ничем не отличалась бы от
-        карточки фактов.
+        карточки фактов. Автомат обнуляется вместе с ней: этап и шаги — тоже
+        про ту задачу, которая только что закончилась.
         """
         gone = len(self.work)
         self.work = {}
+        self.task = task.blank()
         return gone
+
+    def steer(self, act):
+        """Ручной переход автомата: шаг назад и закрытие."""
+        self.task, said = task.switch(self.task, act)
+        return said
 
     def move(self, layer, name, to):
         """Перенос записи между слоями руками; пустой `to` — удаление.
@@ -218,7 +237,8 @@ class Agent:
         return {"history": self.history, "usage": self.usage,
                 "ballast": self.ballast, "ledger": self.ledger, "scale": self.scale,
                 "summary": self.summary, "folded": self.folded,
-                "facts": self.facts, "work": self.work, "variants": self.variants,
+                "facts": self.facts, "work": self.work, "task": self.task,
+                "variants": self.variants,
                 "branch": self.branch, "branches": self.branches, "point": self.point}
 
     def restore(self, state):
@@ -234,6 +254,7 @@ class Agent:
         self.folded = int(state.get("folded") or 0)
         self.facts = dict(state.get("facts") or {})
         self.work = dict(state.get("work") or {})
+        self.task = task.clean(state.get("task"))
         self.variants = dict(state.get("variants") or {})
         self.branch = str(state.get("branch") or MAIN)
         self.branches = dict(state.get("branches") or {})
@@ -320,6 +341,7 @@ class Agent:
             "saved": self.savings(),
             "persona": self.told,
             "learned": self.fresh,
+            "moved": self.moved,
         })
 
     async def answer(self, client, messages):
@@ -450,6 +472,25 @@ class Agent:
         yield self.note(f"маршрут: в рабочую {len(changed)} ({layers.names(changed)}), "
                         + into)
 
+    async def stage(self, client, question):
+        """Сдвинуть автомат задачи под новую реплику.
+
+        Отдельный вызов модели до ответа, как у карточки фактов и слоёв: этап
+        должен быть верен для того самого ответа, который сейчас уйдёт.
+        Зовётся только в режиме планирования (`task`): в режиме общения автомат
+        замирает, и реплика стоит на один запрос дешевле.
+        """
+        claim = await task.track(client, url=self.url, key=self.key,
+                                 model=self.settings["model"], state=self.task,
+                                 question=question, history=self.history,
+                                 usage=self.usage,
+                                 steps_max=int(self.settings["task_steps"]),
+                                 **self.quirks())
+        self.task, said, moved = task.apply(
+            self.task, claim, strict=bool(self.settings["task_strict"]))
+        self.moved = moved
+        yield self.note(said)
+
     def tell(self, card, profile):
         """Что из профиля ушло в запрос: метки анкеты и число замеченных записей.
 
@@ -482,6 +523,8 @@ class Agent:
                         if layered and self.settings["send_profile"] else []),
             "work": (self.worksheet()
                      if layered and self.settings["send_work"] else []),
+            "task": (task.sheet(self.task, frozen=not self.settings["task"])
+                     if self.settings["send_task"] else []),
             "note": [{"role": "system", "content": layers.NOTE}] if layered else [],
             "ballast": self.padding(),
             "memory": list(memory),
@@ -510,11 +553,15 @@ class Agent:
         Правило «память ведёшь не ты» (`layers.NOTE`) — сразу после окна:
         ниже прошлых ответов, которым оно противоречит, но выше анкеты и слоёв,
         чтобы не отодвигать их от вопроса. Замер — в `layers.NOTE`.
+
+        Состояние задачи — последним, вплотную к вопросу: слои отвечают на
+        вопрос «что известно», а оно — «что делать этим ходом», и проигрывать
+        справке из слоёв это указание не должно.
         """
         return [*pieces["role"], *pieces["summary"], *pieces["facts"],
                 *pieces["ballast"], *pieces["memory"], *pieces["note"],
                 *pieces["persona"], *pieces["profile"], *pieces["work"],
-                *pieces["question"]]
+                *pieces["task"], *pieces["question"]]
 
     async def ask(self, client, text):
         """Полный проход коробки. Отдаёт события: журнал, куски ответа, вердикт."""
@@ -523,6 +570,7 @@ class Agent:
         self.results = []
         self.fresh = {}
         self.told = {}
+        self.moved = None
         self.before = dict(self.usage)
 
         try:
@@ -558,6 +606,12 @@ class Agent:
             async for event in self.sort(client, question):
                 yield event
 
+        # Диспетчер после маршрутизатора: этап считается по той же реплике,
+        # но с уже пополненной рабочей памятью — она и есть данные задачи.
+        if self.settings["task"] and not tasks:
+            async for event in self.stage(client, question):
+                yield event
+
         # Запрос собирается по частям, а не одним списком: каждую часть коробка
         # взвешивает отдельно и показывает, из чего сложился расход токенов.
         if tasks:
@@ -571,6 +625,7 @@ class Agent:
                 "facts": [],
                 "profile": [],
                 "work": [],
+                "task": [],
                 "note": [],
                 "ballast": [],
                 "memory": [],
@@ -696,6 +751,9 @@ class Agent:
             "facts_tokens": tokens.of(self.factsheet()),
             "work": self.work,
             "work_tokens": tokens.of(self.worksheet()),
+            "task": self.task,
+            "task_tokens": tokens.of(self.tasksheet()),
+            "task_line": task.summary(self.task),
             "profile": self.profile,
             "profile_tokens": tokens.of(self.profilesheet()),
             "persona": self.persona,

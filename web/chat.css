@@ -212,6 +212,63 @@ body.app #week3 { flex: 1; min-height: 0; }
                      transition: stroke-dashoffset .3s; }
 
 /* ── Лента ── */
+/* ── День 13: состояние задачи ── */
+/* Полоса этапов — под шапкой во всю ширину ленты: где мы в задаче, видно
+   и не открывая ничего. Пройденные этапы залиты, текущий подписан, на паузе
+   полоса гаснет целиком. */
+#week3 .stageline { display: flex; align-items: center; gap: 12px;
+                    padding: 8px 16px; border-bottom: 1px solid var(--line); }
+#week3 .stageline[hidden] { display: none; }
+#week3 .track { flex: 1; min-width: 0; display: flex; gap: 6px; text-align: left; }
+/* Полоска этапа и его имя стоят друг над другом: имя читается, а ширина
+   сегмента остаётся долей пути, а не длиной слова. */
+#week3 .seg { flex: 1; min-width: 0; display: flex; flex-direction: column;
+              align-items: stretch; gap: 5px; font-size: 12.5px; color: var(--dim); }
+#week3 .seg b { font-weight: inherit; white-space: nowrap;
+                overflow: hidden; text-overflow: ellipsis; }
+#week3 .seg i { flex: none; width: 100%; height: 4px; border-radius: 999px;
+                background: var(--line); transition: background .2s; }
+#week3 .seg.past i { background: var(--accent); opacity: .45; }
+#week3 .seg.now i { background: var(--accent); }
+#week3 .seg.now { color: var(--accent); font-weight: 600; }
+#week3 .stageline.paused .seg i { background: var(--line); }
+#week3 .stageline.paused .seg.now i { background: var(--dim); }
+#week3 .stageline.paused .seg.now { color: var(--dim); }
+#week3 .at { flex: none; font-size: 12.5px; color: var(--dim);
+             font-variant-numeric: tabular-nums; }
+
+
+/* Раскрывашка под полосой: план, схема автомата и журнал переходов. */
+#week3 .stagebox { display: grid; grid-template-columns: minmax(0, 1.4fr) auto minmax(0, 1fr);
+                   gap: 18px; padding: 14px 16px; border-bottom: 1px solid var(--line);
+                   background: var(--side); }
+#week3 .stagebox[hidden] { display: none; }
+#week3 .stagebox h3 { margin: 0 0 6px; font-size: 12px; color: var(--dim);
+                      text-transform: uppercase; letter-spacing: .04em; }
+#week3 .stagebox .steps { margin: 0; padding-left: 20px; font-size: 13.5px; }
+#week3 .stagebox .steps li.past { color: var(--dim); text-decoration: line-through; }
+#week3 .stagebox .steps li.now { color: var(--accent); font-weight: 600; }
+#week3 .stagebox .expect { margin: 8px 0 0; font-size: 13px; color: var(--dim); }
+#week3 .stagebox .ops { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+#week3 .stagebox .moves ul { margin: 0; padding: 0; list-style: none;
+                             max-height: 118px; overflow-y: auto;
+                             font-size: 12.5px; color: var(--dim); }
+#week3 .stagebox .moves li { padding: 2px 0; }
+#week3 .stagebox .moves li.no { color: var(--bad); }
+
+/* Схема переходов: разрешённое из текущего этапа подсвечено, отклонённый
+   переход держится красным до следующего хода — видно, что именно нельзя. */
+#week3 .fsm { width: 260px; height: 70px; }
+#week3 .fsm .node rect { fill: var(--card); stroke: var(--line); }
+#week3 .fsm .node text { fill: var(--dim); font-size: 9px; text-anchor: middle; }
+#week3 .fsm .node.now rect { fill: var(--soft); stroke: var(--accent); }
+#week3 .fsm .node.now text { fill: var(--accent); font-weight: 600; }
+#week3 .fsm .edge { fill: none; stroke: var(--line); stroke-width: 1.6;
+                    marker-end: url(#tip); }
+#week3 .fsm .edge.can { stroke: var(--accent); }
+#week3 .fsm .node.no rect { stroke: var(--bad); }
+#week3 .fsm .node.no text { fill: var(--bad); }
+
 #week3 .feed { flex: 1; min-height: 0; overflow-y: auto; }
 #week3 .thread { max-width: 780px; margin: 0 auto; padding: 28px 24px 24px;
                  display: flex; flex-direction: column; gap: 22px; }
@@ -265,6 +322,14 @@ body.app #week3 { flex: 1; min-height: 0; }
 }
 #week3 .learned span { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2;
                        -webkit-box-orient: vertical; }
+/* День 13: плашка перехода — там же, над ответом. Отклонённый переход
+   показывается наравне с прошедшим, только цветом отказа. */
+#week3 .moved {
+  align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; max-width: 100%;
+  padding: 3px 10px; border-radius: 8px; background: var(--hover); color: var(--dim);
+  font-size: 12.5px; text-align: left;
+}
+#week3 .moved.no { color: var(--bad); }
 #week3 .bot .foot { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px;
                     font-size: 12.5px; color: var(--dim); }
 #week3 .bot .foot[hidden] { display: none; }
@@ -298,8 +363,26 @@ body.app #week3 { flex: 1; min-height: 0; }
   font: inherit; font-size: 15px; line-height: 1.55;
 }
 #week3 .box textarea::placeholder { color: var(--dim); }
-#week3 .bar { display: flex; align-items: center; justify-content: flex-end; gap: 12px;
-              margin-top: 8px; }
+#week3 .bar { display: flex; align-items: center; gap: 12px; margin-top: 8px; }
+/* День 13: режим чата слева в строке под полем ввода, «отправить» — справа.
+   В планировании кнопка подсвечена: видно, что реплика двигает автомат. */
+#week3 #modePicker { margin-right: auto; }
+#week3 .mode {
+  display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 8px 0 12px;
+  border: 1px solid var(--line); border-radius: 999px;
+  color: var(--dim); font-size: 13px; white-space: nowrap;
+}
+#week3 .mode:hover:not(:disabled) { background: var(--hover); }
+#week3 .mode.on { background: var(--soft); border-color: transparent; color: var(--accent); }
+/* Строка стоит у нижнего края окна, поэтому меню режима раскрывается вверх.
+   Описание режима — фраза, а не «контекст 1M», как у моделей: оно идёт
+   отдельной строкой под названием, а не рядом с ним. */
+#week3 .picker.up .menu { top: auto; bottom: calc(100% + 6px); }
+#week3 #modeMenu { min-width: 300px; }
+#week3 #modeMenu .opt { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; }
+#week3 #modeMenu .name { grid-area: 1 / 1; }
+#week3 #modeMenu .check { grid-area: 1 / 2; }
+#week3 #modeMenu .note { grid-area: 2 / 1 / 3 / 3; white-space: normal; line-height: 1.45; }
 #week3 .estimate { font-size: 12.5px; color: var(--dim); font-variant-numeric: tabular-nums; }
 #week3 .send { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center;
                background: var(--accent); color: var(--accent-ink); }
@@ -436,6 +519,9 @@ body.app #week3 { flex: 1; min-height: 0; }
   #week3 .top { padding: 8px 10px; gap: 6px; }
   #week3 .gauges { gap: 6px; }
   #week3 .thread { padding: 20px 16px; }
+  /* Схема автомата шире узкого экрана: колонки панели встают друг под друга. */
+  #week3 .stagebox { grid-template-columns: 1fr; gap: 14px; }
+  #week3 .stageline { padding: 8px 10px; }
   #week3 .composer { padding: 0 12px 8px; }
 }
 @media (max-width: 640px) {
