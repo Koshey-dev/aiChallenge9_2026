@@ -926,6 +926,22 @@
     return data;
   }
 
+  // Правка свода действует со следующей реплики — как смена модели и профиля.
+  // Это и есть то, чего по самой панели не видно: прошлое не перепроверяется,
+  // плашки и отклонённые варианты остаются как были.
+  const RULE_SAID = {
+    add: "добавлен — действует со следующей реплики; прошлые ответы "
+       + "не перепроверяются",
+    drop: "убран — со следующей реплики ассистент им не ограничен",
+    on: "включён — со следующей реплики снова в запросе и под аудитом",
+    off: "выключен — со следующей реплики не уходит ни в запрос, ни к аудитору",
+  };
+
+  function ruleNotice(act, text) {
+    const short = text.length > 40 ? text.slice(0, 40).trimEnd() + "…" : text;
+    notice(`Свод: «${short}» ${RULE_SAID[act]}.`);
+  }
+
   function addRule(event) {
     event.preventDefault();
     const text = ui.ruleText.value.trim();
@@ -937,6 +953,7 @@
           return;
         }
         ui.ruleText.value = "";
+        ruleNotice("add", text);
       })
       .catch(error => notice("инвариант не добавлен: " + error.message));
   }
@@ -1517,15 +1534,21 @@
     const button = event.target.closest("button");
     if (button && button.id === "closeVault") showVaultPanel(false);
     else if (button && button.dataset.ruleDrop !== undefined) {
-      ruleCall({ act: "drop", rule: button.closest(".rule").dataset.rule })
+      // Текст берётся до вызова: после него записи в своде уже нет.
+      const id = button.closest(".rule").dataset.rule;
+      const gone = ruleList().find(item => item.id === id) || { text: "" };
+      ruleCall({ act: "drop", rule: id })
+        .then(() => ruleNotice("drop", gone.text))
         .catch(error => notice("инвариант не убран: " + error.message));
     }
   });
   ui.vault.addEventListener("change", event => {
     const box = event.target;
     if (box.dataset.ruleOn === undefined) return;
-    ruleCall({ act: "toggle", rule: box.closest(".rule").dataset.rule,
-               active: box.checked })
+    const id = box.closest(".rule").dataset.rule;
+    const rule = ruleList().find(item => item.id === id) || { text: "" };
+    ruleCall({ act: "toggle", rule: id, active: box.checked })
+      .then(() => ruleNotice(box.checked ? "on" : "off", rule.text))
       .catch(error => notice("инвариант не переключился: " + error.message));
   });
 
