@@ -461,6 +461,8 @@ body.app #week3 { flex: 1; min-height: 0; }
   background: var(--card); color: var(--text); font: inherit; font-size: 13px;
 }
 #week3 .vaultadd textarea { resize: vertical; min-height: 54px; line-height: 1.45; }
+/* Пример к выбранному виду стоит вплотную к списку: он объясняет именно его. */
+#week3 .vaultadd .fine { margin: -4px 0 0; font-size: 12px; }
 #week3 .vaultadd .plain { align-self: flex-start; padding: 5px 12px; font-size: 13px;
                           border: 1px solid var(--line); border-radius: 8px; }
 #week3 .vaultadd .plain:hover { background: var(--hover); }

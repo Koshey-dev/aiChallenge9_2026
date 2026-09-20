@@ -26,6 +26,7 @@
     modeMenu: $("#modeMenu"),
     vaultButton: $("#vaultButton"), vaultCount: $("#vaultCount"), vault: $("#vault"),
     vaultAdd: $("#vaultAdd"), ruleKind: $("#ruleKind"), ruleText: $("#ruleText"),
+    kindAbout: $("#kindAbout"),
     ruleList: $("#ruleList"), vaultCost: $("#vaultCost"),
   };
 
@@ -937,6 +938,13 @@
     off: "выключен — со следующей реплики не уходит ни в запрос, ни к аудитору",
   };
 
+  // Пример к выбранному виду. Вид на проверку не влияет, поэтому и подпись
+  // здесь — про то, что в этот вид кладут, а не про то, что он делает.
+  function showKind() {
+    const kind = kinds.find(item => item.id === ui.ruleKind.value) || kinds[0];
+    ui.kindAbout.textContent = kind ? kind.about : "";
+  }
+
   function ruleNotice(act, text) {
     const short = text.length > 40 ? text.slice(0, 40).trimEnd() + "…" : text;
     notice(`Свод: «${short}» ${RULE_SAID[act]}.`);
@@ -1544,6 +1552,7 @@
   });
   ui.vault.addEventListener("change", event => {
     const box = event.target;
+    if (box === ui.ruleKind) { showKind(); return; }
     if (box.dataset.ruleOn === undefined) return;
     const id = box.closest(".rule").dataset.rule;
     const rule = ruleList().find(item => item.id === id) || { text: "" };
@@ -1611,9 +1620,11 @@
     profiles = config.profiles;
     chats = await api("GET", "/api/chats");
 
+    // В списке — только название вида: пример к нему стоит строкой ниже.
+    // Вместе они не влезают в закрытый `select` и обрываются на полуслове.
     ui.ruleKind.innerHTML = kinds.map(kind =>
-      `<option value="${kind.id}">${escapeHtml(kind.title)} — ${escapeHtml(kind.about)}</option>`)
-      .join("");
+      `<option value="${kind.id}">${escapeHtml(kind.title)}</option>`).join("");
+    showKind();
     ui.app.classList.toggle("folded", localStorage.getItem(FOLD) === "1");
     showDrawer(localStorage.getItem(DRAWER) === "1" && !narrow.matches);
     showVaultPanel(localStorage.getItem(VAULT) === "1" && !narrow.matches
