@@ -14,7 +14,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
 import store
-from agent import Agent, AgentError, blocks, persona, task
+from agent import Agent, AgentError, blocks, persona, rules, task
 from models import MAX_TOKENS, MODELS, MODEL_TASKS, RUNS_PER_MODEL, SCALES, URLS, cost_of
 
 load_dotenv()
@@ -125,7 +125,15 @@ FIELDS = {field["key"]: field for block in blocks(CHAT_DEFAULT) for field in blo
 # Текущий день сверху. Прошлые остаются — день 13 стоит на рабочей памяти дня 11
 # и отвечает профилю дня 12, — но свёрнутыми: их ручки нужны реже.
 CHAT_BLOCKS = [{
+    "title": "День 14 · свод инвариантов",
+    "note": "Ограничения, которые ассистент не имеет права нарушать. Свод ведёт "
+            "человек, модель в него не пишет. Три галочки — три уровня строгости: "
+            "свод в запросе, свод под аудитом, свод с переписыванием ответа. "
+            "Сами инварианты — в панели «Свод» в шапке чата.",
+    "fields": [FIELDS["send_rules"], FIELDS["rules_guard"], FIELDS["rules_retry"]],
+}, {
     "title": "День 13 · состояние задачи",
+    "folded": True,
     "note": "Автомат из четырёх этапов: планирование, выполнение, проверка, готово. "
             "Этап предлагает отдельный вызов модели до ответа, а разрешает переход "
             "код — по таблице соседних этапов. Полоса этапов и кнопки — в шапке чата.",
@@ -332,6 +340,15 @@ class MemoryIn(BaseModel):
 class TaskIn(BaseModel):
     session: str
     act: str = ""
+
+
+class RuleIn(BaseModel):
+    session: str
+    act: str = ""
+    rule: str = ""
+    kind: str = ""
+    text: str = ""
+    active: bool = True
 
 
 class NewChatIn(BaseModel):
@@ -821,6 +838,10 @@ def agent_for(session):
     row = store.profile(owner)
     agent.profile = store.load_profile(owner)
     agent.persona = {"title": row["title"], **row["card"]} if row else {}
+    # Свод поднимается на каждый запрос по той же причине, что и профиль: он
+    # лежит в своей таблице и не едет в состоянии диалога, а значит живой агент
+    # в словаре мог остаться с прежним.
+    agent.rules = rules.clean(store.load_rules(session))
     entry = store.chat(session)
     if entry:
         tune(agent, entry)
@@ -968,13 +989,37 @@ def agent_move(body: MemoryIn):
     """Перенос записи между слоями руками; пустой `to` — удаление.
 
     Раскладывает по слоям модель, а значит ошибается: разложить руками должно
-    быть можно, иначе неверно понятый факт останется в слое навсегда.
+    быть можно, иначе неверно понятый факт останется в слое навсегда. Отдельный
+    получатель — `rules`: запись рабочей памяти поднимается в инвариант.
     """
     agent = agent_for(body.session)
     moved = agent.move(body.layer, body.key, body.to)
     store.save(body.session, agent.state())
     store.save_profile(agent.profile, profile_of(body.session))
+    if body.to == "rules":
+        store.save_rules(body.session, agent.rules)
     return {"moved": moved, "metrics": agent.report()}
+
+
+@app.post("/api/agent/rules")
+def agent_rules(body: RuleIn):
+    """Свод инвариантов: добавить, убрать, выключить.
+
+    Всё — руками. Ручки «сохранить инвариант из диалога» здесь нет намеренно:
+    инвариант, который модель заводит себе сама, снимается тем же разговором,
+    в котором она его нарушит.
+    """
+    agent = agent_for(body.session)
+    if body.act == "add":
+        done = bool(agent.bind(body.kind, body.text))
+    elif body.act == "drop":
+        done = agent.unbind(body.rule)
+    elif body.act == "toggle":
+        done = agent.toggle(body.rule, body.active)
+    else:
+        raise HTTPException(400, "неизвестное действие")
+    store.save_rules(body.session, agent.rules)
+    return {"done": done, "metrics": agent.report()}
 
 
 @app.post("/api/agent/history")
@@ -1013,6 +1058,9 @@ def chat_config():
         # не о том автомате, который работает.
         "stages": task.STAGES,
         "modes": task.MODES,
+        # Виды инвариантов — оттуда же, откуда их берёт промпт свода: панель
+        # и модель должны называть их одинаково.
+        "kinds": rules.KINDS,
         "persona": {"choices": persona.CHOICES, "texts": persona.TEXTS},
         "profiles": profile_list(),
     }

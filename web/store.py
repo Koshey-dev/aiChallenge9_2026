@@ -52,6 +52,18 @@ CREATE TABLE IF NOT EXISTS profiles (
 )
 """
 
+# Свод инвариантов (день 14) — своя таблица, а не колонка чата и не поле
+# состояния диалога. Причина та же, что у профиля: строку диалога «Забыть
+# диалог» удаляет целиком, а инварианты забытый разговор переживают — тем они
+# и отличаются от рабочей памяти, которую модель переписывает каждую реплику.
+RULES = """
+CREATE TABLE IF NOT EXISTS rules (
+    chat    TEXT PRIMARY KEY,
+    data    TEXT NOT NULL,
+    updated TEXT NOT NULL
+)
+"""
+
 CHATS = """
 CREATE TABLE IF NOT EXISTS chats (
     id      TEXT PRIMARY KEY,
@@ -82,6 +94,7 @@ def connect():
     db = sqlite3.connect(FILE, timeout=5)
     db.execute(SCHEMA)
     db.execute(PROFILES)
+    db.execute(RULES)
     db.execute(CHATS)
     # База могла остаться от версии без журнала расхода — доводим её на месте.
     known = {row[1] for row in db.execute("PRAGMA table_info(dialogs)")}
@@ -163,6 +176,22 @@ def save_profile(data, profile=PROFILE):
 def forget_profile(profile=PROFILE):
     """Забыть, что ассистент узнал сам. Анкету заполнял пользователь — она остаётся."""
     save_profile({}, profile)
+
+
+def load_rules(chat_id):
+    """Свод чата. Пустой список, если его ещё не заводили."""
+    with closing(connect()) as db:
+        row = db.execute("SELECT data FROM rules WHERE chat = ?", (chat_id,)).fetchone()
+    return json.loads(row[0]) if row else []
+
+
+def save_rules(chat_id, items):
+    with closing(connect()) as db, db:
+        db.execute(
+            "INSERT INTO rules (chat, data, updated) VALUES (?, ?, datetime('now')) "
+            "ON CONFLICT(chat) DO UPDATE SET data = excluded.data, "
+            "updated = excluded.updated",
+            (chat_id, json.dumps(items, ensure_ascii=False)))
 
 
 PROFILE_FIELDS = ("session", "title", "card", "data", "updated")
@@ -293,8 +322,13 @@ def after_turn(chat_id, *, title, turns, context, cost):
 
 
 def drop_chat(chat_id):
-    """Удалить чат вместе с его диалогом. Профиль не его и остаётся."""
+    """Удалить чат вместе с его диалогом и сводом. Профиль не его и остаётся.
+
+    Свод переживает забытый диалог, но не удалённый чат: он свод этого чата,
+    и без чата ему некуда вернуться.
+    """
     with closing(connect()) as db, db:
         db.execute("DELETE FROM chats WHERE id = ?", (chat_id,))
         db.execute("DELETE FROM dialogs WHERE session = ?", (chat_id,))
+        db.execute("DELETE FROM rules WHERE chat = ?", (chat_id,))
 

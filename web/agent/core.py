@@ -8,7 +8,7 @@
 import asyncio
 import time
 
-from . import crew, facts, judge, layers, persona, policy, recap, task, tokens
+from . import crew, facts, judge, layers, persona, policy, recap, rules, task, tokens
 from .llm import AgentError, new_usage, stream_chat
 from .settings import DEFAULTS, coerce
 
@@ -61,6 +61,14 @@ class Agent:
         # говорит, что о задаче известно, автомат — на каком она ходу.
         # Живёт столько же, сколько рабочая память: до «Новой задачи».
         self.task = task.blank()
+        # Свод инвариантов: ограничения, которые ответ нарушать не имеет права.
+        # Как и профиль, лежит в своей таблице и в состояние диалога не идёт —
+        # забытый диалог свод не отменяет.
+        self.rules = []
+        # Что аудитор нашёл в последнем ответе и каким он был до переписывания.
+        self.broken = []
+        self.clash = []
+        self.rejected = ""
         # Анкета профиля и его название: их заполняет пользователь, в запрос
         # они уходят указанием. Лежат вместе с профилем, а не в диалоге.
         self.persona = {}
@@ -141,6 +149,10 @@ class Agent:
         планирования. Счётчики показывают вес состояния, а не режим."""
         return task.sheet(self.task)
 
+    def rulesheet(self):
+        """Свод как одно системное сообщение. Пустой места не занимает."""
+        return rules.sheet(self.rules)
+
     def newtask(self):
         """Новая задача: рабочая память стирается, профиль и диалог остаются.
 
@@ -165,6 +177,11 @@ class Agent:
         Маршрутизатор решает, что куда положить, но решает моделью — значит
         ошибается. Разложить руками должно быть можно, иначе неверно понятый
         факт останется в слое навсегда.
+
+        Отдельный получатель — свод: запись рабочей памяти поднимается в
+        инвариант. Маршрутизатор уже вытащил «принятые решения» из диалога,
+        и повысить решение до ограничения остаётся человеку — модель этого
+        сделать не может по устройству свода.
         """
         source = self.work if layer == "work" else self.profile
         if name not in source:
@@ -174,7 +191,35 @@ class Agent:
             self.work[name] = value
         elif to == "profile":
             self.profile[name] = value
+        elif to == "rules":
+            self.rules, rule = rules.add(self.rules, "decision", f"{name}: {value}")
+            if rule is None:
+                # Свод полон: запись возвращается на место, иначе она пропала бы
+                # молча — и из памяти, и мимо свода.
+                source[name] = value
+                return False
         return True
+
+    def bind(self, kind, text):
+        """Новый инвариант. Заводит его человек: модель в свод не пишет, иначе
+        ограничение снимал бы тот же разговор, который его нарушает."""
+        self.rules, rule = rules.add(self.rules, kind, text)
+        return rule
+
+    def unbind(self, rule_id):
+        """Убрать инвариант из свода. Это тоже делает только человек."""
+        before = len(self.rules)
+        self.rules = [item for item in self.rules if item["id"] != rule_id]
+        return len(self.rules) != before
+
+    def toggle(self, rule_id, on):
+        """Выключить инвариант, не убирая: выключенный остаётся в панели, но
+        ни в запрос, ни к аудитору не идёт. Так виден вклад одной записи."""
+        for item in self.rules:
+            if item["id"] == rule_id:
+                item["active"] = bool(on)
+                return True
+        return False
 
     def snapshot(self):
         """Линия диалога целиком: история и всё, что из неё выведено.
@@ -342,6 +387,12 @@ class Agent:
             "persona": self.told,
             "learned": self.fresh,
             "moved": self.moved,
+            # Отклонённый ответ едет в журнал расхода вместе со строкой реплики:
+            # иначе после перезагрузки страницы от нарушения осталась бы только
+            # плашка, а сравнить было бы не с чем.
+            "broken": self.broken,
+            "clash": self.clash,
+            "rejected": self.rejected,
         })
 
     async def answer(self, client, messages):
@@ -525,6 +576,7 @@ class Agent:
                      if layered and self.settings["send_work"] else []),
             "task": (task.sheet(self.task, frozen=not self.settings["task"])
                      if self.settings["send_task"] else []),
+            "rules": self.rulesheet() if self.settings["send_rules"] else [],
             "note": [{"role": "system", "content": layers.NOTE}] if layered else [],
             "ballast": self.padding(),
             "memory": list(memory),
@@ -554,14 +606,19 @@ class Agent:
         ниже прошлых ответов, которым оно противоречит, но выше анкеты и слоёв,
         чтобы не отодвигать их от вопроса. Замер — в `layers.NOTE`.
 
-        Состояние задачи — последним, вплотную к вопросу: слои отвечают на
+        Состояние задачи — предпоследним, у самого вопроса: слои отвечают на
         вопрос «что известно», а оно — «что делать этим ходом», и проигрывать
         справке из слоёв это указание не должно.
+
+        Свод — последним, ниже всего остального. Он единственная часть запроса,
+        которая сильнее просьбы пользователя, а значит не должен проигрывать
+        ни справке слоёв, ни указанию этапа, ни пожеланиям анкеты: «покороче»
+        и «только PostgreSQL» — требования разного веса.
         """
         return [*pieces["role"], *pieces["summary"], *pieces["facts"],
                 *pieces["ballast"], *pieces["memory"], *pieces["note"],
                 *pieces["persona"], *pieces["profile"], *pieces["work"],
-                *pieces["task"], *pieces["question"]]
+                *pieces["task"], *pieces["rules"], *pieces["question"]]
 
     async def ask(self, client, text):
         """Полный проход коробки. Отдаёт события: журнал, куски ответа, вердикт."""
@@ -571,6 +628,9 @@ class Agent:
         self.fresh = {}
         self.told = {}
         self.moved = None
+        self.broken = []
+        self.clash = []
+        self.rejected = ""
         self.before = dict(self.usage)
 
         try:
@@ -626,6 +686,7 @@ class Agent:
                 "profile": [],
                 "work": [],
                 "task": [],
+                "rules": [],
                 "note": [],
                 "ballast": [],
                 "memory": [],
@@ -661,8 +722,9 @@ class Agent:
                 return
 
         yield {"t": "budget", **budget}
+        sent = self.arrange(pieces)
         raw = []
-        async for piece in self.answer(client, self.arrange(pieces)):
+        async for piece in self.answer(client, sent):
             raw.append(piece)
             yield {"t": "delta", "text": piece}
 
@@ -673,6 +735,38 @@ class Agent:
             yield {"t": "replace", "text": clean}
         else:
             yield self.note("политика выхода: без правок")
+
+        # Свод инвариантов. Аудитор судит о готовом ответе, а решает код —
+        # ровно как с заявкой диспетчера в дне 13. Нашёл нарушение и
+        # переписывание разрешено — ответ уходит на второй проход, а
+        # отклонённый остаётся рядом: по нему и видно, что коробка не пустила.
+        # Проверяется уже очищенный политикой текст: судить надо о том, что
+        # увидит пользователь, а не о том, что пришло от провайдера.
+        if self.settings["rules_guard"] and clean and rules.active(self.rules):
+            self.broken, self.clash = await rules.audit(
+                client, url=self.url, key=self.key, model=self.settings["model"],
+                items=self.rules, question=question, answer=clean,
+                usage=self.usage, **self.quirks())
+            yield self.note("аудит свода: " + rules.verdict(self.broken, self.clash))
+            if self.broken and self.settings["rules_retry"]:
+                self.rejected = clean
+                again = []
+                async for piece in self.answer(
+                        client, [*sent, {"role": "assistant", "content": clean},
+                                 rules.fix(self.rules, self.broken)]):
+                    again.append(piece)
+                fixed, _ = policy.clean_output("".join(again).strip(), self.settings,
+                                               self.settings["role"])
+                if fixed:
+                    clean = fixed
+                    yield self.note("свод: ответ переписан")
+                    yield {"t": "replace", "text": clean}
+                else:
+                    # Пустой ответ вместо нарушившего — это не соблюдение
+                    # инварианта, а потеря реплики.
+                    self.rejected = ""
+                    yield self.note("свод: переписанный ответ пришёл пустым — "
+                                    "оставляю прежний")
 
         # История пополняется только после успешного ответа: оборванный запрос
         # не должен оставлять в памяти вопрос без ответа.
@@ -754,6 +848,8 @@ class Agent:
             "task": self.task,
             "task_tokens": tokens.of(self.tasksheet()),
             "task_line": task.summary(self.task),
+            "rules": self.rules,
+            "rules_tokens": tokens.of(self.rulesheet()),
             "profile": self.profile,
             "profile_tokens": tokens.of(self.profilesheet()),
             "persona": self.persona,

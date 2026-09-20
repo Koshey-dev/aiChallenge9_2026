@@ -4,6 +4,7 @@
 (() => {
   const KEY = "chat-current";   // открытый чат
   const DRAWER = "chat-drawer"; // панель памяти открыта
+  const VAULT = "chat-vault";   // панель свода открыта
   const FOLD = "chat-fold";     // панель чатов свёрнута
   const narrow = matchMedia("(max-width: 900px)");
 
@@ -23,6 +24,9 @@
     stageStep: $("#stageStep"), stagebox: $("#stagebox"),
     modeButton: $("#modeButton"), modeName: $("#modeName"),
     modeMenu: $("#modeMenu"),
+    vaultButton: $("#vaultButton"), vaultCount: $("#vaultCount"), vault: $("#vault"),
+    vaultAdd: $("#vaultAdd"), ruleKind: $("#ruleKind"), ruleText: $("#ruleText"),
+    ruleList: $("#ruleList"), vaultCost: $("#vaultCost"),
   };
 
   let order = [];        // модели в порядке меню, сгруппированы по провайдеру
@@ -35,6 +39,7 @@
   let persona = { choices: [], texts: [] };  // поля анкеты с сервера
   let stages = [];       // этапы автомата с сервера, по порядку
   let modes = [];        // режимы чата с сервера: планирование и общение
+  let kinds = [];        // виды инвариантов с сервера
   let profiles = [];     // профили, «Основной» первым
   let editing = "";      // профиль, открытый в окне «Профили»
   let dirty = false;     // в анкете есть несохранённые правки
@@ -242,6 +247,7 @@
     renderList();
     renderHeader();
     showMemory();
+    showVault();
     renderTask();
     ui.thread.textContent = "";
 
@@ -254,6 +260,7 @@
       ui.thread.append(...live.get(item.id));
     }
     showMemory();
+    showVault();
     renderTask();
     renderHeader();
     toBottom();
@@ -336,12 +343,13 @@
       const answer = (messages[i + 1] || {}).content || "";
       const row = ledger.find(item => item.turn === i / 2 + 1);
       turn.variants = [{ persona: told(row), text: answer },
-                       ...(variants[i / 2 + 1] || [])];
+                       ...rejected(row), ...(variants[i / 2 + 1] || [])];
       render(turn, answer);
       last = turn;
       if (!row) { turn.trace.hidden = true; continue; }
       learned(turn, row);
       stepped(turn, row);
+      broke(turn, row);
       turn.gist.textContent = `${number(row.tokens_in)} ток. · ${money(row.cost)}`;
       line(turn, `вход ${row.tokens_in} ток. · выход ${row.tokens_out} ток. · `
                + `история ~${row.history} ток. · оценка была ~${row.estimated}`, "spend");
@@ -388,6 +396,32 @@
     turn.text.before(plaque);
   }
 
+  // Ответ, который свод не пропустил, — вторым вариантом рядом с переписанным.
+  // Разница между ними и есть день 14: видно, что модель хотела ответить.
+  const rejected = row => (row && row.rejected
+    ? [{ persona: told(row), text: row.rejected, rejected: true }] : []);
+
+  // Плашка свода — над ответом, рядом с плашкой перехода. Нарушил сам ответ —
+  // красная; спорит с инвариантом сама просьба, а ответ отказал — обычная:
+  // это не сбой, а ровно та работа, ради которой свод заводится.
+  function broke(turn, row) {
+    const broken = row.broken || [];
+    const clash = row.clash || [];
+    if (!broken.length && !clash.length) return;
+    const plaque = document.createElement("button");
+    plaque.className = "guarded" + (broken.length ? " no" : "");
+    plaque.title = "Показать свод";
+    plaque.innerHTML = "<svg class='i small' viewBox='0 0 24 24'>"
+      + "<rect x='4' y='10' width='16' height='11' rx='2'/>"
+      + "<path d='M8 10V7a4 4 0 0 1 8 0v3'/></svg><span></span>";
+    $("span", plaque).textContent = broken.length
+      ? `Инвариант нарушен: ${broken.map(hit => hit.text).join("; ")}`
+        + (row.rejected ? " — ответ переписан" : "")
+      : `Запрос против свода: ${clash.map(hit => hit.text).join("; ")}`;
+    plaque.addEventListener("click", () => showVaultPanel(true));
+    turn.text.before(plaque);
+  }
+
   // Метки под ответом: чей профиль и что из него ушло в запрос.
   function cues(persona) {
     const chips = persona.off ? ["анкета не в запросе"]
@@ -415,6 +449,12 @@
       back.addEventListener("click", () => show(turn, turn.index - 1));
       next.addEventListener("click", () => show(turn, turn.index + 1));
       turn.foot.append(pager);
+    }
+    if ((turn.variants[turn.index] || {}).rejected) {
+      const chip = document.createElement("span");
+      chip.className = "chip no";
+      chip.textContent = "отклонён сводом";
+      turn.foot.append(chip);
     }
     if (persona && (prefs().show_marks || many)) {
       const marks = document.createElement("span");
@@ -525,6 +565,7 @@
     if (b.profile) parts.push(`профиль ${b.profile}`);
     if (b.work) parts.push(`задача ${b.work}`);
     if (b.task) parts.push(`состояние ${b.task}`);
+    if (b.rules) parts.push(`свод ${b.rules}`);
     parts.push(`вопрос ${b.question}`);
     return `запрос ~${b.predicted} ток. (${parts.join(" · ")}) + ${b.reply_max} на ответ`
       + (b.limit ? ` при пределе ${number(b.limit)}` : "");
@@ -583,9 +624,10 @@
           // Отказ политики строку расхода не пишет: последняя тогда — от
           // прошлой реплики, и чужие метки сюда не нужны.
           if (row && event.turns === before + 1 && row.turn === event.turns) {
-            turn.variants = [{ persona: told(row), text: turn.raw }];
+            turn.variants = [{ persona: told(row), text: turn.raw }, ...rejected(row)];
             learned(turn, row);
             stepped(turn, row);
+            broke(turn, row);
           }
           if (currentId === item.id) {
             metrics = event;
@@ -594,6 +636,7 @@
           patch(item.id, event.chat);
           if (currentId === item.id) {
             showMemory();
+            showVault();
             renderTask();
             const closed = row && row.moved && row.moved.ok && row.moved.to === "done";
             settleMode(closed).catch(() => {});
@@ -770,7 +813,14 @@
                        + "<span class='ops'></span></div><div class='value'></div>";
       $(".name", record).textContent = name;
       $(".value", record).textContent = value;
-      [["→", other, hint], ["×", "", "Забыть запись"]].forEach(([sign, to, title]) => {
+      // Запись рабочей памяти поднимается в свод отсюда: маршрутизатор уже
+      // вытащил из диалога «принятые решения», а повысить решение до
+      // ограничения может только человек — в свод модель не пишет.
+      const ops = kind === "work"
+        ? [["→", other, hint], ["⇧", "rules", "Сделать инвариантом"],
+           ["×", "", "Забыть запись"]]
+        : [["→", other, hint], ["×", "", "Забыть запись"]];
+      ops.forEach(([sign, to, title]) => {
         const button = document.createElement("button");
         button.textContent = sign;
         button.title = title;
@@ -801,6 +851,7 @@
     ui.drawer.hidden = !on;
     ui.memoryButton.setAttribute("aria-expanded", String(on));
     localStorage.setItem(DRAWER, on ? "1" : "");
+    if (on) showVaultPanel(false);
   }
 
   // Ответы сервера на ручки памяти одинаковые: свежие счётчики агента.
@@ -808,6 +859,7 @@
     const data = await post(url, { session: currentId, ...payload }).then(r => r.json());
     metrics = data.metrics;
     showMemory();
+    showVault();
     renderTask();
     return data;
   }
@@ -823,6 +875,70 @@
     const data = await memoryCall("/api/agent/forget-profile", {});
     notice(`Профиль «${profileOf(here()).title}»: забыто записей ${data.gone} — во всех `
          + "его чатах. Анкета на месте.");
+  }
+
+  // ── Свод инвариантов ──────────────────────────────────────────────
+  const kindTitle = id => (kinds.find(kind => kind.id === id) || {}).title || id;
+  const ruleList = () => (metrics || {}).rules || [];
+
+  // Свод рисуется из счётчиков агента, как и слои памяти: сервер отдаёт его
+  // целиком после каждой правки, и второй копии в браузере нет.
+  function showVault() {
+    const items = ruleList();
+    const live = items.filter(item => item.active);
+    ui.vaultCount.textContent = live.length;
+    ui.vaultCost.textContent = items.length
+      ? `инвариантов ${items.length}` + (live.length < items.length
+          ? ` · в запрос уходит ${live.length}` : "")
+        + ` · ~${(metrics || {}).rules_tokens || 0} ток.`
+      : "свод пуст";
+
+    ui.ruleList.textContent = "";
+    items.forEach(item => {
+      const row = document.createElement("div");
+      row.className = "rule" + (item.active ? "" : " off");
+      row.dataset.rule = item.id;
+      row.innerHTML = "<div class='rhead'><span class='kind'></span>"
+        + "<label class='toggle'><input type='checkbox' data-rule-on>в запрос</label>"
+        + "<button data-rule-drop title='Убрать инвариант' "
+        + "aria-label='Убрать инвариант'>×</button></div><div class='text'></div>";
+      $(".kind", row).textContent = kindTitle(item.kind);
+      $(".text", row).textContent = item.text;
+      $("[data-rule-on]", row).checked = item.active;
+      ui.ruleList.append(row);
+    });
+  }
+
+  function showVaultPanel(on) {
+    ui.vault.hidden = !on;
+    ui.vaultButton.setAttribute("aria-expanded", String(on));
+    localStorage.setItem(VAULT, on ? "1" : "");
+    // Две панели по 340 пикселей не влезают рядом с лентой на узком экране,
+    // и держать их обе открытыми незачем: свод и память читают по очереди.
+    if (on) showDrawer(false);
+  }
+
+  async function ruleCall(payload) {
+    const data = await post("/api/agent/rules", { session: currentId, ...payload })
+      .then(r => r.json());
+    metrics = data.metrics;
+    showVault();
+    return data;
+  }
+
+  function addRule(event) {
+    event.preventDefault();
+    const text = ui.ruleText.value.trim();
+    if (!text || !currentId) return;
+    ruleCall({ act: "add", kind: ui.ruleKind.value, text })
+      .then(data => {
+        if (!data.done) {
+          notice("инвариант не добавлен: в своде уже максимум записей");
+          return;
+        }
+        ui.ruleText.value = "";
+      })
+      .catch(error => notice("инвариант не добавлен: " + error.message));
   }
 
   // ── Состояние задачи ──────────────────────────────────────────────
@@ -992,6 +1108,7 @@
     if (currentId !== item.id) return;
     metrics = data.metrics;
     showMemory();
+    showVault();
     renderTask();
   }
 
@@ -1394,6 +1511,24 @@
     if (key) savePrefs({ [key]: event.target.checked });
   });
 
+  ui.vaultButton.addEventListener("click", () => showVaultPanel(ui.vault.hidden));
+  ui.vaultAdd.addEventListener("submit", addRule);
+  ui.vault.addEventListener("click", event => {
+    const button = event.target.closest("button");
+    if (button && button.id === "closeVault") showVaultPanel(false);
+    else if (button && button.dataset.ruleDrop !== undefined) {
+      ruleCall({ act: "drop", rule: button.closest(".rule").dataset.rule })
+        .catch(error => notice("инвариант не убран: " + error.message));
+    }
+  });
+  ui.vault.addEventListener("change", event => {
+    const box = event.target;
+    if (box.dataset.ruleOn === undefined) return;
+    ruleCall({ act: "toggle", rule: box.closest(".rule").dataset.rule,
+               active: box.checked })
+      .catch(error => notice("инвариант не переключился: " + error.message));
+  });
+
   ui.prompt.addEventListener("input", () => { fit(); count(); });
   ui.prompt.addEventListener("keydown", event => {
     if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
@@ -1435,6 +1570,7 @@
     closeRetell();
     closePops();
     showStagebox(false);
+    showVaultPanel(false);
     ui.prefs.hidden = true;
     ui.people.hidden = true;
   });
@@ -1448,11 +1584,17 @@
     persona = config.persona;
     stages = config.stages;
     modes = config.modes;
+    kinds = config.kinds;
     profiles = config.profiles;
     chats = await api("GET", "/api/chats");
 
+    ui.ruleKind.innerHTML = kinds.map(kind =>
+      `<option value="${kind.id}">${escapeHtml(kind.title)} — ${escapeHtml(kind.about)}</option>`)
+      .join("");
     ui.app.classList.toggle("folded", localStorage.getItem(FOLD) === "1");
     showDrawer(localStorage.getItem(DRAWER) === "1" && !narrow.matches);
+    showVaultPanel(localStorage.getItem(VAULT) === "1" && !narrow.matches
+                   && localStorage.getItem(DRAWER) !== "1");
     count();
     const saved = chats.find(item => item.id === localStorage.getItem(KEY));
     if (saved || chats.length) await open(saved || chats[0]);

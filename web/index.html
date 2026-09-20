@@ -424,6 +424,9 @@
         <span class="ring" id="ring"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="8"/><circle class="fill" cx="10" cy="10" r="8"/></svg><span id="ringText">0%</span></span>
         <span class="cost" id="cost" title="Сколько стоил этот чат">$0.0000</span>
         <button class="pill" id="memoryButton" aria-expanded="false"><svg class="i small" viewBox="0 0 24 24"><path d="M12 3 2 8l10 5 10-5-10-5z"/><path d="m2 16 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg><span class="word">Память</span> <b id="memoryCount">0</b></button>
+        <!-- День 14: свод инвариантов. Рядом с памятью, но это не слой памяти:
+             слой пишет модель, свод — только человек. -->
+        <button class="pill" id="vaultButton" aria-expanded="false" title="Ограничения, которые ассистент не имеет права нарушать"><svg class="i small" viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg><span class="word">Свод</span> <b id="vaultCount">0</b></button>
       </div>
     </header>
 
@@ -543,6 +546,30 @@
       <details class="stash"><summary></summary><div class="records"></div></details>
       <button class="wipe" data-act="forget">Забыть профиль</button>
     </section>
+  </aside>
+
+  <!-- День 14: свод инвариантов. Записи заводит только человек — формой
+       сверху или кнопкой «в свод» у записи рабочей памяти. Выключенный
+       инвариант остаётся в панели, но из запроса и из аудита уходит:
+       так виден вклад одной записи. -->
+  <aside class="drawer vault" id="vault" hidden>
+    <header>
+      <b>Свод</b>
+      <button class="icon" id="closeVault" title="Закрыть" aria-label="Закрыть свод"><svg class="i" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+    </header>
+    <p class="lead">Инварианты — ограничения, которые ассистент не имеет права
+      нарушать. Их заводит человек: модель в свод не пишет, и снять инвариант
+      разговором нельзя. Свод переживает «Новую задачу» и забытый диалог.</p>
+
+    <form class="vaultadd" id="vaultAdd">
+      <select id="ruleKind" aria-label="Вид инварианта"></select>
+      <textarea id="ruleText" rows="2" maxlength="300" aria-label="Текст инварианта"
+                placeholder="Например: хранилище — только PostgreSQL, другие базы не предлагать"></textarea>
+      <button class="plain" type="submit">Добавить инвариант</button>
+    </form>
+
+    <div class="count" id="vaultCost">свод пуст</div>
+    <div class="rules" id="ruleList"></div>
   </aside>
 </div>
 
