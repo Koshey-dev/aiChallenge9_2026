@@ -1087,9 +1087,15 @@
     (state.log || []).slice().reverse().forEach(entry => {
       const row = document.createElement("li");
       row.className = entry.ok ? "" : "no";
-      const where = entry.from === entry.to ? entry.why
-        : `${stageTitle(entry.from)} → ${stageTitle(entry.to)}`;
-      row.textContent = `${where}${entry.ok ? "" : " — отклонён: " + entry.why}`
+      const moved = entry.from !== entry.to;
+      const where = moved ? `${stageTitle(entry.from)} → ${stageTitle(entry.to)}`
+        : entry.why;
+      // У прошедшего перехода причина есть, только когда его пропустили со
+      // снятой строгостью или снятыми воротами. Без неё в журнале не отличить
+      // переход, который заслужили, от того, который просто некому было держать.
+      row.textContent = where
+        + (entry.ok ? (moved && entry.why ? ` (${entry.why})` : "")
+                    : " — отклонён: " + entry.why)
         + ` · ${entry.by}`;
       moves.append(row);
     });

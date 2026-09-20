@@ -150,7 +150,7 @@ class Agent:
     def tasksheet(self):
         """Состояние задачи как одно системное сообщение — как в режиме
         планирования. Счётчики показывают вес состояния, а не режим."""
-        return task.sheet(self.task)
+        return task.sheet(self.task, gates=bool(self.settings["task_gates"]))
 
     def rulesheet(self):
         """Свод как одно системное сообщение. Пустой места не занимает."""
@@ -542,6 +542,7 @@ class Agent:
                                  question=question, history=self.history,
                                  usage=self.usage,
                                  steps_max=int(self.settings["task_steps"]),
+                                 gates=bool(self.settings["task_gates"]),
                                  **self.quirks())
         self.task, said, moved = task.apply(
             self.task, claim, strict=bool(self.settings["task_strict"]),
@@ -581,7 +582,8 @@ class Agent:
                         if layered and self.settings["send_profile"] else []),
             "work": (self.worksheet()
                      if layered and self.settings["send_work"] else []),
-            "task": (task.sheet(self.task, frozen=not self.settings["task"])
+            "task": (task.sheet(self.task, frozen=not self.settings["task"],
+                              gates=bool(self.settings["task_gates"]))
                      if self.settings["send_task"] else []),
             "rules": self.rulesheet() if self.settings["send_rules"] else [],
             "note": [{"role": "system", "content": layers.NOTE}] if layered else [],
@@ -890,7 +892,7 @@ class Agent:
             "task_line": task.summary(self.task),
             # Закрытые ворота считает коробка, а не браузер: условие перехода
             # должно быть одно и то же и в запросе, и на схеме автомата.
-            "task_shut": task.shut(self.task),
+            "task_shut": task.shut(self.task, bool(self.settings["task_gates"])),
             "rules": self.rules,
             "rules_tokens": tokens.of(self.rulesheet()),
             "profile": self.profile,
