@@ -1,5 +1,7 @@
-// Чат недели 3: ассистент, которого курс собирает по шагам. Разметка — в
-// index.html (#week3), оформление — в chat.css. Общие помощники страницы
+// Чат-ассистент, которого курс собирает по шагам: одна панель на вкладки
+// недель 3 и 4. Разметка — в index.html (#chatpane), оформление — в chat.css.
+// Элементы дней после недели 3 помечаются data-week, чтобы в неделе 3 их не
+// было видно. Общие помощники страницы
 // берутся оттуда же: $, post, stream, markdown, escapeHtml, money.
 (() => {
   const KEY = "chat-current";   // открытый чат
@@ -1202,12 +1204,16 @@
   // Блок прошлого дня свёрнут: его ручки остаются, но место занимает текущий.
   function renderPrefs() {
     ui.prefFields.textContent = "";
+    // Во вкладке недели 4 все дни недели 3 — прошлые: текущий день стоит над
+    // ними своим блоком, а они свёрнуты. В неделе 3 окно остаётся как было.
+    const past = $("#chatpane").dataset.week === "4";
     blocks.forEach(block => {
-      const part = document.createElement(block.folded ? "details" : "fieldset");
-      part.className = "block" + (block.folded ? " fold" : "");
-      part.innerHTML = block.folded ? "<summary></summary><p class='fine'></p>"
-                                    : "<legend></legend><p class='fine'></p>";
-      $(block.folded ? "summary" : "legend", part).textContent = block.title;
+      const folded = block.folded || past;
+      const part = document.createElement(folded ? "details" : "fieldset");
+      part.className = "block" + (folded ? " fold" : "");
+      part.innerHTML = folded ? "<summary></summary><p class='fine'></p>"
+                              : "<legend></legend><p class='fine'></p>";
+      $(folded ? "summary" : "legend", part).textContent = block.title;
       $(".fine", part).textContent = block.note || "";
 
       block.fields.forEach(field => {
@@ -1653,8 +1659,8 @@
     if (!event.target.closest("#modePicker")) showModes(false);
     if (!event.target.closest("#modelPicker")) showMenu(false);
     if (!event.target.closest("#profilePicker")) showPeople(false);
-    if (!event.target.closest("#week3 .retell")) closeRetell();
-    if (!event.target.closest("#week3 .pop, #week3 .more")) closePops();
+    if (!event.target.closest("#chatpane .retell")) closeRetell();
+    if (!event.target.closest("#chatpane .pop, #chatpane .more")) closePops();
   });
   document.addEventListener("keydown", event => {
     if (event.key !== "Escape") return;

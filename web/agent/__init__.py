@@ -4,8 +4,9 @@
 транспорт — внутренности пакета, и приложение про них не знает.
 """
 
+from . import mcp
 from .core import Agent
 from .llm import AgentError
 from .settings import ROLE, blocks
 
-__all__ = ["Agent", "AgentError", "ROLE", "blocks"]
+__all__ = ["Agent", "AgentError", "ROLE", "blocks", "mcp"]

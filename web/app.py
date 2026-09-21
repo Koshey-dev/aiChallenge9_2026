@@ -14,7 +14,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
 import store
-from agent import Agent, AgentError, blocks, persona, rules, task
+from agent import Agent, AgentError, blocks, mcp, persona, rules, task
 from models import MAX_TOKENS, MODELS, MODEL_TASKS, RUNS_PER_MODEL, SCALES, URLS, cost_of
 
 load_dotenv()
@@ -394,6 +394,11 @@ class SayIn(BaseModel):
 
 class PrefsIn(BaseModel):
     values: dict
+
+
+class McpIn(BaseModel):
+    url: str
+    shake: bool = True
 
 
 class ModelsIn(BaseModel):
@@ -1043,6 +1048,31 @@ def agent_history(body: SessionIn):
     """
     agent = agent_for(body.session)
     return {"messages": agent.history, "metrics": agent.report()}
+
+
+@app.get("/mcp.js")
+def mcp_script():
+    return FileResponse(HERE / "mcp.js")
+
+
+@app.get("/api/mcp/servers")
+def mcp_servers():
+    """День 16: публичные серверы для стенда и версия протокола, на которой
+    стенд здоровается. Свой адрес вводится рядом, в поле."""
+    return {"servers": mcp.SERVERS, "version": mcp.VERSION}
+
+
+@app.post("/api/mcp/tools")
+async def mcp_tools(body: McpIn):
+    """Соединиться с MCP-сервером и получить список инструментов.
+
+    Наружу уходит весь разговор целиком — рукопожатие, уведомление, запрос
+    списка, — потому что день как раз про порядок вызовов, а не про итог.
+    """
+    try:
+        return await mcp.probe(body.url.strip(), shake=body.shake)
+    except mcp.McpError as bad:
+        raise HTTPException(status_code=400, detail=str(bad))
 
 
 @app.get("/chat.js")

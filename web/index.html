@@ -226,6 +226,7 @@
   .field textarea { min-height: 110px; font-size: 14px; }
   .field input[type=checkbox] { width: 18px; height: 18px; justify-self: start; }
   .field .hint { grid-column: 2; }
+
 </style>
 <link rel="stylesheet" href="/chat.css">
 </head>
@@ -235,7 +236,13 @@
   <button class="tab" data-pane="week1">Неделя 1</button>
   <button class="tab" data-pane="week2">Неделя 2</button>
   <button class="tab" data-pane="week3">Неделя 3</button>
+  <button class="tab" data-pane="week4">Неделя 4</button>
 </nav>
+
+<!-- Неделя 4 продолжает того же ассистента, поэтому панель чата у недель 3 и 4
+     общая, а задания недели 4 в неделю 3 не протекают: их элементы помечены
+     data-week="4" и в её вкладке скрыты. -->
+
 
 <section class="pane" id="week1">
 
@@ -379,7 +386,7 @@
 
 </section>
 
-<section class="pane" id="week3" hidden>
+<section class="pane" id="chatpane" hidden>
 
 <!-- Неделя 3: чат-ассистент, которого курс собирает по шагам. Слева чаты,
      по центру разговор, справа по кнопке — слои памяти дня 11, профили дня 12 —
@@ -637,6 +644,46 @@
     <p class="fine">Настройки открытого чата: у каждого чата свои, новый чат начинает
       с умолчаний. Здесь только то, что настраивается по заданию текущего дня;
       остальное стоит как у обычного ассистента.</p>
+
+    <!-- День 16: MCP. Блок этого дня — не галочки, а стенд: соединение с чужим
+         сервером происходит прямо здесь, и весь разговор остаётся на виду.
+         Метка недели прячет блок во вкладке недели 3. Логика — в mcp.js. -->
+    <fieldset class="block mcp" id="mcpBlock" data-week="4">
+      <legend>День 16 · инструменты снаружи (MCP)</legend>
+      <p class="fine">Стенд здоровается с публичным MCP-сервером по Streamable HTTP
+        и спрашивает у него список инструментов — ключей и регистрации не нужно.
+        Под транспортом JSON-RPC 2.0, порядок вызовов обязателен:
+        <code>initialize</code>, уведомление, и только потом <code>tools/list</code>.
+        Вызывать инструменты этот день не просит, и стенд их не вызывает.</p>
+      <div class="picks" id="mcpPicks"></div>
+      <div class="ask">
+        <input id="mcpUrl" type="url" spellcheck="false" placeholder="https://…/mcp"
+               aria-label="Адрес MCP-сервера">
+        <button class="primary" id="mcpGo">Соединиться</button>
+        <span class="spin" id="mcpSpin" role="status" aria-label="Соединяюсь"></span>
+      </div>
+      <label class="shake"><input type="checkbox" id="mcpShake" checked>Рукопожатие</label>
+      <p class="fine">Снимите галочку — стенд спросит список сразу, без знакомства:
+        сервер, который держит сессию, так не ответит.</p>
+      <p class="mcpbad" id="mcpBad" hidden></p>
+      <div id="mcpOut" hidden>
+        <div class="part">
+          <h3>Кто ответил</h3>
+          <div class="facts" id="mcpWho"></div>
+        </div>
+        <div class="part">
+          <h3>Разговор</h3>
+          <div class="talk" id="mcpTalk"></div>
+        </div>
+        <div class="part" id="mcpToolsPart">
+          <h3>Инструменты</h3>
+          <p class="fine">Текст пришёл с чужого сервера — стенд показывает его
+            как текст и ничего из него не исполняет.</p>
+          <div class="tools" id="mcpTools"></div>
+        </div>
+      </div>
+    </fieldset>
+
     <div id="prefFields"></div>
     <div class="actions">
       <button class="plain" id="resetPrefs">Сбросить к умолчанию</button>
@@ -997,11 +1044,20 @@ const node = name => $("#" + stand.ids[name]);
 
 // У вкладки со стендом свой набор узлов и свой режим сравнения: переключение
 // поднимает колонки заново, иначе они остались бы в чужой вкладке.
+// Какую секцию показывает вкладка. Панель чата одна, и недели 3 и 4 открывают
+// её же: неделя 4 — тот же ассистент, но с заданиями своих дней.
+const PANES = { week1: "week1", week2: "week2",
+                week3: "chatpane", week4: "chatpane" };
+
 function showPane(name) {
   shown = name;
-  document.querySelectorAll(".pane").forEach(p => (p.hidden = p.id !== name));
-  // Чат недели 3 занимает весь экран под вкладками и красит страницу в свою тему.
-  document.body.classList.toggle("app", name === "week3");
+  const pane = PANES[name] || "week1";
+  document.querySelectorAll(".pane").forEach(p => (p.hidden = p.id !== pane));
+  // Чат занимает весь экран под вкладками и красит страницу в свою тему.
+  document.body.classList.toggle("app", pane === "chatpane");
+  // Неделя, от имени которой открыт чат: элементы более поздних дней в
+  // неделе 3 не показываются, чтобы её снимок не менялся задним числом.
+  $("#chatpane").dataset.week = name === "week4" ? "4" : "3";
   document.querySelectorAll(".tab")
     .forEach(t => t.classList.toggle("on", t.dataset.pane === name));
   if (!STANDS[name]) {
@@ -1018,8 +1074,7 @@ document.querySelectorAll(".tab").forEach(tab => {
     showPane(tab.dataset.pane);
   });
 });
-showPane(location.hash.slice(1) in STANDS || location.hash === "#week3"
-  ? location.hash.slice(1) : "week1");
+showPane(location.hash.slice(1) in PANES ? location.hash.slice(1) : "week1");
 
 // ── Диалоги второй недели ──────────────────────────────────────────
 // Колонка диалога — один и тот же компонент в обоих режимах. Разница только
@@ -1875,5 +1930,6 @@ $("#modal").addEventListener("click", event => {
 
 </script>
 <script src="/chat.js"></script>
+<script src="/mcp.js"></script>
 </body>
 </html>

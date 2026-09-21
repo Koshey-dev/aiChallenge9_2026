@@ -1,7 +1,8 @@
-/* Чат недели 3. Страница остальных недель тёмная, а чат — светлый и тёплый,
+/* Чат недель 3 и 4 — одна панель, её показывают обе вкладки. Страница
+   остальных недель тёмная, а чат — светлый и тёплый,
    с тёмной парой для системной тёмной темы. Переменные переопределены на body:
    общие правила страницы (вкладки, окно настроек, подсказки) берут цвета из
-   тех же имён и перекрашиваются вместе с чатом. Всё остальное — под #week3,
+   тех же имён и перекрашиваются вместе с чатом. Всё остальное — под #chatpane,
    чтобы не задеть недели 1 и 2. */
 
 body.app {
@@ -55,159 +56,164 @@ body.app .tabs { margin: 0; padding: 8px 16px 0; gap: 4px; background: var(--sid
 body.app .tab { padding: 5px 14px; font-size: 13.5px; background: transparent; color: var(--dim); }
 body.app .tab.on { background: var(--bg); color: var(--text); border-color: var(--line); }
 
-body.app #week3 { flex: 1; min-height: 0; }
+body.app #chatpane { flex: 1; min-height: 0; }
 
-#week3 .app { display: flex; height: 100%; position: relative; }
+#chatpane .app { display: flex; height: 100%; position: relative; }
+
+/* Панель чата одна, а вкладок у неё две. Всё, чего на конец недели 3 ещё не
+   было, помечается неделей и в её вкладке не показывается: снимок недели
+   не должен меняться задним числом от заданий, которые пришли позже. */
+#chatpane[data-week="3"] [data-week="4"] { display: none; }
 
 /* Кнопки страницы нарисованы для тёмной темы с рамкой: здесь с чистого листа. */
-#week3 button {
+#chatpane button {
   background: none; border: 0; border-radius: 8px; padding: 0;
   color: inherit; font: inherit; cursor: pointer;
 }
-#week3 button:disabled { opacity: .45; cursor: default; }
-#week3 input[type=checkbox] { width: 15px; height: 15px; margin: 0; padding: 0;
+#chatpane button:disabled { opacity: .45; cursor: default; }
+#chatpane input[type=checkbox] { width: 15px; height: 15px; margin: 0; padding: 0;
                               accent-color: var(--accent); }
 
-#week3 .i { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor;
+#chatpane .i { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor;
             stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-#week3 .i.small { width: 15px; height: 15px; }
-#week3 .icon { width: 32px; height: 32px; display: inline-grid; place-items: center;
+#chatpane .i.small { width: 15px; height: 15px; }
+#chatpane .icon { width: 32px; height: 32px; display: inline-grid; place-items: center;
                color: var(--dim); }
-#week3 .icon:hover { background: var(--hover); color: var(--text); }
+#chatpane .icon:hover { background: var(--hover); color: var(--text); }
 
 /* ── Чаты слева ── */
-#week3 .side {
+#chatpane .side {
   width: 272px; flex: none; min-height: 0;
   display: flex; flex-direction: column; gap: 12px;
   padding: 14px 12px 10px; background: var(--side);
   border-right: 1px solid var(--line);
 }
-#week3 .app.folded .side { display: none; }
-#week3 .brand { display: flex; align-items: center; gap: 10px; padding: 2px 2px 0 4px; }
-#week3 .brand b { flex: 1; font-size: 17px; }
-#week3 .logo { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center;
+#chatpane .app.folded .side { display: none; }
+#chatpane .brand { display: flex; align-items: center; gap: 10px; padding: 2px 2px 0 4px; }
+#chatpane .brand b { flex: 1; font-size: 17px; }
+#chatpane .logo { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center;
                background: var(--accent); color: var(--accent-ink); }
-#week3 .new {
+#chatpane .new {
   display: flex; align-items: center; justify-content: center; gap: 6px;
   height: 40px; border-radius: 10px; font-weight: 500;
   background: var(--accent); color: var(--accent-ink);
 }
-#week3 .new:hover { filter: brightness(1.06); }
+#chatpane .new:hover { filter: brightness(1.06); }
 
-#week3 .list { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column;
+#chatpane .list { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column;
                gap: 2px; margin: 0 -6px; padding: 0 6px; }
-#week3 .item { position: relative; }
-#week3 .item .pick {
+#chatpane .item { position: relative; }
+#chatpane .item .pick {
   display: block; width: 100%; text-align: left;
   padding: 7px 34px 7px 10px; border-radius: 10px;
   border-left: 3px solid transparent;
 }
-#week3 .item:hover .pick { background: var(--hover); }
-#week3 .item.on .pick { background: var(--hover); border-left-color: var(--accent); }
-#week3 .item .title, #week3 .item .meta {
+#chatpane .item:hover .pick { background: var(--hover); }
+#chatpane .item.on .pick { background: var(--hover); border-left-color: var(--accent); }
+#chatpane .item .title, #chatpane .item .meta {
   display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-#week3 .item .title { font-size: 14px; }
-#week3 .item .title.untitled { font-style: italic; color: var(--dim); }
-#week3 .item .meta { font-size: 12px; line-height: 1.45; color: var(--dim); }
-#week3 .item .more {
+#chatpane .item .title { font-size: 14px; }
+#chatpane .item .title.untitled { font-style: italic; color: var(--dim); }
+#chatpane .item .meta { font-size: 12px; line-height: 1.45; color: var(--dim); }
+#chatpane .item .more {
   position: absolute; right: 6px; top: 8px; width: 24px; height: 24px;
   display: grid; place-items: center; color: var(--dim); opacity: 0;
 }
-#week3 .item:hover .more, #week3 .item.on .more,
-#week3 .item .more[aria-expanded=true] { opacity: 1; }
-#week3 .item .more:hover { background: var(--line); color: var(--text); }
-#week3 .item .rename { width: 100%; padding: 6px 8px; font-size: 14px; border-radius: 8px;
+#chatpane .item:hover .more, #chatpane .item.on .more,
+#chatpane .item .more[aria-expanded=true] { opacity: 1; }
+#chatpane .item .more:hover { background: var(--line); color: var(--text); }
+#chatpane .item .rename { width: 100%; padding: 6px 8px; font-size: 14px; border-radius: 8px;
                        background: var(--card); color: var(--text); border: 1px solid var(--accent); }
 
-#week3 .pop {
+#chatpane .pop {
   position: absolute; right: 6px; top: 34px; z-index: 20; min-width: 180px;
   background: var(--card); border: 1px solid var(--line); border-radius: 10px;
   box-shadow: var(--shadow); padding: 4px;
 }
-#week3 .pop button { display: flex; align-items: center; gap: 8px; width: 100%;
+#chatpane .pop button { display: flex; align-items: center; gap: 8px; width: 100%;
                      padding: 7px 10px; border-radius: 7px; font-size: 14px; text-align: left; }
-#week3 .pop button:hover { background: var(--hover); }
-#week3 .pop .danger { color: var(--bad); }
+#chatpane .pop button:hover { background: var(--hover); }
+#chatpane .pop .danger { color: var(--bad); }
 
-#week3 .side .foot { display: flex; flex-direction: column; gap: 2px; padding-top: 6px;
+#chatpane .side .foot { display: flex; flex-direction: column; gap: 2px; padding-top: 6px;
                      border-top: 1px solid var(--line); }
-#week3 .gear { display: flex; align-items: center; gap: 10px; padding: 6px 8px;
+#chatpane .gear { display: flex; align-items: center; gap: 10px; padding: 6px 8px;
                font-size: 14.5px; }
-#week3 .gear:hover { color: var(--accent); }
+#chatpane .gear:hover { color: var(--accent); }
 
-#week3 .scrim { display: none; }
+#chatpane .scrim { display: none; }
 
 /* ── Шапка чата ── */
-#week3 .main { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column;
+#chatpane .main { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column;
                background: var(--bg); }
-#week3 .top { display: flex; align-items: center; gap: 10px; min-height: 56px;
+#chatpane .top { display: flex; align-items: center; gap: 10px; min-height: 56px;
               padding: 10px 16px; border-bottom: 1px solid var(--line); }
-#week3 .top .icon { flex: none; }
-#week3 #unfold { display: none; }
-#week3 .app.folded #unfold { display: inline-grid; }
+#chatpane .top .icon { flex: none; }
+#chatpane #unfold { display: none; }
+#chatpane .app.folded #unfold { display: inline-grid; }
 
-#week3 .picker { position: relative; min-width: 0; }
-#week3 .model {
+#chatpane .picker { position: relative; min-width: 0; }
+#chatpane .model {
   display: flex; align-items: center; gap: 8px; height: 36px; max-width: 100%;
   padding: 0 12px 0 7px; border: 1px solid var(--line); border-radius: 999px;
   background: var(--card); font-size: 14px; font-weight: 500; white-space: nowrap;
 }
-#week3 .model:hover { background: var(--hover); }
-#week3 .badge {
+#chatpane .model:hover { background: var(--hover); }
+#chatpane .badge {
   width: 22px; height: 22px; border-radius: 6px; flex: none;
   display: grid; place-items: center; font-size: 11px; font-weight: 700;
   color: #fff; background: var(--vendor, var(--accent));
 }
-#week3 [data-vendor=deepseek] { --vendor: #4d6bfe; }
-#week3 [data-vendor=gemini] { --vendor: #1f8a70; }
-#week3 [data-vendor=groq] { --vendor: #f0522e; }
+#chatpane [data-vendor=deepseek] { --vendor: #4d6bfe; }
+#chatpane [data-vendor=gemini] { --vendor: #1f8a70; }
+#chatpane [data-vendor=groq] { --vendor: #f0522e; }
 
-#week3 .menu {
+#chatpane .menu {
   position: absolute; left: 0; top: calc(100% + 6px); z-index: 30; min-width: 310px;
   background: var(--card); border: 1px solid var(--line); border-radius: 12px;
   box-shadow: var(--shadow); padding: 6px;
 }
-#week3 .menu .group { display: flex; align-items: center; gap: 8px; padding: 8px 10px 4px;
+#chatpane .menu .group { display: flex; align-items: center; gap: 8px; padding: 8px 10px 4px;
                       font-size: 11.5px; letter-spacing: .05em; text-transform: uppercase;
                       color: var(--dim); }
-#week3 .menu .group .badge { width: 16px; height: 16px; font-size: 9px; border-radius: 4px; }
-#week3 .menu .opt { display: flex; align-items: center; gap: 10px; width: 100%;
+#chatpane .menu .group .badge { width: 16px; height: 16px; font-size: 9px; border-radius: 4px; }
+#chatpane .menu .opt { display: flex; align-items: center; gap: 10px; width: 100%;
                     padding: 7px 10px; border-radius: 8px; text-align: left; }
-#week3 .menu .opt:hover:not(:disabled) { background: var(--hover); }
-#week3 .menu .opt .name { flex: 1; font-size: 14px; }
-#week3 .menu .opt .note { font-size: 12px; color: var(--dim); }
-#week3 .menu .opt .check { width: 16px; color: var(--accent); visibility: hidden; }
-#week3 .menu .opt.on .check { visibility: visible; }
-#week3 .menu .opt.edit { margin-top: 4px; border-top: 1px solid var(--line); border-radius: 0 0 8px 8px;
+#chatpane .menu .opt:hover:not(:disabled) { background: var(--hover); }
+#chatpane .menu .opt .name { flex: 1; font-size: 14px; }
+#chatpane .menu .opt .note { font-size: 12px; color: var(--dim); }
+#chatpane .menu .opt .check { width: 16px; color: var(--accent); visibility: hidden; }
+#chatpane .menu .opt.on .check { visibility: visible; }
+#chatpane .menu .opt.edit { margin-top: 4px; border-top: 1px solid var(--line); border-radius: 0 0 8px 8px;
                          color: var(--accent); font-size: 14px; }
 
 /* Профиль чата — рядом с моделью: у каждого чата свои. */
-#week3 #profileButton { padding: 0 10px; }
-#week3 #profileButton > .i:first-child { color: var(--accent); }
+#chatpane #profileButton { padding: 0 10px; }
+#chatpane #profileButton > .i:first-child { color: var(--accent); }
 /* На узком экране сжимаются имена в кнопках, а не кнопки справа. */
-#week3 #profileName, #week3 #modelName { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-#week3 .gauges { flex: none; }
-#week3 #profileName { max-width: 150px; }
-#week3 #profileMenu, #week3 .retell .menu { min-width: 360px; }
-#week3 #profileMenu .note, #week3 .retell .note { white-space: nowrap; }
+#chatpane #profileName, #chatpane #modelName { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+#chatpane .gauges { flex: none; }
+#chatpane #profileName { max-width: 150px; }
+#chatpane #profileMenu, #chatpane .retell .menu { min-width: 360px; }
+#chatpane #profileMenu .note, #chatpane .retell .note { white-space: nowrap; }
 
-#week3 .gauges { margin-left: auto; display: flex; align-items: center; gap: 10px; }
-#week3 .pill {
+#chatpane .gauges { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+#chatpane .pill {
   display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px;
   border: 1px solid var(--line); border-radius: 999px; background: var(--card);
   font-size: 13.5px; white-space: nowrap;
 }
-#week3 .pill:hover:not(:disabled) { background: var(--hover); }
-#week3 .pill b { color: var(--accent); font-weight: 600; }
-#week3 #memoryButton[aria-expanded=true] { background: var(--soft); border-color: transparent; }
-#week3 .ring, #week3 .cost { display: inline-flex; align-items: center; gap: 6px;
+#chatpane .pill:hover:not(:disabled) { background: var(--hover); }
+#chatpane .pill b { color: var(--accent); font-weight: 600; }
+#chatpane #memoryButton[aria-expanded=true] { background: var(--soft); border-color: transparent; }
+#chatpane .ring, #chatpane .cost { display: inline-flex; align-items: center; gap: 6px;
                              font-size: 13px; color: var(--dim);
                              font-variant-numeric: tabular-nums; white-space: nowrap; }
-#week3 .ring svg { width: 18px; height: 18px; transform: rotate(-90deg); }
-#week3 .ring circle { fill: none; stroke: var(--line); stroke-width: 2.6; }
+#chatpane .ring svg { width: 18px; height: 18px; transform: rotate(-90deg); }
+#chatpane .ring circle { fill: none; stroke: var(--line); stroke-width: 2.6; }
 /* Длина окружности r=8 — 50.27: столько штрих и сдвигается, пока не заполнит круг. */
-#week3 .ring .fill { stroke: var(--accent); stroke-linecap: round;
+#chatpane .ring .fill { stroke: var(--accent); stroke-linecap: round;
                      stroke-dasharray: 50.27; stroke-dashoffset: 50.27;
                      transition: stroke-dashoffset .3s; }
 
@@ -216,393 +222,475 @@ body.app #week3 { flex: 1; min-height: 0; }
 /* Полоса этапов — под шапкой во всю ширину ленты: где мы в задаче, видно
    и не открывая ничего. Пройденные этапы залиты, текущий подписан, на паузе
    полоса гаснет целиком. */
-#week3 .stageline { display: flex; align-items: center; gap: 12px;
+#chatpane .stageline { display: flex; align-items: center; gap: 12px;
                     padding: 8px 16px; border-bottom: 1px solid var(--line); }
-#week3 .stageline[hidden] { display: none; }
-#week3 .track { flex: 1; min-width: 0; display: flex; gap: 6px; text-align: left; }
+#chatpane .stageline[hidden] { display: none; }
+#chatpane .track { flex: 1; min-width: 0; display: flex; gap: 6px; text-align: left; }
 /* Полоска этапа и его имя стоят друг над другом: имя читается, а ширина
    сегмента остаётся долей пути, а не длиной слова. */
-#week3 .seg { flex: 1; min-width: 0; display: flex; flex-direction: column;
+#chatpane .seg { flex: 1; min-width: 0; display: flex; flex-direction: column;
               align-items: stretch; gap: 5px; font-size: 12.5px; color: var(--dim); }
-#week3 .seg b { font-weight: inherit; white-space: nowrap;
+#chatpane .seg b { font-weight: inherit; white-space: nowrap;
                 overflow: hidden; text-overflow: ellipsis; }
-#week3 .seg i { flex: none; width: 100%; height: 4px; border-radius: 999px;
+#chatpane .seg i { flex: none; width: 100%; height: 4px; border-radius: 999px;
                 background: var(--line); transition: background .2s; }
-#week3 .seg.past i { background: var(--accent); opacity: .45; }
-#week3 .seg.now i { background: var(--accent); }
-#week3 .seg.now { color: var(--accent); font-weight: 600; }
-#week3 .stageline.paused .seg i { background: var(--line); }
-#week3 .stageline.paused .seg.now i { background: var(--dim); }
-#week3 .stageline.paused .seg.now { color: var(--dim); }
-#week3 .at { flex: none; font-size: 12.5px; color: var(--dim);
+#chatpane .seg.past i { background: var(--accent); opacity: .45; }
+#chatpane .seg.now i { background: var(--accent); }
+#chatpane .seg.now { color: var(--accent); font-weight: 600; }
+#chatpane .stageline.paused .seg i { background: var(--line); }
+#chatpane .stageline.paused .seg.now i { background: var(--dim); }
+#chatpane .stageline.paused .seg.now { color: var(--dim); }
+#chatpane .at { flex: none; font-size: 12.5px; color: var(--dim);
              font-variant-numeric: tabular-nums; }
 
 
 /* Раскрывашка под полосой: план, схема автомата и журнал переходов. */
-#week3 .stagebox { display: grid; grid-template-columns: minmax(0, 1.4fr) auto minmax(0, 1fr);
+#chatpane .stagebox { display: grid; grid-template-columns: minmax(0, 1.4fr) auto minmax(0, 1fr);
                    gap: 18px; padding: 14px 16px; border-bottom: 1px solid var(--line);
                    background: var(--side); }
-#week3 .stagebox[hidden] { display: none; }
-#week3 .stagebox h3 { margin: 0 0 6px; font-size: 12px; color: var(--dim);
+#chatpane .stagebox[hidden] { display: none; }
+#chatpane .stagebox h3 { margin: 0 0 6px; font-size: 12px; color: var(--dim);
                       text-transform: uppercase; letter-spacing: .04em; }
-#week3 .stagebox .steps { margin: 0; padding-left: 20px; font-size: 13.5px; }
-#week3 .stagebox .steps li.past { color: var(--dim); text-decoration: line-through; }
-#week3 .stagebox .steps li.now { color: var(--accent); font-weight: 600; }
-#week3 .stagebox .expect { margin: 8px 0 0; font-size: 13px; color: var(--dim); }
-#week3 .stagebox .barrier { margin: 6px 0 0; font-size: 13px; color: var(--warn); }
-#week3 .stagebox .barrier[hidden] { display: none; }
+#chatpane .stagebox .steps { margin: 0; padding-left: 20px; font-size: 13.5px; }
+#chatpane .stagebox .steps li.past { color: var(--dim); text-decoration: line-through; }
+#chatpane .stagebox .steps li.now { color: var(--accent); font-weight: 600; }
+#chatpane .stagebox .expect { margin: 8px 0 0; font-size: 13px; color: var(--dim); }
+#chatpane .stagebox .barrier { margin: 6px 0 0; font-size: 13px; color: var(--warn); }
+#chatpane .stagebox .barrier[hidden] { display: none; }
 /* День 15: ключи ворот. Нажатая кнопка — открытые ворота, и замок на схеме
    гаснет вместе с ней. Кнопка неактивна там, где ключ ещё ни на что не влияет:
    утверждать нечего, пока нет плана. */
-#week3 .stagebox .keys { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
-#week3 .stagebox .key { display: inline-flex; align-items: center; gap: 7px;
+#chatpane .stagebox .keys { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+#chatpane .stagebox .key { display: inline-flex; align-items: center; gap: 7px;
                         padding: 5px 11px; border: 1px solid var(--line);
                         border-radius: 9px; background: var(--card); color: var(--text);
                         font: inherit; font-size: 12.5px; cursor: pointer; }
-#week3 .stagebox .key:hover:not(:disabled) { border-color: var(--accent); }
-#week3 .stagebox .key:disabled { opacity: .45; cursor: default; }
-#week3 .stagebox .key .lock { width: 12px; height: 12px; border-radius: 3px;
+#chatpane .stagebox .key:hover:not(:disabled) { border-color: var(--accent); }
+#chatpane .stagebox .key:disabled { opacity: .45; cursor: default; }
+#chatpane .stagebox .key .lock { width: 12px; height: 12px; border-radius: 3px;
                               border: 1.5px solid currentColor; opacity: .55; }
-#week3 .stagebox .key.on { border-color: var(--accent); color: var(--accent); }
-#week3 .stagebox .key.on .lock { background: currentColor; opacity: 1; }
-#week3 .stagebox .ops { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
-#week3 .stagebox .moves ul { margin: 0; padding: 0; list-style: none;
+#chatpane .stagebox .key.on { border-color: var(--accent); color: var(--accent); }
+#chatpane .stagebox .key.on .lock { background: currentColor; opacity: 1; }
+#chatpane .stagebox .ops { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+#chatpane .stagebox .moves ul { margin: 0; padding: 0; list-style: none;
                              max-height: 118px; overflow-y: auto;
                              font-size: 12.5px; color: var(--dim); }
-#week3 .stagebox .moves li { padding: 2px 0; }
-#week3 .stagebox .moves li.no { color: var(--bad); }
+#chatpane .stagebox .moves li { padding: 2px 0; }
+#chatpane .stagebox .moves li.no { color: var(--bad); }
 
 /* Схема переходов: разрешённое из текущего этапа подсвечено, отклонённый
    переход держится красным до следующего хода — видно, что именно нельзя. */
-#week3 .fsm { width: 300px; height: 70px; }
-#week3 .fsm .node rect { fill: var(--card); stroke: var(--line); }
-#week3 .fsm .node text { fill: var(--dim); font-size: 9px; text-anchor: middle; }
-#week3 .fsm .node.now rect { fill: var(--soft); stroke: var(--accent); }
-#week3 .fsm .node.now text { fill: var(--accent); font-weight: 600; }
-#week3 .fsm .edge { fill: none; stroke: var(--line); stroke-width: 1.6;
+#chatpane .fsm { width: 300px; height: 70px; }
+#chatpane .fsm .node rect { fill: var(--card); stroke: var(--line); }
+#chatpane .fsm .node text { fill: var(--dim); font-size: 9px; text-anchor: middle; }
+#chatpane .fsm .node.now rect { fill: var(--soft); stroke: var(--accent); }
+#chatpane .fsm .node.now text { fill: var(--accent); font-weight: 600; }
+#chatpane .fsm .edge { fill: none; stroke: var(--line); stroke-width: 1.6;
                     marker-end: url(#tip); }
-#week3 .fsm .edge.can { stroke: var(--accent); }
-#week3 .fsm .node.no rect { stroke: var(--bad); }
-#week3 .fsm .node.no text { fill: var(--bad); }
+#chatpane .fsm .edge.can { stroke: var(--accent); }
+#chatpane .fsm .node.no rect { stroke: var(--bad); }
+#chatpane .fsm .node.no text { fill: var(--bad); }
 /* День 15: закрытые ворота. Замок висит на переходе, а сам переход
    прорисован пунктиром — видно, что путь есть, но он заперт. */
-#week3 .fsm .latch { opacity: 0; }
-#week3 .fsm .latch.shut { opacity: 1; }
-#week3 .fsm .latch rect { fill: var(--warn); }
-#week3 .fsm .latch .shackle { fill: none; stroke: var(--warn); stroke-width: 1.3; }
-#week3 .fsm .edge.shut { stroke: var(--warn); stroke-dasharray: 3 3; }
+#chatpane .fsm .latch { opacity: 0; }
+#chatpane .fsm .latch.shut { opacity: 1; }
+#chatpane .fsm .latch rect { fill: var(--warn); }
+#chatpane .fsm .latch .shackle { fill: none; stroke: var(--warn); stroke-width: 1.3; }
+#chatpane .fsm .edge.shut { stroke: var(--warn); stroke-dasharray: 3 3; }
 
-#week3 .feed { flex: 1; min-height: 0; overflow-y: auto; }
-#week3 .thread { max-width: 780px; margin: 0 auto; padding: 28px 24px 24px;
+#chatpane .feed { flex: 1; min-height: 0; overflow-y: auto; }
+#chatpane .thread { max-width: 780px; margin: 0 auto; padding: 28px 24px 24px;
                  display: flex; flex-direction: column; gap: 22px; }
-#week3 .empty { max-width: 440px; margin: 32px auto 0; text-align: center; color: var(--dim); }
-#week3 .me {
+#chatpane .empty { max-width: 440px; margin: 32px auto 0; text-align: center; color: var(--dim); }
+#chatpane .me {
   align-self: flex-end; max-width: 80%; padding: 10px 16px; border-radius: 18px;
   background: var(--bubble); white-space: pre-wrap; overflow-wrap: anywhere;
 }
-#week3 .bot { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-#week3 .text { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.65; }
-#week3 .text:empty { display: none; }
-#week3 .text code { background: var(--code); border-radius: 5px; padding: 1px 5px;
+#chatpane .bot { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+#chatpane .text { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.65; }
+#chatpane .text:empty { display: none; }
+#chatpane .text code { background: var(--code); border-radius: 5px; padding: 1px 5px;
                     font: 13.5px ui-monospace, Consolas, monospace; }
-#week3 .text pre.code {
+#chatpane .text pre.code {
   margin: 8px 0; padding: 12px 14px; overflow-x: auto; white-space: pre;
   background: var(--code); border: 1px solid var(--line); border-radius: 10px;
   font: 13px/1.5 ui-monospace, Consolas, monospace;
 }
-#week3 .text b.head { display: block; margin: 12px 0 2px; font-size: 16px; }
-#week3 .text hr { border: 0; border-top: 1px solid var(--line); margin: 12px 0; }
-#week3 .err { color: var(--bad); }
+#chatpane .text b.head { display: block; margin: 12px 0 2px; font-size: 16px; }
+#chatpane .text hr { border: 0; border-top: 1px solid var(--line); margin: 12px 0; }
+#chatpane .err { color: var(--bad); }
 
 /* Журнал коробки: одна серая строка над ответом, раскрывается по клику. */
-#week3 .trace { font-size: 13px; color: var(--dim); }
-#week3 .trace summary {
+#chatpane .trace { font-size: 13px; color: var(--dim); }
+#chatpane .trace summary {
   display: inline-flex; align-items: center; gap: 6px; max-width: 100%;
   padding: 2px 8px 2px 4px; border-radius: 6px; cursor: pointer; list-style: none;
   user-select: none;
 }
-#week3 .trace summary::-webkit-details-marker { display: none; }
-#week3 .trace summary:hover { background: var(--hover); color: var(--text); }
-#week3 .trace summary .i { transition: transform .15s; }
-#week3 .trace[open] summary .i { transform: rotate(90deg); }
-#week3 .trace.live summary .gist::after { content: " …"; }
-#week3 .trace .lines {
+#chatpane .trace summary::-webkit-details-marker { display: none; }
+#chatpane .trace summary:hover { background: var(--hover); color: var(--text); }
+#chatpane .trace summary .i { transition: transform .15s; }
+#chatpane .trace[open] summary .i { transform: rotate(90deg); }
+#chatpane .trace.live summary .gist::after { content: " …"; }
+#chatpane .trace .lines {
   margin: 6px 0 2px 10px; padding-left: 12px; border-left: 2px solid var(--line);
   font: 12.5px/1.6 ui-monospace, Consolas, monospace;
   white-space: pre-wrap; overflow-wrap: anywhere;
 }
-#week3 .trace .lines .budget { color: var(--accent); }
-#week3 .trace .lines .spend { color: var(--warn); }
-#week3 .notice { align-self: center; max-width: 90%; padding: 4px 14px; border-radius: 999px;
+#chatpane .trace .lines .budget { color: var(--accent); }
+#chatpane .trace .lines .spend { color: var(--warn); }
+#chatpane .notice { align-self: center; max-width: 90%; padding: 4px 14px; border-radius: 999px;
                  background: var(--hover); color: var(--dim); font-size: 13px; text-align: center; }
 
 /* День 12: плашка «профиль пополнен» над ответом и строка под ним — чей
    профиль, что из него ушло в запрос, варианты для других профилей. */
-#week3 .learned {
+#chatpane .learned {
   align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; max-width: 100%;
   padding: 3px 10px; border-radius: 8px; background: var(--soft); color: var(--accent);
   font-size: 12.5px; text-align: left;
 }
-#week3 .learned span { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2;
+#chatpane .learned span { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2;
                        -webkit-box-orient: vertical; }
 /* День 13: плашка перехода — там же, над ответом. Отклонённый переход
    показывается наравне с прошедшим, только цветом отказа. */
-#week3 .moved {
+#chatpane .moved {
   align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; max-width: 100%;
   padding: 3px 10px; border-radius: 8px; background: var(--hover); color: var(--dim);
   font-size: 12.5px; text-align: left;
 }
-#week3 .moved.no { color: var(--bad); }
+#chatpane .moved.no { color: var(--bad); }
 /* День 14: плашка свода. Нарушил ответ — цвет отказа; спорит сама просьба,
    а ответ её не выполнил — цвет предупреждения: это работа, а не сбой. */
-#week3 .guarded {
+#chatpane .guarded {
   align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; max-width: 100%;
   padding: 3px 10px; border-radius: 8px; background: var(--hover); color: var(--warn);
   font-size: 12.5px; text-align: left;
 }
-#week3 .guarded.no { color: var(--bad); }
-#week3 .guarded span { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2;
+#chatpane .guarded.no { color: var(--bad); }
+#chatpane .guarded span { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2;
                        -webkit-box-orient: vertical; }
-#week3 .chip.no { color: var(--bad); border-color: currentColor; }
-#week3 .bot .foot { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px;
+#chatpane .chip.no { color: var(--bad); border-color: currentColor; }
+#chatpane .bot .foot { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px;
                     font-size: 12.5px; color: var(--dim); }
-#week3 .bot .foot[hidden] { display: none; }
-#week3 .marks { display: inline-flex; flex-wrap: wrap; gap: 4px; }
-#week3 .chip { padding: 1px 8px; border: 1px solid var(--line); border-radius: 999px;
+#chatpane .bot .foot[hidden] { display: none; }
+#chatpane .marks { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+#chatpane .chip { padding: 1px 8px; border: 1px solid var(--line); border-radius: 999px;
                background: var(--card); white-space: nowrap; }
-#week3 .chip.who { background: var(--soft); border-color: transparent; color: var(--accent);
+#chatpane .chip.who { background: var(--soft); border-color: transparent; color: var(--accent);
                    font-weight: 500; }
-#week3 .pager { display: inline-flex; align-items: center; gap: 2px; color: var(--text);
+#chatpane .pager { display: inline-flex; align-items: center; gap: 2px; color: var(--text);
                 font-variant-numeric: tabular-nums; }
-#week3 .pager button { width: 22px; height: 22px; border-radius: 6px; font-size: 16px; line-height: 1; }
-#week3 .pager button:hover:not(:disabled) { background: var(--hover); }
-#week3 .retell { position: relative; }
-#week3 .again { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px;
+#chatpane .pager button { width: 22px; height: 22px; border-radius: 6px; font-size: 16px; line-height: 1; }
+#chatpane .pager button:hover:not(:disabled) { background: var(--hover); }
+#chatpane .retell { position: relative; }
+#chatpane .again { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px;
                 border-radius: 6px; font-size: 12.5px; color: var(--dim); }
-#week3 .again:hover, #week3 .again[aria-expanded=true] { background: var(--hover); color: var(--text); }
+#chatpane .again:hover, #chatpane .again[aria-expanded=true] { background: var(--hover); color: var(--text); }
 /* Последний ответ — у самого поля ввода, поэтому меню раскрывается вверх. */
-#week3 .retell .menu { top: auto; bottom: calc(100% + 6px); min-width: 280px; }
+#chatpane .retell .menu { top: auto; bottom: calc(100% + 6px); min-width: 280px; }
 
 /* ── Поле ввода ── */
-#week3 .composer { padding: 0 24px 10px; }
-#week3 .box {
+#chatpane .composer { padding: 0 24px 10px; }
+#chatpane .box {
   max-width: 780px; margin: 0 auto; padding: 14px 12px 10px 18px;
   background: var(--card); border: 1px solid var(--line); border-radius: 22px;
   box-shadow: var(--shadow);
 }
-#week3 .box:focus-within { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
-#week3 .box textarea {
+#chatpane .box:focus-within { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+#chatpane .box textarea {
   display: block; width: 100%; min-height: 24px; max-height: 220px; padding: 0 6px 0 0;
   border: 0; background: transparent; color: var(--text); resize: none; outline: none;
   font: inherit; font-size: 15px; line-height: 1.55;
 }
-#week3 .box textarea::placeholder { color: var(--dim); }
-#week3 .bar { display: flex; align-items: center; gap: 12px; margin-top: 8px; }
+#chatpane .box textarea::placeholder { color: var(--dim); }
+#chatpane .bar { display: flex; align-items: center; gap: 12px; margin-top: 8px; }
 /* День 13: режим чата слева в строке под полем ввода, «отправить» — справа.
    В планировании кнопка подсвечена: видно, что реплика двигает автомат. */
-#week3 #modePicker { margin-right: auto; }
-#week3 .mode {
+#chatpane #modePicker { margin-right: auto; }
+#chatpane .mode {
   display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 8px 0 12px;
   border: 1px solid var(--line); border-radius: 999px;
   color: var(--dim); font-size: 13px; white-space: nowrap;
 }
-#week3 .mode:hover:not(:disabled) { background: var(--hover); }
-#week3 .mode.on { background: var(--soft); border-color: transparent; color: var(--accent); }
+#chatpane .mode:hover:not(:disabled) { background: var(--hover); }
+#chatpane .mode.on { background: var(--soft); border-color: transparent; color: var(--accent); }
 /* Строка стоит у нижнего края окна, поэтому меню режима раскрывается вверх.
    Описание режима — фраза, а не «контекст 1M», как у моделей: оно идёт
    отдельной строкой под названием, а не рядом с ним. */
-#week3 .picker.up .menu { top: auto; bottom: calc(100% + 6px); }
-#week3 #modeMenu { min-width: 300px; }
-#week3 #modeMenu .opt { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; }
-#week3 #modeMenu .name { grid-area: 1 / 1; }
-#week3 #modeMenu .check { grid-area: 1 / 2; }
-#week3 #modeMenu .note { grid-area: 2 / 1 / 3 / 3; white-space: normal; line-height: 1.45; }
-#week3 .estimate { font-size: 12.5px; color: var(--dim); font-variant-numeric: tabular-nums; }
-#week3 .send { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center;
+#chatpane .picker.up .menu { top: auto; bottom: calc(100% + 6px); }
+#chatpane #modeMenu { min-width: 300px; }
+#chatpane #modeMenu .opt { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; }
+#chatpane #modeMenu .name { grid-area: 1 / 1; }
+#chatpane #modeMenu .check { grid-area: 1 / 2; }
+#chatpane #modeMenu .note { grid-area: 2 / 1 / 3 / 3; white-space: normal; line-height: 1.45; }
+#chatpane .estimate { font-size: 12.5px; color: var(--dim); font-variant-numeric: tabular-nums; }
+#chatpane .send { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center;
                background: var(--accent); color: var(--accent-ink); }
-#week3 .keys { margin: 8px 0 0; text-align: center; font-size: 12px; color: var(--dim); }
+#chatpane .keys { margin: 8px 0 0; text-align: center; font-size: 12px; color: var(--dim); }
 
 /* ── Панель памяти ── */
-#week3 .drawer {
+#chatpane .drawer {
   width: 340px; flex: none; overflow-y: auto;
   display: flex; flex-direction: column; gap: 12px; padding: 14px 16px 20px;
   background: var(--side); border-left: 1px solid var(--line);
 }
-#week3 .drawer[hidden] { display: none; }
-#week3 .drawer header { display: flex; align-items: center; justify-content: space-between; }
-#week3 .drawer header b { font-size: 16px; }
-#week3 .drawer .lead { margin: 0; font-size: 13px; color: var(--dim); }
-#week3 .layer { padding: 12px 14px; background: var(--card); border: 1px solid var(--line);
+#chatpane .drawer[hidden] { display: none; }
+#chatpane .drawer header { display: flex; align-items: center; justify-content: space-between; }
+#chatpane .drawer header b { font-size: 16px; }
+#chatpane .drawer .lead { margin: 0; font-size: 13px; color: var(--dim); }
+#chatpane .layer { padding: 12px 14px; background: var(--card); border: 1px solid var(--line);
                 border-top: 3px solid var(--tone); border-radius: 12px; }
-#week3 .layer.short { --tone: var(--dim); }
-#week3 .layer.work { --tone: var(--warn); }
-#week3 .layer.profile { --tone: var(--accent); }
-#week3 .layer .head { display: flex; align-items: baseline; gap: 8px; }
-#week3 .layer h3 { margin: 0; font-size: 15px; }
-#week3 .layer .kind { font-size: 11px; letter-spacing: .05em; text-transform: uppercase;
+#chatpane .layer.short { --tone: var(--dim); }
+#chatpane .layer.work { --tone: var(--warn); }
+#chatpane .layer.profile { --tone: var(--accent); }
+#chatpane .layer .head { display: flex; align-items: baseline; gap: 8px; }
+#chatpane .layer h3 { margin: 0; font-size: 15px; }
+#chatpane .layer .kind { font-size: 11px; letter-spacing: .05em; text-transform: uppercase;
                       color: var(--dim); }
-#week3 .toggle { margin-left: auto; display: inline-flex; align-items: center; gap: 6px;
+#chatpane .toggle { margin-left: auto; display: inline-flex; align-items: center; gap: 6px;
                  font-size: 12.5px; color: var(--dim); cursor: pointer; }
-#week3 .layer .life { margin: 3px 0 8px; font-size: 12px; color: var(--dim); }
-#week3 .layer .count { font-size: 12.5px; font-variant-numeric: tabular-nums; }
-#week3 .stash { margin-top: 6px; }
-#week3 .stash summary {
+#chatpane .layer .life { margin: 3px 0 8px; font-size: 12px; color: var(--dim); }
+#chatpane .layer .count { font-size: 12.5px; font-variant-numeric: tabular-nums; }
+#chatpane .stash { margin-top: 6px; }
+#chatpane .stash summary {
   display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px 2px 4px;
   border-radius: 6px; font-size: 12.5px; color: var(--dim); cursor: pointer;
   list-style: none; user-select: none;
 }
-#week3 .stash summary::-webkit-details-marker { display: none; }
-#week3 .stash summary::before { content: "›"; display: inline-block; transition: transform .15s; }
-#week3 .stash[open] summary::before { transform: rotate(90deg); }
-#week3 .stash summary:hover { background: var(--hover); color: var(--text); }
-#week3 .record { padding: 7px 0 6px; border-top: 1px solid var(--line); }
-#week3 .record:first-child { margin-top: 8px; }
-#week3 .record .rhead { display: flex; align-items: baseline; gap: 8px; }
-#week3 .record .name { font-size: 12px; color: var(--dim); overflow-wrap: anywhere; }
-#week3 .record .ops { margin-left: auto; display: flex; gap: 2px; }
-#week3 .record .ops button { width: 24px; height: 22px; border-radius: 6px; color: var(--dim); }
-#week3 .record .ops button:hover { background: var(--hover); color: var(--text); }
-#week3 .record .value { font-size: 13.5px; overflow-wrap: anywhere; }
-#week3 .peek { margin: 8px 0 0; padding: 0; list-style: none; font-size: 12.5px; }
-#week3 .peek li { padding: 2px 0; overflow-wrap: anywhere; }
-#week3 .peek b { color: var(--dim); font-weight: 500; }
-#week3 .peek li.out { opacity: .45; }
-#week3 .wipe { margin-top: 10px; padding: 5px 12px; font-size: 13px;
+#chatpane .stash summary::-webkit-details-marker { display: none; }
+#chatpane .stash summary::before { content: "›"; display: inline-block; transition: transform .15s; }
+#chatpane .stash[open] summary::before { transform: rotate(90deg); }
+#chatpane .stash summary:hover { background: var(--hover); color: var(--text); }
+#chatpane .record { padding: 7px 0 6px; border-top: 1px solid var(--line); }
+#chatpane .record:first-child { margin-top: 8px; }
+#chatpane .record .rhead { display: flex; align-items: baseline; gap: 8px; }
+#chatpane .record .name { font-size: 12px; color: var(--dim); overflow-wrap: anywhere; }
+#chatpane .record .ops { margin-left: auto; display: flex; gap: 2px; }
+#chatpane .record .ops button { width: 24px; height: 22px; border-radius: 6px; color: var(--dim); }
+#chatpane .record .ops button:hover { background: var(--hover); color: var(--text); }
+#chatpane .record .value { font-size: 13.5px; overflow-wrap: anywhere; }
+#chatpane .peek { margin: 8px 0 0; padding: 0; list-style: none; font-size: 12.5px; }
+#chatpane .peek li { padding: 2px 0; overflow-wrap: anywhere; }
+#chatpane .peek b { color: var(--dim); font-weight: 500; }
+#chatpane .peek li.out { opacity: .45; }
+#chatpane .wipe { margin-top: 10px; padding: 5px 12px; font-size: 13px;
                border: 1px solid var(--line); border-radius: 8px; }
-#week3 .wipe:hover:not(:disabled) { background: var(--hover); }
-#week3 .armed { color: var(--bad); border-color: var(--bad); }
+#chatpane .wipe:hover:not(:disabled) { background: var(--hover); }
+#chatpane .armed { color: var(--bad); border-color: var(--bad); }
 
 /* ── Панель свода (день 14) ── */
 /* Вторая строка вводного текста — мельче первой: она про то, что будет после
    правки, и читается один раз. */
-#week3 .vault .lead.fine { font-size: 12px; }
-#week3 .vault .count { font-size: 12.5px; color: var(--dim);
+#chatpane .vault .lead.fine { font-size: 12px; }
+#chatpane .vault .count { font-size: 12.5px; color: var(--dim);
                        font-variant-numeric: tabular-nums; }
-#week3 .vaultadd { display: flex; flex-direction: column; gap: 8px; }
-#week3 .vaultadd select, #week3 .vaultadd textarea {
+#chatpane .vaultadd { display: flex; flex-direction: column; gap: 8px; }
+#chatpane .vaultadd select, #chatpane .vaultadd textarea {
   width: 100%; padding: 7px 9px; border: 1px solid var(--line); border-radius: 9px;
   background: var(--card); color: var(--text); font: inherit; font-size: 13px;
 }
-#week3 .vaultadd textarea { resize: vertical; min-height: 54px; line-height: 1.45; }
+#chatpane .vaultadd textarea { resize: vertical; min-height: 54px; line-height: 1.45; }
 /* Пример к выбранному виду стоит вплотную к списку: он объясняет именно его. */
-#week3 .vaultadd .fine { margin: -4px 0 0; font-size: 12px; }
-#week3 .vaultadd .plain { align-self: flex-start; padding: 5px 12px; font-size: 13px;
+#chatpane .vaultadd .fine { margin: -4px 0 0; font-size: 12px; }
+#chatpane .vaultadd .plain { align-self: flex-start; padding: 5px 12px; font-size: 13px;
                           border: 1px solid var(--line); border-radius: 8px; }
-#week3 .vaultadd .plain:hover { background: var(--hover); }
-#week3 .rules { display: flex; flex-direction: column; gap: 8px; }
-#week3 .rule { padding: 10px 12px; background: var(--card); border: 1px solid var(--line);
+#chatpane .vaultadd .plain:hover { background: var(--hover); }
+#chatpane .rules { display: flex; flex-direction: column; gap: 8px; }
+#chatpane .rule { padding: 10px 12px; background: var(--card); border: 1px solid var(--line);
                border-left: 3px solid var(--bad); border-radius: 10px; }
 /* Выключенный инвариант остаётся в панели, но не действует — и выглядит так же. */
-#week3 .rule.off { border-left-color: var(--line); opacity: .6; }
-#week3 .rule .rhead { display: flex; align-items: center; gap: 8px; }
-#week3 .rule .kind { font-size: 11px; letter-spacing: .05em; text-transform: uppercase;
+#chatpane .rule.off { border-left-color: var(--line); opacity: .6; }
+#chatpane .rule .rhead { display: flex; align-items: center; gap: 8px; }
+#chatpane .rule .kind { font-size: 11px; letter-spacing: .05em; text-transform: uppercase;
                      color: var(--dim); }
-#week3 .rule .rhead button { width: 24px; height: 22px; border-radius: 6px; color: var(--dim); }
-#week3 .rule .rhead button:hover { background: var(--hover); color: var(--bad); }
-#week3 .rule .text { margin-top: 4px; font-size: 13.5px; overflow-wrap: anywhere; }
+#chatpane .rule .rhead button { width: 24px; height: 22px; border-radius: 6px; color: var(--dim); }
+#chatpane .rule .rhead button:hover { background: var(--hover); color: var(--bad); }
+#chatpane .rule .text { margin-top: 4px; font-size: 13.5px; overflow-wrap: anywhere; }
 
 /* ── Окно настроек: каркас общий со страницей, здесь только отличия ── */
-#week3 .modal { background: rgba(20, 16, 10, .35); }
-#week3 .sheet { width: min(600px, 100%); border-radius: 16px; box-shadow: var(--shadow); }
-#week3 .sheethead { display: flex; align-items: center; justify-content: space-between; }
-#week3 .sheethead h2 { margin: 0; }
-#week3 .block legend { color: var(--accent); }
-#week3 .field { grid-template-columns: 1fr auto; }
-#week3 .field label { color: var(--text); font-size: 14px; }
-#week3 .field .hint { grid-column: 1 / -1; margin-top: -6px; }
-#week3 .field input[type=number] { width: 110px; padding: 6px 10px; font-size: 14px; }
-#week3 .field input[type=checkbox] { justify-self: end; width: 17px; height: 17px; }
-#week3 .actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
-#week3 .primary { padding: 8px 16px; border-radius: 10px; font-weight: 500;
+#chatpane .modal { background: rgba(20, 16, 10, .35); }
+#chatpane .sheet { width: min(600px, 100%); border-radius: 16px; box-shadow: var(--shadow); }
+#chatpane .sheethead { display: flex; align-items: center; justify-content: space-between; }
+#chatpane .sheethead h2 { margin: 0; }
+#chatpane .block legend { color: var(--accent); }
+#chatpane .field { grid-template-columns: 1fr auto; }
+#chatpane .field label { color: var(--text); font-size: 14px; }
+#chatpane .field .hint { grid-column: 1 / -1; margin-top: -6px; }
+#chatpane .field input[type=number] { width: 110px; padding: 6px 10px; font-size: 14px; }
+#chatpane .field input[type=checkbox] { justify-self: end; width: 17px; height: 17px; }
+#chatpane .actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
+#chatpane .primary { padding: 8px 16px; border-radius: 10px; font-weight: 500;
                   background: var(--accent); color: var(--accent-ink); }
-#week3 .plain { padding: 8px 14px; border-radius: 10px; border: 1px solid var(--line); }
-#week3 .plain:hover { background: var(--hover); }
-#week3 .plain.danger { color: var(--bad); }
+#chatpane .plain { padding: 8px 14px; border-radius: 10px; border: 1px solid var(--line); }
+#chatpane .plain:hover { background: var(--hover); }
+#chatpane .plain.danger { color: var(--bad); }
 
 /* Блок прошлого дня в настройках свёрнут. */
-#week3 .block.fold { padding: 10px 14px; }
-#week3 .block.fold summary { cursor: pointer; color: var(--accent); font-size: 14px;
+#chatpane .block.fold { padding: 10px 14px; }
+#chatpane .block.fold summary { cursor: pointer; color: var(--accent); font-size: 14px;
                              list-style: none; user-select: none; }
-#week3 .block.fold summary::-webkit-details-marker { display: none; }
-#week3 .block.fold summary::before { content: "›"; display: inline-block; width: 14px;
+#chatpane .block.fold summary::-webkit-details-marker { display: none; }
+#chatpane .block.fold summary::before { content: "›"; display: inline-block; width: 14px;
                                      transition: transform .15s; }
-#week3 .block.fold[open] summary::before { transform: rotate(90deg); }
+#chatpane .block.fold[open] summary::before { transform: rotate(90deg); }
+
+/* ── День 16: стенд MCP в блоке настроек ────────────────────────────
+   Блок этого дня настраивать нечего: он соединяется с чужим сервером и
+   показывает разговор целиком, поэтому места ему нужно больше, чем полю
+   с галочкой. Цвета — общие переменные темы чата. */
+#mcpBlock code { color: var(--accent); font-size: 13px; }
+#mcpBlock .none { color: var(--dim); }
+#mcpBlock p.none { margin: 0; font-size: 13.5px; }
+/* Стенду в окне настроек тесно: в неделе 4 окно шире. Неделю 3 это не
+   задевает — её окно остаётся прежним. */
+#chatpane[data-week="4"] #prefs .sheet { width: min(780px, 100%); }
+#mcpBlock pre { margin: 6px 0 0; padding: 8px 10px; overflow: auto; max-height: 220px;
+                background: var(--code); border-radius: 8px;
+                font-size: 12px; line-height: 1.45; }
+#mcpBlock .picks { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+#mcpBlock .pick { padding: 5px 12px; border-radius: 999px; font-size: 13.5px;
+                  border: 1px solid var(--line); }
+#mcpBlock .pick:hover { background: var(--hover); }
+#mcpBlock .pick.on { border-color: var(--accent); color: var(--accent); }
+#mcpBlock .picks .fine { margin: 0; align-self: center; }
+#mcpBlock .ask { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+/* Значок ожидания занимает место всегда и только проявляется: появись он
+   из ничего, поле ввода рядом сжималось бы на каждом нажатии. */
+#mcpBlock .spin { width: 20px; height: 20px; flex: none; box-sizing: border-box;
+                  border: 2px solid color-mix(in srgb, var(--dim) 35%, transparent);
+                  border-top-color: var(--accent);
+                  border-radius: 50%; visibility: hidden; }
+#mcpBlock .spin.on { visibility: visible; animation: mcp-spin .8s linear infinite; }
+@keyframes mcp-spin { to { transform: rotate(360deg); } }
+#mcpBlock #mcpUrl { flex: 1; min-width: 0; background: var(--card); color: var(--text);
+                    border: 1px solid var(--line); border-radius: 10px;
+                    padding: 8px 12px; font: inherit; font-size: 14px; }
+#mcpBlock .shake { display: flex; align-items: center; gap: 8px;
+                   margin-top: 10px; font-size: 14px; }
+#mcpBlock .mcpbad { margin: 12px 0 0; padding: 10px 12px; border-radius: 10px;
+                    border: 1px solid var(--bad); color: var(--bad); font-size: 14px; }
+#mcpBlock .mcpbad[hidden] { display: none; }
+#mcpBlock .part { margin-top: 18px; }
+#mcpBlock .part[hidden] { display: none; }
+#mcpBlock .part h3 { margin: 0 0 6px; font-size: 15px; }
+#mcpBlock .part .fine { margin: -2px 0 8px; }
+
+#mcpBlock .facts { display: flex; flex-wrap: wrap; gap: 8px; }
+#mcpBlock .tile { flex: 1 1 150px; background: var(--code); border-radius: 10px;
+                  padding: 7px 11px; min-width: 0; overflow-wrap: anywhere; }
+#mcpBlock .tile b { display: block; color: var(--dim); font-size: 11.5px; font-weight: 500; }
+#mcpBlock .tile span { font-size: 13.5px; }
+#mcpBlock .tile .warn { color: var(--warn); font-size: 12px; }
+#mcpBlock .says { flex-basis: 100%; margin: 2px 0 0; color: var(--dim); font-size: 13px; }
+#mcpBlock details.says summary { cursor: pointer; }
+
+#mcpBlock .step { border: 1px solid var(--line); border-radius: 10px;
+                  margin-bottom: 6px; padding: 7px 11px; }
+#mcpBlock .step.bad { border-color: var(--bad); }
+#mcpBlock .step summary { display: flex; align-items: center; gap: 8px;
+                          cursor: pointer; font-size: 13.5px; }
+#mcpBlock .step .no { width: 18px; height: 18px; flex: none; border-radius: 50%;
+                      background: var(--bubble); color: var(--dim);
+                      font-size: 11px; text-align: center; line-height: 18px; }
+#mcpBlock .step .method { font-weight: 600; }
+#mcpBlock .step summary .fine { flex: 1; margin: 0; overflow: hidden;
+                                text-overflow: ellipsis; white-space: nowrap; }
+#mcpBlock .step .code { color: var(--accent); font-size: 12.5px; }
+#mcpBlock .step.bad .code { color: var(--bad); }
+#mcpBlock .step .ms { color: var(--dim); font-size: 12px; }
+#mcpBlock .step .why { margin: 8px 0 0; color: var(--bad); font-size: 13.5px; }
+#mcpBlock .step .pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+                        gap: 10px; margin-top: 8px; }
+#mcpBlock .step .pair b { color: var(--dim); font-size: 12px; font-weight: 500; }
+
+#mcpBlock .sum { margin: 0 0 10px; font-size: 14.5px; }
+#mcpBlock .sum .fine { display: block; margin: 0; }
+#mcpBlock .tool { border-top: 1px solid var(--line); padding: 10px 0 2px; }
+#mcpBlock .tool .line { display: flex; align-items: baseline; gap: 8px; }
+#mcpBlock .tool .name { font-size: 14px; font-weight: 600; }
+#mcpBlock .tool .what { color: var(--dim); font-size: 13px; }
+#mcpBlock .tool .price { margin-left: auto; color: var(--dim); font-size: 12px; }
+#mcpBlock .tool .about { margin: 4px 0 0; font-size: 13.5px; }
+#mcpBlock .tool .args { margin: 6px 0 0; padding-left: 16px;
+                        font-size: 13px; color: var(--dim); }
+#mcpBlock .tool .args .type { font-size: 12px; }
+#mcpBlock .tool .args .must { color: var(--warn); font-size: 11.5px; }
 
 /* ── Окно профилей: слева список, справа анкета ── */
-#week3 .sheet.wide { width: min(880px, 100%); }
-#week3 .people { display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 18px;
+#chatpane .sheet.wide { width: min(880px, 100%); }
+#chatpane .people { display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 18px;
                  margin-top: 14px; }
-#week3 .who { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-#week3 .person { display: block; width: 100%; text-align: left; padding: 7px 10px;
+#chatpane .who { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+#chatpane .person { display: block; width: 100%; text-align: left; padding: 7px 10px;
                  border-radius: 10px; border-left: 3px solid transparent; }
-#week3 .person:hover { background: var(--hover); }
-#week3 .person.on { background: var(--hover); border-left-color: var(--accent); }
-#week3 .person .title, #week3 .person .meta { display: block; white-space: nowrap;
+#chatpane .person:hover { background: var(--hover); }
+#chatpane .person.on { background: var(--hover); border-left-color: var(--accent); }
+#chatpane .person .title, #chatpane .person .meta { display: block; white-space: nowrap;
                                               overflow: hidden; text-overflow: ellipsis; }
-#week3 .person .title { font-size: 14px; }
-#week3 .person .meta { font-size: 12px; color: var(--dim); }
-#week3 .person.add { margin-top: 6px; color: var(--accent); font-size: 14px; }
-#week3 .card { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
-#week3 .card .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+#chatpane .person .title { font-size: 14px; }
+#chatpane .person .meta { font-size: 12px; color: var(--dim); }
+#chatpane .person.add { margin-top: 6px; color: var(--accent); font-size: 14px; }
+#chatpane .card { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+#chatpane .card .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
                      gap: 10px 14px; }
 /* .row у страницы — строка по центру; здесь это подпись над полем. */
-#week3 .card .row { display: flex; flex-direction: column; align-items: stretch;
+#chatpane .card .row { display: flex; flex-direction: column; align-items: stretch;
                     flex-wrap: nowrap; gap: 4px; min-width: 0; }
-#week3 .card .row > span { font-size: 12.5px; color: var(--dim); }
-#week3 .card input, #week3 .card select, #week3 .card textarea {
+#chatpane .card .row > span { font-size: 12.5px; color: var(--dim); }
+#chatpane .card input, #chatpane .card select, #chatpane .card textarea {
   width: 100%; min-width: 0; padding: 7px 10px; font-size: 14px; border-radius: 8px;
 }
-#week3 .card textarea { min-height: 64px; resize: vertical; }
-#week3 .card .left { align-self: flex-end; font-size: 11.5px; color: var(--dim);
+#chatpane .card textarea { min-height: 64px; resize: vertical; }
+#chatpane .card .left { align-self: flex-end; font-size: 11.5px; color: var(--dim);
                      font-variant-numeric: tabular-nums; }
-#week3 .card .prompt { margin-top: 0; }
-#week3 .card .prompt pre { margin: 8px 0 0; padding: 10px 12px; white-space: pre-wrap;
+#chatpane .card .prompt { margin-top: 0; }
+#chatpane .card .prompt pre { margin: 8px 0 0; padding: 10px 12px; white-space: pre-wrap;
                            background: var(--code); border-radius: 8px;
                            font: 12.5px/1.55 ui-monospace, Consolas, monospace; }
-#week3 .noticed { padding: 12px 14px; border: 1px solid var(--line);
+#chatpane .noticed { padding: 12px 14px; border: 1px solid var(--line);
                   border-top: 3px solid var(--accent); border-radius: 12px; }
-#week3 .noticed h3 { margin: 0; font-size: 14.5px; }
-#week3 .noticed .fine { margin: 4px 0 0; }
-#week3 .card .actions { align-items: center; margin-top: 0; }
-#week3 .unsaved { margin-right: auto; font-size: 12.5px; color: var(--warn); }
+#chatpane .noticed h3 { margin: 0; font-size: 14.5px; }
+#chatpane .noticed .fine { margin: 4px 0 0; }
+#chatpane .card .actions { align-items: center; margin-top: 0; }
+#chatpane .unsaved { margin-right: auto; font-size: 12.5px; color: var(--warn); }
 
 /* ── Узкий экран: чаты и память выезжают поверх ленты ── */
 @media (max-width: 900px) {
-  #week3 .side {
+  #chatpane .side {
     position: absolute; left: 0; top: 0; bottom: 0; z-index: 40;
     transform: translateX(-100%); transition: transform .2s; box-shadow: var(--shadow);
   }
-  #week3 .app.folded .side { display: flex; }
-  #week3 .app.open .side { transform: none; }
-  #week3 .app.open .scrim { display: block; position: absolute; inset: 0; z-index: 39;
+  #chatpane .app.folded .side { display: flex; }
+  #chatpane .app.open .side { transform: none; }
+  #chatpane .app.open .scrim { display: block; position: absolute; inset: 0; z-index: 39;
                             background: rgba(20, 16, 10, .3); }
-  #week3 #unfold { display: inline-grid; }
-  #week3 .drawer { position: absolute; right: 0; top: 0; bottom: 0; z-index: 35;
+  #chatpane #unfold { display: inline-grid; }
+  #chatpane .drawer { position: absolute; right: 0; top: 0; bottom: 0; z-index: 35;
                    width: min(340px, 92vw); box-shadow: var(--shadow); }
-  #week3 .top { padding: 8px 10px; gap: 6px; }
-  #week3 .gauges { gap: 6px; }
-  #week3 .thread { padding: 20px 16px; }
+  #chatpane .top { padding: 8px 10px; gap: 6px; }
+  #chatpane .gauges { gap: 6px; }
+  #chatpane .thread { padding: 20px 16px; }
   /* Схема автомата шире узкого экрана: колонки панели встают друг под друга. */
-  #week3 .stagebox { grid-template-columns: 1fr; gap: 14px; }
-  #week3 .stageline { padding: 8px 10px; }
-  #week3 .composer { padding: 0 12px 8px; }
+  #chatpane .stagebox { grid-template-columns: 1fr; gap: 14px; }
+  #chatpane .stageline { padding: 8px 10px; }
+  #chatpane .composer { padding: 0 12px 8px; }
 }
 @media (max-width: 640px) {
-  #week3 .word, #week3 .cost { display: none; }
-  #week3 .pill { padding: 0 9px; }
-  #week3 .menu { min-width: min(310px, calc(100vw - 24px)); }
-  #week3 .me { max-width: 92%; }
-  #week3 .keys { display: none; }
+  #chatpane .word, #chatpane .cost { display: none; }
+  #chatpane .pill { padding: 0 9px; }
+  #chatpane .menu { min-width: min(310px, calc(100vw - 24px)); }
+  #chatpane .me { max-width: 92%; }
+  #chatpane .keys { display: none; }
   /* Имена в шапке важнее стрелок и значка; меню — во всю ширину, а не от кнопки. */
-  #week3 .model > .i.small:last-child, #week3 #profileButton > .i:first-child { display: none; }
-  #week3 .top { position: relative; }
-  #week3 #profilePicker { position: static; }
-  #week3 #profileMenu { left: 10px; right: 10px; min-width: 0; }
-  #week3 .bot .foot { position: relative; }
-  #week3 .retell { position: static; }
-  #week3 .retell .menu { left: 0; right: 0; min-width: 0; }
-  #week3 .people { grid-template-columns: 1fr; }
-  #week3 .who { flex-direction: row; overflow-x: auto; }
-  #week3 .person { flex: none; width: auto; max-width: 170px; }
-  #week3 .card .grid { grid-template-columns: 1fr; }
+  #chatpane .model > .i.small:last-child, #chatpane #profileButton > .i:first-child { display: none; }
+  #chatpane .top { position: relative; }
+  #chatpane #profilePicker { position: static; }
+  #chatpane #profileMenu { left: 10px; right: 10px; min-width: 0; }
+  #chatpane .bot .foot { position: relative; }
+  #chatpane .retell { position: static; }
+  #chatpane .retell .menu { left: 0; right: 0; min-width: 0; }
+  #chatpane .people { grid-template-columns: 1fr; }
+  #chatpane .who { flex-direction: row; overflow-x: auto; }
+  #chatpane .person { flex: none; width: auto; max-width: 170px; }
+  #chatpane .card .grid { grid-template-columns: 1fr; }
 }
