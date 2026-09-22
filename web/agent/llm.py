@@ -28,8 +28,14 @@ def _add(usage, prompt, completion):
     usage["completion"] += completion
 
 
-async def stream_chat(client, *, url, key, model, messages, usage, **knobs):
-    """Отдаёт ответ кусками по мере генерации, расход токенов кладёт в `usage`."""
+async def stream_chat(client, *, url, key, model, messages, usage, wants=None, **knobs):
+    """Отдаёт ответ кусками по мере генерации, расход токенов кладёт в `usage`.
+
+    `wants` (день 17) собирает вызовы инструментов, которые модель попросила
+    вместо ответа или вместе с ним: в потоке они приходят кусками по `index`,
+    имя — сразу, аргументы — строкой JSON частями. Туда же ложится рассуждение:
+    DeepSeek в режиме рассуждения требует вернуть его вместе с вызовами.
+    """
     payload = {
         "model": model,
         "messages": messages,
@@ -72,6 +78,8 @@ async def stream_chat(client, *, url, key, model, messages, usage, **knobs):
                     delta = choices[0]["delta"].get("content") or ""
                     if delta:
                         yield delta
+                    if wants is not None:
+                        _want(wants, choices[0]["delta"])
 
                 _add(usage, spent["prompt"], spent["completion"])
                 return
@@ -82,6 +90,22 @@ async def stream_chat(client, *, url, key, model, messages, usage, **knobs):
             await asyncio.sleep(2 * (attempt + 1))
 
     raise AgentError("провайдер не отвечает: лимит запросов")
+
+
+def _want(wants, delta):
+    """Кусок вызова инструмента из потока — в собираемый вызов с тем же `index`."""
+    wants["reasoning"] = wants.get("reasoning", "") + (delta.get("reasoning_content") or "")
+    calls = wants.setdefault("calls", [])
+    for piece in delta.get("tool_calls") or []:
+        at = piece.get("index", len(calls))
+        while len(calls) <= at:
+            calls.append({"id": "", "type": "function",
+                          "function": {"name": "", "arguments": ""}})
+        call = calls[at]
+        call["id"] = piece.get("id") or call["id"]
+        part = piece.get("function") or {}
+        call["function"]["name"] += part.get("name") or ""
+        call["function"]["arguments"] += part.get("arguments") or ""
 
 
 def loads(text):

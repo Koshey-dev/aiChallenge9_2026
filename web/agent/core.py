@@ -6,14 +6,19 @@
 """
 
 import asyncio
+import json
 import time
 
-from . import crew, facts, judge, layers, persona, policy, recap, rules, task, tokens
+from . import crew, facts, judge, layers, mcp, persona, policy, recap, rules, task, tokens
 from .llm import AgentError, new_usage, stream_chat
 from .settings import DEFAULTS, coerce
 
 # Имя линии, в которой диалог живёт, пока от него не отвели ветку.
 MAIN = "основная"
+
+# Сколько раз за реплику модель может сходить к инструментам. Потом — ответ
+# без них: зациклившаяся модель не должна жечь запросы без конца.
+TOOL_ROUNDS = 4
 
 
 class Agent:
@@ -81,6 +86,13 @@ class Agent:
         # Чем сторож счёл ответ перепрыгнувшим этап и каким ответ был до правки.
         self.jumped = ""
         self.ahead = ""
+        # Инструменты MCP (день 17). Ящик с ними даёт стенд: коробка не знает,
+        # где сервер и как до него дойти, — только что он умеет и как позвать.
+        # Список инструментов берётся у сервера на каждую реплику, вызовы
+        # реплики — для карточек в пузыре.
+        self.toolbox = None
+        self.tools = []
+        self.calls = []
         # Ответы для других профилей: номер реплики — список вариантов.
         # В историю они не идут: разговор продолжается от исходного ответа.
         self.variants = {}
@@ -399,17 +411,102 @@ class Agent:
             "rejected": self.rejected,
             "jumped": self.jumped,
             "ahead": self.ahead,
+            "calls": self.calls,
         })
 
-    async def answer(self, client, messages):
-        """Один потоковый вызов модели с настройками коробки."""
+    async def answer(self, client, messages, wants=None):
+        """Один потоковый вызов модели с настройками коробки.
+
+        Инструменты, если они есть, модель видит всегда, а звать может только
+        тот вызов, который собирает её просьбы (`wants`). Переписывание и
+        вариант идут по разговору, где вызовы уже были, — там список нужен,
+        чтобы разговор читался, а новые вызовы запрещены.
+        """
+        knobs = {}
+        if self.tools:
+            knobs["tools"] = [mcp.function(tool) for tool in self.tools]
+            if wants is None:
+                knobs["tool_choice"] = "none"
         async for piece in stream_chat(client, url=self.url, key=self.key,
                                        model=self.settings["model"], messages=messages,
-                                       usage=self.usage,
+                                       usage=self.usage, wants=wants,
                                        temperature=float(self.settings["temperature"]),
                                        max_tokens=int(self.settings["max_tokens"]),
-                                       **self.quirks()):
+                                       **knobs, **self.quirks()):
             yield piece
+
+    async def equip(self):
+        """Спросить у сервера инструменты на эту реплику. Не вышло — без них."""
+        self.tools = []
+        if not (self.settings["mcp_tools"] and self.toolbox):
+            return
+        try:
+            self.tools = await self.toolbox.open()
+        except mcp.McpError as bad:
+            yield self.note(f"инструменты MCP: сервер не ответил — {bad}")
+            return
+        cost = tokens.estimate(json.dumps([mcp.function(tool) for tool in self.tools],
+                                          ensure_ascii=False))
+        yield self.note(f"инструменты MCP: {len(self.tools)} "
+                        f"({', '.join(tool['name'] for tool in self.tools)}), "
+                        f"~{cost} ток. к запросу")
+
+    async def converse(self, client, sent, raw):
+        """Ответ, по ходу которого модель может звать инструменты.
+
+        Модель просит вызов — коробка идёт на сервер, результат уходит модели
+        сообщением `tool`, и она отвечает дальше. `sent` пополняется обменом на
+        месте: переписывания ниже идут по тому же разговору, иначе модель
+        переписывала бы ответ, не видя данных, на которых он построен.
+        """
+        for turn in range(TOOL_ROUNDS + 1):
+            wants = {} if self.tools and turn < TOOL_ROUNDS else None
+            said = []
+            async for piece in self.answer(client, sent, wants):
+                # Текст до вызова и текст после — разные абзацы, а не одна
+                # строка: модель начинает новый ход без пробела.
+                if not said and "".join(raw).strip():
+                    piece = "\n\n" + piece.lstrip()
+                said.append(piece)
+                raw.append(piece)
+                yield {"t": "delta", "text": piece}
+            calls = [call for call in (wants or {}).get("calls", [])
+                     if call["function"]["name"]]
+            if not calls:
+                return
+            asked = {"role": "assistant", "content": "".join(said) or None,
+                     "tool_calls": calls}
+            if wants.get("reasoning"):
+                asked["reasoning_content"] = wants["reasoning"]
+            sent.append(asked)
+            for call in calls:
+                card, text = await self.run_tool(call)
+                yield self.note(f"вызов {card['name']}: "
+                                + (f"ошибка — {card['error']}" if card["error"]
+                                   else f"{card['status']} за {card['ms']} мс"))
+                yield {"t": "tool", **card}
+                sent.append({"role": "tool", "tool_call_id": call["id"], "content": text})
+
+    async def run_tool(self, call):
+        """Один вызов по просьбе модели: карточка для пузыря и текст для модели."""
+        name = call["function"]["name"]
+        try:
+            args = json.loads(call["function"]["arguments"] or "{}")
+        except json.JSONDecodeError:
+            args = None
+        if isinstance(args, dict):
+            step, text = await self.toolbox.call(name, args)
+        else:
+            step = {"status": 0, "ms": 0, "got": None,
+                    "error": "аргументы пришли не объектом JSON"}
+            text = "ошибка: " + step["error"]
+            args = call["function"]["arguments"]
+        result = (step["got"] or {}).get("result") or {}
+        card = {"name": name, "args": args,
+                "result": result.get("structuredContent", text),
+                "error": step["error"], "status": step["status"], "ms": step["ms"]}
+        self.calls.append(card)
+        return card, text
 
     async def team_up(self, client, question, tasks):
         """Поднимает агентов, отмечает каждого по мере готовности, ждёт всех."""
@@ -642,6 +739,7 @@ class Agent:
         self.rejected = ""
         self.jumped = ""
         self.ahead = ""
+        self.calls = []
         self.before = dict(self.usage)
 
         try:
@@ -707,6 +805,8 @@ class Agent:
         else:
             pieces = self.layout(question, self.remembered(), self.persona, self.profile)
             self.told = self.tell(self.persona, self.profile)
+            async for event in self.equip():
+                yield event
 
         budget = self.weigh(pieces)
         if self.settings["context_guard"]:
@@ -735,9 +835,8 @@ class Agent:
         yield {"t": "budget", **budget}
         sent = self.arrange(pieces)
         raw = []
-        async for piece in self.answer(client, sent):
-            raw.append(piece)
-            yield {"t": "delta", "text": piece}
+        async for event in self.converse(client, sent, raw):
+            yield event
 
         answer = "".join(raw).strip()
         clean, notes = policy.clean_output(answer, self.settings, self.settings["role"])

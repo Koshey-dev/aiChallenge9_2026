@@ -9,11 +9,12 @@ from pathlib import Path
 
 import httpx
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel
 
 import store
+import tracker
 from agent import Agent, AgentError, blocks, mcp, persona, rules, task
 from models import MAX_TOKENS, MODELS, MODEL_TASKS, RUNS_PER_MODEL, SCALES, URLS, cost_of
 
@@ -125,6 +126,17 @@ FIELDS = {field["key"]: field for block in blocks(CHAT_DEFAULT) for field in blo
 # Текущий день сверху. Прошлые остаются — день 13 стоит на рабочей памяти дня 11
 # и отвечает профилю дня 12, — но свёрнутыми: их ручки нужны реже.
 CHAT_BLOCKS = [{
+    "title": "День 17 · свой MCP-сервер",
+    # Блок недели 4: во вкладке недели 3 его нет, а в неделе 4 он не
+    # сворачивается вместе с днями недели 3.
+    "week": 4,
+    "note": "Стенд сам стал MCP-сервером: POST /mcp, JSON-RPC 2.0, вокруг мини-трекера "
+            "задач. Модель получает список инструментов по протоколу и сама решает, "
+            "звать ли их; вызов виден карточкой над ответом, задачи — ниже. "
+            "Сервер можно опросить и в блоке дня 16 — кнопка «Свой трекер».",
+    # Новый чат начинает со всем включённым — и с инструментами тоже.
+    "fields": [{**FIELDS["mcp_tools"], "default": True}],
+}, {
     "title": "День 15 · ворота и сторож этапа",
     "note": "Таблица переходов отвечает, куда можно, ворота — когда уже пора: к "
             "выполнению только с утверждённым планом, к закрытию только с "
@@ -862,7 +874,37 @@ def agent_for(session):
     entry = store.chat(session)
     if entry:
         tune(agent, entry)
+        agent.toolbox = agent.toolbox or Toolbox()
     return agent
+
+
+# ── День 17: свой MCP-сервер ────────────────────────────────────────
+# Сервер живёт в этом же приложении, и стенд ходит к нему как клиент —
+# тем же протоколом, что к чужим серверам дня 16, только без сети: запрос
+# уходит в приложение напрямую через ASGI. Снаружи тот же /mcp открыт
+# за паролем Caddy, как и весь стенд.
+OWN_URL = "http://stand/mcp"
+tracker.seed()
+
+
+def own_client():
+    return httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://stand",
+                             timeout=mcp.TIMEOUT)
+
+
+class Toolbox:
+    """Ящик инструментов агента: свой сервер, сессия на реплику, вызовы по протоколу."""
+
+    def __init__(self):
+        self.client = own_client()
+        self.session = ""
+
+    async def open(self):
+        self.session = await mcp.connect(self.client, OWN_URL)
+        return await mcp.tools(self.client, OWN_URL, self.session)
+
+    async def call(self, name, args):
+        return await mcp.use(self.client, OWN_URL, self.session, name, args)
 
 
 def profile_of(session):
@@ -1058,8 +1100,11 @@ def mcp_script():
 @app.get("/api/mcp/servers")
 def mcp_servers():
     """День 16: публичные серверы для стенда и версия протокола, на которой
-    стенд здоровается. Свой адрес вводится рядом, в поле."""
-    return {"servers": mcp.SERVERS, "version": mcp.VERSION}
+    стенд здоровается. Свой адрес вводится рядом, в поле. С дня 17 в списке
+    и свой сервер стенда."""
+    own = {"id": "own", "title": "Свой трекер", "url": OWN_URL,
+           "note": "сервер самого стенда (день 17): три инструмента трекера задач"}
+    return {"servers": [*mcp.SERVERS, own], "version": mcp.VERSION}
 
 
 @app.post("/api/mcp/tools")
@@ -1069,10 +1114,35 @@ async def mcp_tools(body: McpIn):
     Наружу уходит весь разговор целиком — рукопожатие, уведомление, запрос
     списка, — потому что день как раз про порядок вызовов, а не про итог.
     """
+    url = body.url.strip()
     try:
-        return await mcp.probe(body.url.strip(), shake=body.shake)
+        return await mcp.probe(url, shake=body.shake,
+                               client=own_client() if url == OWN_URL else None)
     except mcp.McpError as bad:
         raise HTTPException(status_code=400, detail=str(bad))
+
+
+@app.post("/mcp")
+async def mcp_server(request: Request):
+    """День 17: MCP-сервер стенда по Streamable HTTP. Отвечает телом JSON —
+    поток SSE протокол разрешает серверу не заводить."""
+    try:
+        message = await request.json()
+    except ValueError:
+        return JSONResponse(tracker.fault(None, -32700, "тело не разбирается как JSON"),
+                            status_code=400)
+    code, body, session = tracker.handle(message, request.headers.get("mcp-session-id", ""))
+    if body is None:
+        return Response(status_code=code)
+    head = {"Mcp-Session-Id": session} if session else {}
+    return JSONResponse(body, status_code=code, headers=head)
+
+
+@app.get("/api/tracker")
+def tracker_tasks():
+    """Задачи трекера для панели в настройках — чтобы было видно, что вызов
+    инструмента их поменял. Браузер читает напрямую, агент — только через MCP."""
+    return tracker.tasks()
 
 
 @app.get("/chat.js")

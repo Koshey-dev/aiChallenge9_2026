@@ -694,3 +694,40 @@ body.app #chatpane { flex: 1; min-height: 0; }
   #chatpane .person { flex: none; width: auto; max-width: 170px; }
   #chatpane .card .grid { grid-template-columns: 1fr; }
 }
+
+/* ── День 17: вызовы своего MCP-сервера ─────────────────────────────
+   Карточка вызова — над ответом, как плашки прошлых дней, но раскрывается:
+   внутри то, что ушло на сервер, и то, что он вернул. */
+#chatpane .toolcall { align-self: stretch; max-width: 100%; border: 1px solid var(--line);
+                   border-radius: 10px; background: var(--card); font-size: 13px; }
+#chatpane .toolcall.no { border-color: var(--bad); }
+#chatpane .toolcall summary { display: flex; align-items: center; gap: 8px; padding: 6px 10px;
+                           cursor: pointer; list-style: none; color: var(--dim); }
+#chatpane .toolcall summary::-webkit-details-marker { display: none; }
+#chatpane .toolcall summary code { color: var(--accent); font-weight: 600; font-size: 13px; }
+#chatpane .toolcall .args { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap;
+                         text-overflow: ellipsis; }
+#chatpane .toolcall .state { flex: none; font-size: 12px; }
+#chatpane .toolcall.no .state, #chatpane .toolcall .why { color: var(--bad); }
+#chatpane .toolcall .why { margin: 0 10px 8px; }
+#chatpane .toolcall .pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+                         gap: 8px; padding: 0 10px 10px; }
+#chatpane .toolcall .pair b { color: var(--dim); font-size: 12px; font-weight: 500; }
+#chatpane .toolcall pre { margin: 4px 0 0; padding: 8px 10px; overflow: auto; max-height: 220px;
+                       border-radius: 8px; background: var(--code); font-size: 12px; }
+@media (max-width: 600px) {
+  #chatpane .toolcall .pair { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Задачи трекера в блоке дня 17. */
+#chatpane .tracker { margin-top: 14px; }
+#chatpane .tracker h3 { margin: 0 0 4px; font-size: 15px; }
+#chatpane .tracker ul { margin: 8px 0 0; padding: 0; list-style: none; }
+#chatpane .tracker li { display: flex; align-items: center; gap: 8px; padding: 6px 0;
+                     border-top: 1px solid var(--line); font-size: 13.5px; }
+#chatpane .tracker li .no { color: var(--dim); font-size: 12.5px; }
+#chatpane .tracker li .name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+#chatpane .tracker li.done .name { color: var(--dim); text-decoration: line-through; }
+#chatpane .tracker li.none { color: var(--dim); }
+#chatpane .tracker .chip { font-size: 12px; }
+#chatpane .tracker .pri.high { color: var(--bad); border-color: currentColor; }

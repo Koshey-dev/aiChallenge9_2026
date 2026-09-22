@@ -12,7 +12,10 @@ SDK здесь нет намеренно: весь стенд ходит в чу
 заголовком `Mcp-Session-Id` — тогда его нужно повторять в каждом следующем
 запросе, иначе разговор не продолжится.
 
-Инструменты отсюда только показываются. Вызов — работа другого дня.
+День 17 добавил вызов: `tools/call` с именем инструмента и аргументами.
+Ответ — список кусков `content` (текст для модели) и флаг `isError`: инструмент
+отработал, но дело не вышло. Это не ошибка протокола, а результат — его читает
+модель и может поправиться сама.
 """
 
 import asyncio
@@ -56,7 +59,11 @@ STEPS = {
     "initialize": "клиент называет версию протокола, сервер — себя и свои возможности",
     "notifications/initialized": "уведомление без id: ответа не ждём, только код",
     "tools/list": "список инструментов, ради которого всё и затевалось",
+    "tools/call": "вызов инструмента: имя и аргументы по его схеме",
 }
+
+HELLO = {"protocolVersion": VERSION, "capabilities": {},
+         "clientInfo": {"name": "aichallenge-stand", "version": "1.0"}}
 
 
 class McpError(Exception):
@@ -158,7 +165,7 @@ def _tool(raw):
     }
 
 
-async def probe(url, *, shake=True):
+async def probe(url, *, shake=True, client=None):
     """Соединиться и получить список инструментов. Отдаёт весь разговор целиком.
 
     `shake=False` пропускает рукопожатие — на серверах с сессией видно, что
@@ -166,19 +173,20 @@ async def probe(url, *, shake=True):
 
     Сорвавшийся шаг ответ не отменяет: разговор возвращается вместе с причиной,
     иначе самое интересное — на чём именно оборвалось — осталось бы за кадром.
+
+    `client` приходит только для своего сервера стенда (день 17): он живёт
+    в этом же процессе, и запрос к нему идёт в приложение напрямую, минуя
+    сеть, — поэтому и проверка адреса ему не нужна.
     """
-    await check(url)
+    if client is None:
+        await check(url)
     steps = []
     session = ""
     server = {}
     trouble = ""
-    async with httpx.AsyncClient(timeout=TIMEOUT, follow_redirects=True) as client:
+    async with (client or httpx.AsyncClient(timeout=TIMEOUT, follow_redirects=True)) as client:
         if shake:
-            step, given = await _call(client, url, "initialize", {
-                "protocolVersion": VERSION,
-                "capabilities": {},
-                "clientInfo": {"name": "aichallenge-stand", "version": "1.0"},
-            }, "")
+            step, given = await _call(client, url, "initialize", HELLO, "")
             steps.append(step)
             if step["error"]:
                 return {"url": url, "server": {}, "steps": steps, "tools": [],
@@ -214,3 +222,57 @@ async def probe(url, *, shake=True):
                   "tokens": sum(one["tokens"] for one in found)},
         "error": trouble,
     }
+
+
+async def connect(client, url):
+    """Рукопожатие перед работой: `initialize` и уведомление. Отдаёт сессию.
+
+    Сорвалось — `McpError`: без знакомства вызывать инструменты не у кого.
+    """
+    step, session = await _call(client, url, "initialize", HELLO, "")
+    if step["error"]:
+        raise McpError("рукопожатие не прошло: " + step["error"])
+    await _call(client, url, "notifications/initialized", {}, session, notify=True)
+    return session
+
+
+async def tools(client, url, session):
+    """Список инструментов сервера — как есть, со схемами."""
+    step, _ = await _call(client, url, "tools/list", {}, session)
+    if step["error"]:
+        raise McpError("список инструментов не пришёл: " + step["error"])
+    return ((step["got"] or {}).get("result") or {}).get("tools", [])
+
+
+async def use(client, url, session, name, args):
+    """Вызвать инструмент. Отдаёт шаг разговора и текст результата для модели.
+
+    Отказ протокола (нет инструмента, кривые аргументы) тоже уходит модели
+    текстом: так она видит свою ошибку и может позвать инструмент правильно.
+    """
+    step, _ = await _call(client, url, "tools/call",
+                          {"name": name, "arguments": args}, session)
+    result = (step["got"] or {}).get("result") or {}
+    if step["error"]:
+        text = "ошибка: " + step["error"]
+    else:
+        text = "\n".join(part.get("text", "") for part in result.get("content", [])
+                         if part.get("type") == "text")
+        if result.get("isError"):
+            step["error"] = text or "инструмент сообщил об ошибке"
+            text = "ошибка: " + text
+    return step, text
+
+
+def function(tool):
+    """Инструмент MCP в том виде, в каком его ждёт OpenAI-совместимый чат.
+
+    Схема аргументов переносится как есть: `inputSchema` у MCP — та же
+    JSON Schema, что `parameters` у функции. Пустую схему провайдеры не
+    принимают, поэтому у инструмента без аргументов — пустой объект.
+    """
+    return {"type": "function", "function": {
+        "name": tool["name"],
+        "description": (tool.get("description") or "").strip(),
+        "parameters": tool.get("inputSchema") or {"type": "object", "properties": {}},
+    }}

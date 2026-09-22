@@ -18,7 +18,8 @@
     ring: $("#ring"), ringText: $("#ringText"), cost: $("#cost"),
     newTask: $("#newTask"), memoryButton: $("#memoryButton"),
     memoryCount: $("#memoryCount"), drawer: $("#drawer"),
-    prefs: $("#prefs"), prefFields: $("#prefFields"),
+    prefs: $("#prefs"), prefFields: $("#prefFields"), prefNow: $("#prefNow"),
+    tracker: $("#trackerBox"), trackerList: $("#trackerList"),
     profileButton: $("#profileButton"), profileMenu: $("#profileMenu"),
     profileName: $("#profileName"), people: $("#profiles"),
     profileList: $("#profileList"), profileCard: $("#profileCard"),
@@ -351,6 +352,7 @@
       render(turn, answer);
       last = turn;
       if (!row) { turn.trace.hidden = true; continue; }
+      (row.calls || []).forEach(call => toolCard(turn, call));
       learned(turn, row);
       stepped(turn, row);
       broke(turn, row);
@@ -399,6 +401,29 @@
         + `${move.why}`;
     plaque.addEventListener("click", () => showStagebox(true));
     turn.text.before(plaque);
+  }
+
+  // Карточка вызова инструмента (день 17) — над ответом, по одной на вызов,
+  // в том порядке, в каком модель их просила. Свёрнута: в строке имя, код и
+  // время, внутри — что ушло на сервер и что он вернул.
+  function toolCard(turn, call) {
+    const card = document.createElement("details");
+    card.className = "toolcall" + (call.error ? " no" : "");
+    const pretty = value => escapeHtml(typeof value === "string" ? value
+                                                                 : JSON.stringify(value, null, 2));
+    card.innerHTML = "<summary><svg class='i small' viewBox='0 0 24 24'>"
+      + "<path d='M14.7 6.3a4 4 0 0 0-5.4 5.1L3 17.7 6.3 21l6.3-6.3a4 4 0 0 0 5.1-5.4"
+      + "l-2.5 2.5-2.3-.7-.7-2.3Z'/></svg>"
+      + `<code>${escapeHtml(call.name)}</code><span class='args'></span>`
+      + `<span class='state'>${call.error ? "ошибка"
+        : `${call.status} · ${call.ms} мс`}</span></summary>`
+      + (call.error ? `<p class='why'>${escapeHtml(call.error)}</p>` : "")
+      + `<div class='pair'><div><b>Ушло · tools/call</b><pre>${pretty(call.args)}</pre></div>`
+      + `<div><b>Пришло</b><pre>${pretty(call.result)}</pre></div></div>`;
+    // Аргументы коротко прямо в строке: видно, что модель попросила, не раскрывая.
+    $(".args", card).textContent = typeof call.args === "string" ? call.args
+      : Object.entries(call.args).map(([key, value]) => `${key}: ${value}`).join(", ");
+    turn.text.before(card);
   }
 
   // Ответ, который свод не пропустил, — вторым вариантом рядом с переписанным.
@@ -636,6 +661,9 @@
           render(turn, turn.raw + event.text);
         } else if (event.t === "replace") {
           render(turn, event.text);
+        } else if (event.t === "tool") {
+          toolCard(turn, event);
+          if (!ui.prefs.hidden) showTracker();
         } else if (event.t === "blocked") {
           fail(turn, "отказ: " + event.reason);
         } else if (event.t === "error") {
@@ -1204,11 +1232,13 @@
   // Блок прошлого дня свёрнут: его ручки остаются, но место занимает текущий.
   function renderPrefs() {
     ui.prefFields.textContent = "";
+    ui.prefNow.textContent = "";
     // Во вкладке недели 4 все дни недели 3 — прошлые: текущий день стоит над
     // ними своим блоком, а они свёрнуты. В неделе 3 окно остаётся как было.
+    // Блоки недели 4 (`week`) встают над днём 16, и в неделе 3 их не видно.
     const past = $("#chatpane").dataset.week === "4";
     blocks.forEach(block => {
-      const folded = block.folded || past;
+      const folded = !block.week && (block.folded || past);
       const part = document.createElement(folded ? "details" : "fieldset");
       part.className = "block" + (folded ? " fold" : "");
       part.innerHTML = folded ? "<summary></summary><p class='fine'></p>"
@@ -1243,8 +1273,21 @@
         }
         part.append(row);
       });
-      ui.prefFields.append(part);
+      // Задачи трекера — в блоке дня 17: вызов меняет их, и это видно здесь.
+      if (block.week) part.append(ui.tracker);
+      (block.week ? ui.prefNow : ui.prefFields).append(part);
     });
+  }
+
+  // Задачи трекера, как они лежат на сервере. Браузер читает их напрямую:
+  // панель — для человека, агент видит трекер только через MCP.
+  async function showTracker() {
+    const list = await fetch("/api/tracker").then(res => res.json());
+    ui.trackerList.innerHTML = list.map(item => `<li class="${escapeHtml(item.status)}">
+        <span class="no">#${item.id}</span><span class="name">${escapeHtml(item.title)}</span>
+        <span class="chip pri ${escapeHtml(item.priority)}">${escapeHtml(item.priority)}</span>
+        <span class="chip">${escapeHtml(item.status)}</span></li>`).join("")
+      || "<li class='none'>задач нет</li>";
   }
 
   function defaults() {
@@ -1255,7 +1298,7 @@
 
   function readPrefs() {
     const values = {};
-    ui.prefFields.querySelectorAll("[data-key]").forEach(input => {
+    ui.prefs.querySelectorAll("[data-key]").forEach(input => {
       values[input.dataset.key] = input.type === "checkbox" ? input.checked
                                                             : Number(input.value);
     });
@@ -1641,6 +1684,7 @@
   $("#openPrefs").addEventListener("click", () => {
     renderPrefs();
     ui.prefs.hidden = false;
+    showTracker().catch(() => {});
   });
   $("#closePrefs").addEventListener("click", () => (ui.prefs.hidden = true));
   ui.prefs.addEventListener("click", event => {
