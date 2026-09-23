@@ -20,6 +20,8 @@
     memoryCount: $("#memoryCount"), drawer: $("#drawer"),
     prefs: $("#prefs"), prefFields: $("#prefFields"), prefNow: $("#prefNow"),
     tracker: $("#trackerBox"), trackerList: $("#trackerList"),
+    jobs: $("#jobsBox"), jobList: $("#jobList"), jobTick: $("#jobTick"),
+    clock: $("#clockPill"), clockKind: $("#clockKind"), clockLeft: $("#clockLeft"),
     profileButton: $("#profileButton"), profileMenu: $("#profileMenu"),
     profileName: $("#profileName"), people: $("#profiles"),
     profileList: $("#profileList"), profileCard: $("#profileCard"),
@@ -49,6 +51,11 @@
   let dirty = false;     // в анкете есть несохранённые правки
   let turns = [];        // реплики открытого чата на экране
   let last = null;       // последняя из них: только у неё кнопка варианта
+  let jobs = [];         // активные задания планировщика открытого чата (день 18)
+  let idle = null;       // сколько секунд назад цикл планировщика проверял сроки
+  let seenRun = 0;       // последнее срабатывание, которое уже в ленте
+  // Инструменты, после которых задания меняются: опрос сразу, не через 5 с.
+  const SCHEDULER = new Set(["remind", "digest", "cancel_job"]);
   const busy = new Set();   // чаты, в которых сейчас идёт ответ
   // Узлы реплики, на которую ещё идёт ответ: уйдёшь в другой чат и вернёшься —
   // лента перерисуется из базы, а эта реплика в базе появится только в конце.
@@ -254,11 +261,20 @@
     showVault();
     renderTask();
     ui.thread.textContent = "";
+    jobs = [];
+    seenRun = 0;
+    renderClock();
 
-    const data = await post("/api/agent/history", { session: item.id }).then(r => r.json());
+    const [data, feed] = await Promise.all([
+      post("/api/agent/history", { session: item.id }).then(r => r.json()),
+      api("GET", `/api/jobs?chat=${encodeURIComponent(item.id)}`),
+    ]);
     if (currentId !== item.id) return;  // пока ждали, открыли другой чат
     metrics = data.metrics;
-    draw(data.messages, data.metrics.ledger || [], data.metrics.variants || {});
+    jobs = feed.jobs;
+    idle = feed.idle;
+    draw(data.messages, data.metrics.ledger || [], data.metrics.variants || {}, feed.runs);
+    renderClock();
     if (live.has(item.id)) {
       clearEmpty();
       ui.thread.append(...live.get(item.id));
@@ -337,11 +353,18 @@
 
   // Журнал живёт только у реплик этой сессии страницы. У восстановленных из
   // базы есть строка расхода — по ней и собрана сводка.
-  function draw(messages, ledger, variants) {
+  function draw(messages, ledger, variants, runs = []) {
     ui.thread.textContent = "";
     turns = [];
     last = null;
-    if (!messages.length && !live.has(currentId)) { empty(); return; }
+    // Срабатывания планировщика (день 18) встают после той реплики, на
+    // которой чат стоял в момент срабатывания; до первой — в самом верху.
+    const queue = [...runs];
+    const fired = upto => {
+      while (queue.length && queue[0].after <= upto) plaque(queue.shift());
+    };
+    if (!messages.length && !queue.length && !live.has(currentId)) { empty(); return; }
+    fired(0);
     for (let i = 0; i < messages.length; i += 2) {
       const turn = addTurn(messages[i].content);
       const answer = (messages[i + 1] || {}).content || "";
@@ -351,6 +374,7 @@
                        ...(variants[i / 2 + 1] || [])];
       render(turn, answer);
       last = turn;
+      fired(i / 2 + 1);
       if (!row) { turn.trace.hidden = true; continue; }
       (row.calls || []).forEach(call => toolCard(turn, call));
       learned(turn, row);
@@ -361,6 +385,7 @@
       line(turn, `вход ${row.tokens_in} ток. · выход ${row.tokens_out} ток. · `
                + `история ~${row.history} ток. · оценка была ~${row.estimated}`, "spend");
     }
+    fired(Infinity);
     turns.forEach(foot);
   }
 
@@ -424,6 +449,70 @@
     $(".args", card).textContent = typeof call.args === "string" ? call.args
       : Object.entries(call.args).map(([key, value]) => `${key}: ${value}`).join(", ");
     turn.text.before(card);
+  }
+
+  // Пузырь планировщика (день 18) — срабатывание задания: напоминание или
+  // сводка. Это не реплика: в историю чата оно не идёт, и модель узнаёт о нём
+  // только через инструменты. Место в ленте — после реплики, на которой чат
+  // стоял в момент срабатывания.
+  const BELL = "<svg class='i small' viewBox='0 0 24 24'>"
+    + "<path d='M6 16v-5a6 6 0 0 1 12 0v5l2 2H4l2-2Z'/><path d='M10 20a2 2 0 0 0 4 0'/></svg>";
+  const CHART = "<svg class='i small' viewBox='0 0 24 24'>"
+    + "<path d='M4 20v-9M10 20V5M16 20v-6M2 20h20'/></svg>";
+
+  function plaque(run) {
+    clearEmpty();
+    const data = run.data || {};
+    const box = document.createElement("div");
+    box.className = "job " + run.kind;
+    const head = document.createElement("div");
+    head.className = "head";
+    head.innerHTML = (run.kind === "remind" ? BELL : CHART) + "<span></span><time></time>";
+    $("span", head).textContent = run.kind === "remind" ? "Напоминание"
+      : `Сводка за ${data.minutes} мин`;
+    $("time", head).textContent = when(run.at);
+    box.append(head);
+    if (run.kind === "remind") {
+      const text = document.createElement("p");
+      text.className = "text";
+      text.textContent = data.text;
+      box.append(text);
+    } else {
+      const d = data.delta || {};
+      const n = (data.now || {}).tasks || {};
+      const nums = document.createElement("div");
+      nums.className = "nums";
+      [`заведено ${d.created}`, `закрыто ${d.closed}`,
+       `todo ${n.todo} · doing ${n.doing} · done ${n.done}`,
+       `реплик ${d.turns}`, money(d.cost)].forEach(label => {
+        const chip = document.createElement("span");
+        chip.className = "chip";
+        chip.textContent = label;
+        nums.append(chip);
+      });
+      box.append(nums);
+      if ((data.changed || []).length) {
+        const list = document.createElement("p");
+        list.className = "changed";
+        list.textContent = "задачи за период: " + data.changed
+          .map(item => `#${item.id} «${item.title}» — ${item.status}`).join("; ");
+        box.append(list);
+      }
+      if (data.summary) {
+        const text = document.createElement("div");
+        text.className = "text";
+        text.innerHTML = markdown(data.summary);
+        box.append(text);
+      }
+      const foot = document.createElement("p");
+      foot.className = "fine";
+      foot.textContent = data.summary ? `текст написала модель · ${money(data.cost)}`
+        : data.error ? `модель не ответила: ${data.error}`
+        : "текст выключен — только числа";
+      box.append(foot);
+    }
+    ui.thread.append(box);
+    seenRun = Math.max(seenRun, run.id);
   }
 
   // Ответ, который свод не пропустил, — вторым вариантом рядом с переписанным.
@@ -613,6 +702,7 @@
   // в том порядке, в каком стоят в запросе: слои памяти — после окна.
   function budgetText(b) {
     const parts = [`роль ${b.role}`, `память ${b.memory}`];
+    if (b.tools) parts.push(`инструменты ${b.tools}`);
     if (b.note) parts.push(`правило памяти ${b.note}`);
     if (b.persona) parts.push(`анкета ${b.persona}`);
     if (b.profile) parts.push(`профиль ${b.profile}`);
@@ -664,6 +754,7 @@
         } else if (event.t === "tool") {
           toolCard(turn, event);
           if (!ui.prefs.hidden) showTracker();
+          if (SCHEDULER.has(event.name)) pollJobs().catch(() => {});
         } else if (event.t === "blocked") {
           fail(turn, "отказ: " + event.reason);
         } else if (event.t === "error") {
@@ -1238,7 +1329,7 @@
     // Блоки недели 4 (`week`) встают над днём 16, и в неделе 3 их не видно.
     const past = $("#chatpane").dataset.week === "4";
     blocks.forEach(block => {
-      const folded = !block.week && (block.folded || past);
+      const folded = block.folded || (!block.week && past);
       const part = document.createElement(folded ? "details" : "fieldset");
       part.className = "block" + (folded ? " fold" : "");
       part.innerHTML = folded ? "<summary></summary><p class='fine'></p>"
@@ -1273,8 +1364,9 @@
         }
         part.append(row);
       });
-      // Задачи трекера — в блоке дня 17: вызов меняет их, и это видно здесь.
-      if (block.week) part.append(ui.tracker);
+      // Панель блока: задачи трекера в дне 17, задания планировщика в дне 18 —
+      // вызов меняет их, и это видно здесь.
+      if (block.panel) part.append(ui[block.panel]);
       (block.week ? ui.prefNow : ui.prefFields).append(part);
     });
   }
@@ -1294,6 +1386,57 @@
     const values = {};
     blocks.forEach(block => block.fields.forEach(field => (values[field.key] = field.default)));
     return values;
+  }
+
+  // ── День 18: планировщик ──────────────────────────────────────────
+  // Браузер спрашивает срабатывания раз в пять секунд, пока чат виден:
+  // новые — пузырями в ленту, задания — в отсчёт шапки и в окно настроек.
+  // Толкать нечем: сервер ничего не шлёт сам, а опрос переживает и прокси,
+  // и перезапуск службы.
+  async function pollJobs() {
+    const id = currentId;
+    if (!id || document.hidden || $("#chatpane").hidden) return;
+    const feed = await api("GET", `/api/jobs?chat=${encodeURIComponent(id)}&after=${seenRun}`);
+    if (id !== currentId) return;
+    const follow = stuck();
+    feed.runs.forEach(plaque);
+    if (feed.runs.length && follow) toBottom();
+    jobs = feed.jobs;
+    idle = feed.idle;
+    renderClock();
+    if (!ui.prefs.hidden) renderJobs();
+  }
+
+  // Отсчёт в шапке — до ближайшего задания открытого чата. Срок назвал
+  // сервер (UTC), считает браузер по своим часам.
+  function renderClock() {
+    const soon = jobs[0];
+    ui.clock.hidden = !soon;
+    if (!soon) return;
+    const left = Math.max(0, Math.round(
+      (new Date(soon.due.replace(" ", "T") + "Z") - Date.now()) / 1000));
+    ui.clockKind.textContent = soon.kind === "remind" ? "напоминание" : "сводка";
+    ui.clockLeft.textContent = left
+      ? `${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}` : "сейчас";
+    ui.clock.title = (soon.kind === "remind" ? `Напоминание «${soon.text}»` : "Сводка по стенду")
+      + (soon.every ? `, каждые ${soon.every} мин` : "") + ` — ${when(soon.due)}`;
+  }
+
+  // Задания в окне настроек — как их видит человек. Модель видит их только
+  // через list_jobs, снимает — через cancel_job; кнопка здесь — ключ человека.
+  function renderJobs() {
+    ui.jobList.innerHTML = jobs.map(job => `<li class="${escapeHtml(job.kind)}">
+        <span class="no">#${job.id}</span>
+        <span class="name">${escapeHtml(job.kind === "remind" ? job.text : "сводка по стенду")}</span>
+        <span class="chip">${job.every ? `каждые ${job.every} мин` : "один раз"}</span>
+        <span class="chip">${when(job.due)}</span>
+        <span class="chip">сработало: ${job.fired}</span>
+        <button class="plain drop" data-job="${job.id}" title="Снять задание">снять</button></li>`)
+      .join("") || "<li class='none'>заданий нет — попросите ассистента напомнить или "
+                 + "присылать сводку</li>";
+    ui.jobTick.textContent = idle === null
+      ? "цикл планировщика ещё не поднимался"
+      : `цикл планировщика жив: сроки проверены ${idle} с назад`;
   }
 
   function readPrefs() {
@@ -1612,6 +1755,16 @@
   });
 
   ui.newTask.addEventListener("click", newTask);
+  ui.clock.addEventListener("click", () => $("#openPrefs").click());
+  ui.jobList.addEventListener("click", event => {
+    const button = event.target.closest(".drop");
+    if (!button) return;
+    api("DELETE", `/api/jobs/${button.dataset.job}`)
+      .then(() => pollJobs())
+      .catch(error => notice("задание не снято: " + error.message));
+  });
+  setInterval(() => pollJobs().catch(() => {}), 5000);
+  setInterval(renderClock, 1000);
   ui.stageTrack.addEventListener("click", () => showStagebox(ui.stagebox.hidden));
   const steer = act => taskCall(act).catch(error =>
     notice("состояние задачи не сменилось: " + error.message));
@@ -1685,6 +1838,8 @@
     renderPrefs();
     ui.prefs.hidden = false;
     showTracker().catch(() => {});
+    renderJobs();
+    pollJobs().catch(() => {});
   });
   $("#closePrefs").addEventListener("click", () => (ui.prefs.hidden = true));
   ui.prefs.addEventListener("click", event => {

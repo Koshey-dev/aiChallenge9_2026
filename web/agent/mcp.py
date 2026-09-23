@@ -225,7 +225,9 @@ async def probe(url, *, shake=True, client=None):
 
 
 async def connect(client, url):
-    """Рукопожатие перед работой: `initialize` и уведомление. Отдаёт сессию.
+    """Рукопожатие перед работой: `initialize` и уведомление. Отдаёт сессию
+    и `instructions` сервера — подсказку, которую протокол велит клиенту
+    отдать модели системным сообщением (день 18: в ней «сейчас» планировщика).
 
     Сорвалось — `McpError`: без знакомства вызывать инструменты не у кого.
     """
@@ -233,7 +235,8 @@ async def connect(client, url):
     if step["error"]:
         raise McpError("рукопожатие не прошло: " + step["error"])
     await _call(client, url, "notifications/initialized", {}, session, notify=True)
-    return session
+    result = (step["got"] or {}).get("result") or {}
+    return session, (result.get("instructions") or "").strip()
 
 
 async def tools(client, url, session):

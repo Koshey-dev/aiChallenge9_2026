@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import difflib
 import itertools
 import json
@@ -13,6 +14,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel
 
+import scheduler
 import store
 import tracker
 from agent import Agent, AgentError, blocks, mcp, persona, rules, task
@@ -123,17 +125,37 @@ MARKS = {"key": "show_marks", "label": "Метки «что учтено» по�
          "hint": "что из профиля ушло в запрос: пункты анкеты и сколько записей, "
                  "которые ассистент заметил сам"}
 FIELDS = {field["key"]: field for block in blocks(CHAT_DEFAULT) for field in block["fields"]}
+# День 18: текст сводки пишет модель чата — по числам, которые собрал код.
+# Это ручка планировщика, а не коробки: в `configure` она не попадает, её
+# читает `write_digest` в момент срабатывания.
+DIGEST = {"key": "digest_llm", "label": "Сводку пишет модель", "type": "bool",
+          "default": True,
+          "hint": "выключено — в чат уходят только числа: заведено, закрыто, реплики, "
+                  "расход. Включено — модель чата пересказывает их двумя-тремя фразами; "
+                  "это запрос к модели на каждое срабатывание, и он идёт без вас"}
 # Текущий день сверху. Прошлые остаются — день 13 стоит на рабочей памяти дня 11
 # и отвечает профилю дня 12, — но свёрнутыми: их ручки нужны реже.
 CHAT_BLOCKS = [{
-    "title": "День 17 · свой MCP-сервер",
+    "title": "День 18 · планировщик и фоновые задачи",
     # Блок недели 4: во вкладке недели 3 его нет, а в неделе 4 он не
     # сворачивается вместе с днями недели 3.
     "week": 4,
+    "note": "Пять инструментов того же MCP-сервера: напоминание, периодическая сводка, "
+            "список заданий, снятие, агрегат за период. Задания лежат в SQLite, а "
+            "выполняет их цикл в процессе стенда — без открытой вкладки и без реплики. "
+            "Срабатывание ложится в ленту чата пузырём; ближайшее — отсчётом в шапке.",
+    # Список заданий — панель в этом блоке (chat.js кладёт её по ключу).
+    "panel": "jobs",
+    "fields": [DIGEST],
+}, {
+    "title": "День 17 · свой MCP-сервер",
+    "week": 4,
+    "folded": True,
     "note": "Стенд сам стал MCP-сервером: POST /mcp, JSON-RPC 2.0, вокруг мини-трекера "
             "задач. Модель получает список инструментов по протоколу и сама решает, "
             "звать ли их; вызов виден карточкой над ответом, задачи — ниже. "
             "Сервер можно опросить и в блоке дня 16 — кнопка «Свой трекер».",
+    "panel": "tracker",
     # Новый чат начинает со всем включённым — и с инструментами тоже.
     "fields": [{**FIELDS["mcp_tools"], "default": True}],
 }, {
@@ -307,7 +329,16 @@ JUDGE = (
     "Уложись в 5-7 предложений."
 )
 
-app = FastAPI()
+@contextlib.asynccontextmanager
+async def lifespan(_app):
+    # День 18: цикл планировщика живёт, пока живёт процесс стенда, — на VPS
+    # его держит systemd, и задания срабатывают без открытой вкладки.
+    ticker = asyncio.create_task(scheduler.loop(write_digest))
+    yield
+    ticker.cancel()
+
+
+app = FastAPI(lifespan=lifespan)
 HERE = Path(__file__).parent
 
 
@@ -874,7 +905,7 @@ def agent_for(session):
     entry = store.chat(session)
     if entry:
         tune(agent, entry)
-        agent.toolbox = agent.toolbox or Toolbox()
+        agent.toolbox = agent.toolbox or Toolbox(session)
     return agent
 
 
@@ -885,23 +916,28 @@ def agent_for(session):
 # за паролем Caddy, как и весь стенд.
 OWN_URL = "http://stand/mcp"
 tracker.seed()
+# День 18: инструменты планировщика — в тот же сервер, его «сейчас» — в instructions.
+tracker.register(scheduler.TOOLS, scheduler.hint)
 
 
-def own_client():
+def own_client(chat=""):
+    """Клиент к своему серверу. Чат уходит заголовком: задания планировщика
+    принадлежат чату, и сервер должен знать, чьи они."""
     return httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://stand",
-                             timeout=mcp.TIMEOUT)
+                             timeout=mcp.TIMEOUT, headers={"X-Chat": chat} if chat else {})
 
 
 class Toolbox:
     """Ящик инструментов агента: свой сервер, сессия на реплику, вызовы по протоколу."""
 
-    def __init__(self):
-        self.client = own_client()
+    def __init__(self, chat):
+        self.client = own_client(chat)
         self.session = ""
 
     async def open(self):
-        self.session = await mcp.connect(self.client, OWN_URL)
-        return await mcp.tools(self.client, OWN_URL, self.session)
+        """Список инструментов и instructions сервера на эту реплику."""
+        self.session, hint = await mcp.connect(self.client, OWN_URL)
+        return await mcp.tools(self.client, OWN_URL, self.session), hint
 
     async def call(self, name, args):
         return await mcp.use(self.client, OWN_URL, self.session, name, args)
@@ -1131,7 +1167,8 @@ async def mcp_server(request: Request):
     except ValueError:
         return JSONResponse(tracker.fault(None, -32700, "тело не разбирается как JSON"),
                             status_code=400)
-    code, body, session = tracker.handle(message, request.headers.get("mcp-session-id", ""))
+    code, body, session = tracker.handle(message, request.headers.get("mcp-session-id", ""),
+                                         request.headers.get("x-chat", ""))
     if body is None:
         return Response(status_code=code)
     head = {"Mcp-Session-Id": session} if session else {}
@@ -1143,6 +1180,59 @@ def tracker_tasks():
     """Задачи трекера для панели в настройках — чтобы было видно, что вызов
     инструмента их поменял. Браузер читает напрямую, агент — только через MCP."""
     return tracker.tasks()
+
+
+# ── День 18: планировщик ────────────────────────────────────────────
+DIGEST_ROLE = (
+    "Ты — ассистент стенда AI Challenge. Тебе дают числа: что изменилось на стенде "
+    "за период и что там сейчас. Напиши сводку в два-три коротких предложения "
+    "по-русски: только то, что следует из чисел, без советов и без вопросов. "
+    "Задачи называй по названию. Если за период ничего не изменилось — скажи это "
+    "одной фразой."
+)
+
+
+async def write_digest(entry, data):
+    """Текст сводки — моделью чата, если у него стоит галочка. Числа собрал
+    код, модель их только пересказывает; без ключа сводка уходит числами."""
+    if not entry or not chat_prefs(entry)["digest_llm"]:
+        return "", 0.0
+    model = CHAT_BY_ID.get(entry["model"]) or CHAT_BY_ID[CHAT_DEFAULT]
+    provider = PROVIDERS[model["provider"]]
+    if not provider["key"]:
+        return "", 0.0
+    facts = {key: data[key] for key in ("minutes", "delta", "changed", "now")}
+    quirks = {"thinking": {"type": "disabled"}} if model["id"].startswith("deepseek") else {}
+    spent, text = new_metrics(), []
+    async with httpx.AsyncClient(timeout=90, default_encoding="utf-8", proxy=PROXY) as client:
+        async for _ in call(client, provider["key"],
+                            chat(json.dumps(facts, ensure_ascii=False), DIGEST_ROLE),
+                            "digest", spent, text, url=provider["url"], model=model["id"],
+                            max_tokens=400, **quirks):
+            pass
+    price = CHAT_PRICES.get(model["id"]) or (0, 0)
+    cost = round(spent["prompt_tokens"] / 1e6 * price[0]
+                 + spent["completion_tokens"] / 1e6 * price[1], 6)
+    return " ".join("".join(text).split()), cost
+
+
+@app.get("/api/jobs")
+def job_feed(chat: str = "", after: int = 0):
+    """Задания и срабатывания чата для браузера: пузыри в ленте, отсчёт в
+    шапке, список в настройках. `after` — только срабатывания новее известного.
+    Браузер читает напрямую; модель — только через инструменты."""
+    return {"chat": chat, "jobs": scheduler.jobs(chat),
+            "runs": scheduler.runs(chat, after_id=after), "idle": scheduler.idle()}
+
+
+@app.delete("/api/jobs/{job_id}")
+def job_drop(job_id: int):
+    """Снять задание рукой. Ключ у человека, как у ворот дня 15: модель снимает
+    через cancel_job, человек — здесь."""
+    if scheduler.job(job_id) is None:
+        raise HTTPException(status_code=404, detail=f"задания #{job_id} нет")
+    scheduler.cancel(job_id)
+    return {"ok": True}
 
 
 @app.get("/chat.js")

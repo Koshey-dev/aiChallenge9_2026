@@ -15,6 +15,11 @@
 кривые аргументы — ошибка JSON-RPC (`error` с кодом): вызов не состоялся.
 Инструмент отработал, но дело не вышло (нет такой задачи) — это результат
 с `isError: true`: его читает модель и может поправиться сама.
+
+С дня 18 сервер один на несколько модулей: другой модуль отдаёт свои записи
+в `register`, и они встают в тот же список. Обработчику приходит и чат, из
+которого стенд позвал инструмент (заголовок `X-Chat` своего клиента): трекеру
+он не нужен, а заданиям планировщика — нужен, они принадлежат чату.
 """
 
 import json
@@ -32,6 +37,10 @@ INFO = {"name": "aichallenge-tracker", "version": "1.0"}
 
 INSTRUCTIONS = ("Мини-трекер задач стенда. Задачи живут в статусах todo → doing → done, "
                 "приоритет low, normal или high. Номер задачи берите из list_tasks.")
+
+# Подсказки других модулей для instructions — функции, а не строки: текст
+# собирается на каждое рукопожатие, и «сейчас» планировщика в нём свежее.
+HINTS = []
 
 STATUSES = ["todo", "doing", "done"]
 PRIORITIES = ["low", "normal", "high"]
@@ -100,12 +109,12 @@ class Failed(Exception):
     pass
 
 
-def list_tasks(args):
+def list_tasks(args, _chat):
     found = tasks(args.get("status", ""))
     return {"count": len(found), "tasks": found}
 
 
-def create_task(args):
+def create_task(args, _chat):
     title = " ".join(args["title"].split())[:120]
     if not title:
         raise Failed("название задачи пустое")
@@ -117,7 +126,7 @@ def create_task(args):
     return task(cursor.lastrowid)
 
 
-def update_status(args):
+def update_status(args, _chat):
     before = task(args["id"])
     if before is None:
         raise Failed(f"задачи #{args['id']} нет — номер берите из list_tasks")
@@ -157,6 +166,19 @@ BY_NAME = {tool["name"]: tool for tool in TOOLS}
 KINDS = {"string": str, "integer": int, "object": dict}
 
 
+def register(tools, hint=None):
+    """Инструменты другого модуля — в тот же сервер (день 18). `hint` — его
+    строка в instructions, вызывается на каждое рукопожатие."""
+    TOOLS.extend(tools)
+    BY_NAME.update({tool["name"]: tool for tool in tools})
+    if hint:
+        HINTS.append(hint)
+
+
+def instructions():
+    return " ".join([INSTRUCTIONS, *(hint() for hint in HINTS)])
+
+
 def listed():
     """Инструменты так, как их видит клиент: без обработчика."""
     return [{key: value for key, value in tool.items() if key != "run"} for tool in TOOLS]
@@ -182,6 +204,8 @@ def checked(tool, args):
             raise ValueError(f"{name} должен быть {about['type']}")
         if "enum" in about and value not in about["enum"]:
             raise ValueError(f"{name}: одно из {', '.join(about['enum'])}")
+        if "minimum" in about and value < about["minimum"]:
+            raise ValueError(f"{name} должен быть не меньше {about['minimum']}")
     return args
 
 
@@ -193,7 +217,7 @@ class RpcError(Exception):
         self.code = code
 
 
-def call(params):
+def call(params, chat):
     tool = BY_NAME.get(params.get("name"))
     if tool is None:
         raise RpcError(-32602, f"инструмента {params.get('name')!r} нет")
@@ -202,7 +226,7 @@ def call(params):
     except ValueError as bad:
         raise RpcError(-32602, f"{tool['name']}: {bad}") from bad
     try:
-        data = tool["run"](args)
+        data = tool["run"](args, chat)
     except Failed as failed:
         return {"content": [{"type": "text", "text": str(failed)}], "isError": True}
     # Текстом — для модели и клиентов, которые знают только `content`;
@@ -211,12 +235,13 @@ def call(params):
             "structuredContent": data, "isError": False}
 
 
-def handle(message, session):
+def handle(message, session, chat=""):
     """Одно сообщение JSON-RPC. Отдаёт код ответа, тело и выданную сессию.
 
     Уведомление (сообщение без `id`) ответа не получает — только 202.
     Всё, кроме `initialize`, требует сессию, выданную на рукопожатии: без
     знакомства разговор не начинается, как у GitMCP из дня 16.
+    `chat` — из какого чата стенд зовёт инструмент; у внешнего клиента пусто.
     """
     if not isinstance(message, dict) or message.get("jsonrpc") != "2.0" \
             or not isinstance(message.get("method"), str):
@@ -234,7 +259,7 @@ def handle(message, session):
             SESSIONS.add(given)
             result = {"protocolVersion": asked if asked in VERSIONS else VERSIONS[0],
                       "capabilities": {"tools": {"listChanged": False}},
-                      "serverInfo": INFO, "instructions": INSTRUCTIONS}
+                      "serverInfo": INFO, "instructions": instructions()}
         elif session not in SESSIONS:
             return 400, fault(ident, -32000, "Mcp-Session-Id не выдан: сначала initialize"), ""
         elif method == "ping":
@@ -242,7 +267,7 @@ def handle(message, session):
         elif method == "tools/list":
             result = {"tools": listed()}
         elif method == "tools/call":
-            result = call(params)
+            result = call(params, chat)
         else:
             raise RpcError(-32601, f"метода {method} нет")
     except RpcError as bad:

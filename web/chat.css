@@ -731,3 +731,27 @@ body.app #chatpane { flex: 1; min-height: 0; }
 #chatpane .tracker li.none { color: var(--dim); }
 #chatpane .tracker .chip { font-size: 12px; }
 #chatpane .tracker .pri.high { color: var(--bad); border-color: currentColor; }
+
+/* ── День 18: планировщик ───────────────────────────────────────────
+   Пузырь срабатывания — не реплика: без журнала и без подписи профиля, у
+   левого края, как ответ, но в пунктирной рамке — его написал не человек и
+   не модель по просьбе, а цикл стенда в назначенный срок. */
+#chatpane .job { align-self: flex-start; max-width: 100%; min-width: min(100%, 360px);
+              padding: 8px 12px 10px; border: 1px dashed var(--line); border-radius: 12px;
+              background: var(--card); font-size: 14px; }
+#chatpane .job .head { display: flex; align-items: center; gap: 6px; color: var(--accent);
+                    font-size: 12.5px; font-weight: 600; }
+#chatpane .job.remind .head { color: var(--warn); }
+#chatpane .job .head time { margin-left: auto; padding-left: 12px; color: var(--dim);
+                         font-weight: 400; font-variant-numeric: tabular-nums; }
+#chatpane .job .text { margin: 6px 0 0; }
+#chatpane .job .nums { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+#chatpane .job .nums .chip { font-size: 12px; }
+#chatpane .job .changed { margin: 8px 0 0; color: var(--dim); font-size: 12.5px; }
+#chatpane .job .fine { margin: 8px 0 0; font-size: 12px; }
+/* Отсчёт в шапке: скрыт — значит заданий у чата нет. */
+#chatpane .pill[hidden] { display: none; }
+#chatpane #clockLeft { font-variant-numeric: tabular-nums; }
+/* Задания в окне настроек — тем же списком, что задачи трекера. */
+#chatpane .jobs .drop { padding: 2px 8px; font-size: 12px; }
+#chatpane .jobs #jobTick { margin: 8px 0 0; }

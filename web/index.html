@@ -434,6 +434,9 @@
         <!-- День 14: свод инвариантов. Рядом с памятью, но это не слой памяти:
              слой пишет модель, свод — только человек. -->
         <button class="pill" id="vaultButton" aria-expanded="false" title="Ограничения, которые ассистент не имеет права нарушать"><svg class="i small" viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg><span class="word">Свод</span> <b id="vaultCount">0</b></button>
+        <!-- День 18: ближайшее задание планировщика. Срок назвал сервер,
+             отсчёт до него идёт в браузере. В неделе 3 планировщика нет. -->
+        <button class="pill" id="clockPill" data-week="4" hidden title="Ближайшее задание планировщика"><svg class="i small" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span class="word" id="clockKind">сводка</span> <b id="clockLeft">0:00</b></button>
       </div>
     </header>
 
@@ -648,6 +651,16 @@
     <!-- Блоки недели 4 из CHAT_BLOCKS (день 17 и дальше): chat.js ставит их
          сюда, над днём 16. Список задач трекера он переносит внутрь блока. -->
     <div id="prefNow" data-week="4">
+      <!-- День 18: задания планировщика. Список ведёт цикл в процессе стенда;
+           снять задание можно и отсюда — это ключ человека. -->
+      <div class="tracker jobs" id="jobsBox">
+        <h3>Задания планировщика</h3>
+        <p class="fine">Что стенд сделает сам, без реплики. Ставит их модель
+          инструментами <code>remind</code> и <code>digest</code>; снять можно
+          и здесь.</p>
+        <ul id="jobList"></ul>
+        <p class="fine" id="jobTick"></p>
+      </div>
       <div class="tracker" id="trackerBox">
         <h3>Задачи трекера</h3>
         <p class="fine">Так их видит человек. Модель видит трекер только через

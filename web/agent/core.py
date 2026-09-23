@@ -92,6 +92,7 @@ class Agent:
         # реплики — для карточек в пузыре.
         self.toolbox = None
         self.tools = []
+        self.hint = ""
         self.calls = []
         # Ответы для других профилей: номер реплики — список вариантов.
         # В историю они не идут: разговор продолжается от исходного ответа.
@@ -436,12 +437,18 @@ class Agent:
             yield piece
 
     async def equip(self):
-        """Спросить у сервера инструменты на эту реплику. Не вышло — без них."""
+        """Спросить у сервера инструменты на эту реплику. Не вышло — без них.
+
+        Вместе со списком приходит `instructions` сервера: она уходит модели
+        системным сообщением рядом с ролью (`layout`), поэтому снаряжение идёт
+        до раскладки запроса.
+        """
         self.tools = []
+        self.hint = ""
         if not (self.settings["mcp_tools"] and self.toolbox):
             return
         try:
-            self.tools = await self.toolbox.open()
+            self.tools, self.hint = await self.toolbox.open()
         except mcp.McpError as bad:
             yield self.note(f"инструменты MCP: сервер не ответил — {bad}")
             return
@@ -670,6 +677,9 @@ class Agent:
         layered = self.settings["strategy"] == "layers"
         return {
             "role": [{"role": "system", "content": self.settings["role"]}],
+            # Подсказка MCP-сервера — что это за инструменты и который час.
+            "tools": ([{"role": "system", "content": "Инструменты MCP. " + self.hint}]
+                      if self.hint else []),
             "persona": (persona.sheet(card, self.settings["persona_max"])
                         if self.settings["send_persona"] else []),
             "summary": self.briefing() if self.settings["compress"] else [],
@@ -721,7 +731,7 @@ class Agent:
         ни справке слоёв, ни указанию этапа, ни пожеланиям анкеты: «покороче»
         и «только PostgreSQL» — требования разного веса.
         """
-        return [*pieces["role"], *pieces["summary"], *pieces["facts"],
+        return [*pieces["role"], *pieces["tools"], *pieces["summary"], *pieces["facts"],
                 *pieces["ballast"], *pieces["memory"], *pieces["note"],
                 *pieces["persona"], *pieces["profile"], *pieces["work"],
                 *pieces["task"], *pieces["rules"], *pieces["question"]]
@@ -789,6 +799,7 @@ class Agent:
             yield self.note("свожу результаты в один ответ")
             pieces = {
                 "role": [{"role": "system", "content": crew.SUMMARY}],
+                "tools": [],
                 "persona": [],
                 "summary": [],
                 "facts": [],
@@ -803,10 +814,10 @@ class Agent:
                               "content": crew.digest(question, self.results)}],
             }
         else:
-            pieces = self.layout(question, self.remembered(), self.persona, self.profile)
-            self.told = self.tell(self.persona, self.profile)
             async for event in self.equip():
                 yield event
+            pieces = self.layout(question, self.remembered(), self.persona, self.profile)
+            self.told = self.tell(self.persona, self.profile)
 
         budget = self.weigh(pieces)
         if self.settings["context_guard"]:

@@ -3,3 +3,4 @@ python-dotenv
 fastapi
 uvicorn
 httpx[socks]
+tzdata
