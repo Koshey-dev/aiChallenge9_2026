@@ -20,8 +20,12 @@
 в `register`, и они встают в тот же список. Обработчику приходит и чат, из
 которого стенд позвал инструмент (заголовок `X-Chat` своего клиента): трекеру
 он не нужен, а заданиям планировщика — нужен, они принадлежат чату.
+
+С дня 19 обработчик может быть и корутиной: конспект конвейера ждёт модель,
+а держать цикл событий стенда на время её ответа нельзя.
 """
 
+import inspect
 import json
 import sqlite3
 import uuid
@@ -217,7 +221,7 @@ class RpcError(Exception):
         self.code = code
 
 
-def call(params, chat):
+async def call(params, chat):
     tool = BY_NAME.get(params.get("name"))
     if tool is None:
         raise RpcError(-32602, f"инструмента {params.get('name')!r} нет")
@@ -227,6 +231,8 @@ def call(params, chat):
         raise RpcError(-32602, f"{tool['name']}: {bad}") from bad
     try:
         data = tool["run"](args, chat)
+        if inspect.isawaitable(data):
+            data = await data
     except Failed as failed:
         return {"content": [{"type": "text", "text": str(failed)}], "isError": True}
     # Текстом — для модели и клиентов, которые знают только `content`;
@@ -235,7 +241,7 @@ def call(params, chat):
             "structuredContent": data, "isError": False}
 
 
-def handle(message, session, chat=""):
+async def handle(message, session, chat=""):
     """Одно сообщение JSON-RPC. Отдаёт код ответа, тело и выданную сессию.
 
     Уведомление (сообщение без `id`) ответа не получает — только 202.
@@ -267,7 +273,7 @@ def handle(message, session, chat=""):
         elif method == "tools/list":
             result = {"tools": listed()}
         elif method == "tools/call":
-            result = call(params, chat)
+            result = await call(params, chat)
         else:
             raise RpcError(-32601, f"метода {method} нет")
     except RpcError as bad:

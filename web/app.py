@@ -14,6 +14,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel
 
+import pipeline
 import scheduler
 import store
 import tracker
@@ -136,10 +137,23 @@ DIGEST = {"key": "digest_llm", "label": "Сводку пишет модель", 
 # Текущий день сверху. Прошлые остаются — день 13 стоит на рабочей памяти дня 11
 # и отвечает профилю дня 12, — но свёрнутыми: их ручки нужны реже.
 CHAT_BLOCKS = [{
-    "title": "День 18 · планировщик и фоновые задачи",
+    "title": "День 19 · композиция инструментов",
     # Блок недели 4: во вкладке недели 3 его нет, а в неделе 4 он не
     # сворачивается вместе с днями недели 3.
     "week": 4,
+    "note": "Три инструмента того же MCP-сервера складываются в конвейер: search находит "
+            "разделы журнала стенда, summarize сжимает их моделью чата, save_to_file "
+            "кладёт конспект файлом. На одну реплику модель сама зовёт все три. Между "
+            "шагами идёт не текст, а номер результата (ref), и каждый шаг возвращает "
+            "отпечаток того, что прочитал: полоса над ответом и список ниже сверяют их "
+            "на стыках.",
+    # Цепочки чата — панель в этом блоке (chat.js кладёт её по ключу).
+    "panel": "chains",
+    "fields": [],
+}, {
+    "title": "День 18 · планировщик и фоновые задачи",
+    "week": 4,
+    "folded": True,
     "note": "Пять инструментов того же MCP-сервера: напоминание, периодическая сводка, "
             "список заданий, снятие, агрегат за период. Задания лежат в SQLite, а "
             "выполняет их цикл в процессе стенда — без открытой вкладки и без реплики. "
@@ -918,13 +932,18 @@ OWN_URL = "http://stand/mcp"
 tracker.seed()
 # День 18: инструменты планировщика — в тот же сервер, его «сейчас» — в instructions.
 tracker.register(scheduler.TOOLS, scheduler.hint)
+# День 19: конвейер search → summarize → save_to_file — туда же.
+tracker.register(pipeline.TOOLS, pipeline.hint)
+
+# Свой сервер ждут дольше чужих: summarize внутри вызова ходит в модель.
+OWN_TIMEOUT = 120
 
 
 def own_client(chat=""):
     """Клиент к своему серверу. Чат уходит заголовком: задания планировщика
     принадлежат чату, и сервер должен знать, чьи они."""
     return httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://stand",
-                             timeout=mcp.TIMEOUT, headers={"X-Chat": chat} if chat else {})
+                             timeout=OWN_TIMEOUT, headers={"X-Chat": chat} if chat else {})
 
 
 class Toolbox:
@@ -1167,8 +1186,9 @@ async def mcp_server(request: Request):
     except ValueError:
         return JSONResponse(tracker.fault(None, -32700, "тело не разбирается как JSON"),
                             status_code=400)
-    code, body, session = tracker.handle(message, request.headers.get("mcp-session-id", ""),
-                                         request.headers.get("x-chat", ""))
+    code, body, session = await tracker.handle(message,
+                                               request.headers.get("mcp-session-id", ""),
+                                               request.headers.get("x-chat", ""))
     if body is None:
         return Response(status_code=code)
     head = {"Mcp-Session-Id": session} if session else {}
@@ -1192,28 +1212,40 @@ DIGEST_ROLE = (
 )
 
 
+async def ask_model(entry, role, content, target, max_tokens):
+    """Один запрос к модели чата мимо коробки агента: текст, цена и ошибка
+    провайдера, если была. Без ключа у провайдера — None. Так пишутся сводка
+    планировщика и конспект конвейера (день 19)."""
+    model = CHAT_BY_ID.get(entry.get("model")) or CHAT_BY_ID[CHAT_DEFAULT]
+    provider = PROVIDERS[model["provider"]]
+    if not provider["key"]:
+        return None
+    quirks = {"thinking": {"type": "disabled"}} if model["id"].startswith("deepseek") else {}
+    spent, text, trouble = new_metrics(), [], ""
+    async with httpx.AsyncClient(timeout=90, default_encoding="utf-8", proxy=PROXY) as client:
+        async for event in call(client, provider["key"], chat(content, role), target, spent,
+                                text, url=provider["url"], model=model["id"],
+                                max_tokens=max_tokens, **quirks):
+            if event["t"] == "error":
+                trouble = event["message"]
+    price = CHAT_PRICES.get(model["id"]) or (0, 0)
+    cost = round(spent["prompt_tokens"] / 1e6 * price[0]
+                 + spent["completion_tokens"] / 1e6 * price[1], 6)
+    return "".join(text), cost, trouble
+
+
 async def write_digest(entry, data):
     """Текст сводки — моделью чата, если у него стоит галочка. Числа собрал
     код, модель их только пересказывает; без ключа сводка уходит числами."""
     if not entry or not chat_prefs(entry)["digest_llm"]:
         return "", 0.0
-    model = CHAT_BY_ID.get(entry["model"]) or CHAT_BY_ID[CHAT_DEFAULT]
-    provider = PROVIDERS[model["provider"]]
-    if not provider["key"]:
-        return "", 0.0
     facts = {key: data[key] for key in ("minutes", "delta", "changed", "now")}
-    quirks = {"thinking": {"type": "disabled"}} if model["id"].startswith("deepseek") else {}
-    spent, text = new_metrics(), []
-    async with httpx.AsyncClient(timeout=90, default_encoding="utf-8", proxy=PROXY) as client:
-        async for _ in call(client, provider["key"],
-                            chat(json.dumps(facts, ensure_ascii=False), DIGEST_ROLE),
-                            "digest", spent, text, url=provider["url"], model=model["id"],
-                            max_tokens=400, **quirks):
-            pass
-    price = CHAT_PRICES.get(model["id"]) or (0, 0)
-    cost = round(spent["prompt_tokens"] / 1e6 * price[0]
-                 + spent["completion_tokens"] / 1e6 * price[1], 6)
-    return " ".join("".join(text).split()), cost
+    written = await ask_model(entry, DIGEST_ROLE, json.dumps(facts, ensure_ascii=False),
+                              "digest", 400)
+    if written is None:
+        return "", 0.0
+    text, cost, _ = written
+    return " ".join(text.split()), cost
 
 
 @app.get("/api/jobs")
@@ -1233,6 +1265,39 @@ def job_drop(job_id: int):
         raise HTTPException(status_code=404, detail=f"задания #{job_id} нет")
     scheduler.cancel(job_id)
     return {"ok": True}
+
+
+# ── День 19: конвейер инструментов ──────────────────────────────────
+
+async def write_note(chat_id, role, content):
+    """Конспект конвейера — моделью того чата, из которого позван summarize.
+    Отказ провайдера — отказ инструмента: модель увидит его в ответе шага."""
+    written = await ask_model(store.chat(chat_id) or {}, role, content, "summary", 1500)
+    if written is None:
+        return None
+    text, cost, trouble = written
+    if trouble:
+        raise tracker.Failed(f"модель не ответила: {trouble[:200]}")
+    return text, cost
+
+
+pipeline.WRITE = write_note
+
+
+@app.get("/api/pipeline")
+def pipeline_chains(chat: str = ""):
+    """Цепочки чата для панели в настройках: шаги, отпечатки, целы ли стыки.
+    Браузер читает напрямую; модель — только ответы инструментов."""
+    return {"chat": chat, "chains": pipeline.chains(chat)}
+
+
+@app.get("/api/files/{name}")
+def pipeline_file(name: str):
+    """Файл, который записал save_to_file, — текстом прямо во вкладке."""
+    path = pipeline.stored(name)
+    if path is None:
+        raise HTTPException(status_code=404, detail=f"файла {name} нет")
+    return FileResponse(path, media_type="text/plain; charset=utf-8")
 
 
 @app.get("/chat.js")

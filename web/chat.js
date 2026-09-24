@@ -21,6 +21,7 @@
     prefs: $("#prefs"), prefFields: $("#prefFields"), prefNow: $("#prefNow"),
     tracker: $("#trackerBox"), trackerList: $("#trackerList"),
     jobs: $("#jobsBox"), jobList: $("#jobList"), jobTick: $("#jobTick"),
+    chains: $("#chainsBox"), chainList: $("#chainList"),
     clock: $("#clockPill"), clockKind: $("#clockKind"), clockLeft: $("#clockLeft"),
     profileButton: $("#profileButton"), profileMenu: $("#profileMenu"),
     profileName: $("#profileName"), people: $("#profiles"),
@@ -56,6 +57,15 @@
   let seenRun = 0;       // последнее срабатывание, которое уже в ленте
   // Инструменты, после которых задания меняются: опрос сразу, не через 5 с.
   const SCHEDULER = new Set(["remind", "digest", "cancel_job"]);
+  // Инструменты конвейера дня 19: их карточки собираются в полосу цепочки.
+  const PIPE = new Set(["search", "summarize", "save_to_file"]);
+  // Число со словом в нужном падеже — как в mcp.js: «3 пункта», «5 пунктов».
+  const spell = (count, one, few, many) => {
+    const last = count % 10, two = count % 100;
+    const tail = two > 10 && two < 20 ? many
+      : last === 1 ? one : last > 1 && last < 5 ? few : many;
+    return `${count} ${tail}`;
+  };
   const busy = new Set();   // чаты, в которых сейчас идёт ответ
   // Узлы реплики, на которую ещё идёт ответ: уйдёшь в другой чат и вернёшься —
   // лента перерисуется из базы, а эта реплика в базе появится только в конце.
@@ -449,6 +459,61 @@
     $(".args", card).textContent = typeof call.args === "string" ? call.args
       : Object.entries(call.args).map(([key, value]) => `${key}: ${value}`).join(", ");
     turn.text.before(card);
+    if (PIPE.has(call.name)) chainStrip(turn, call, card);
+  }
+
+  // Полоса цепочки (день 19) — над карточками конвейера: шаги по порядку и
+  // стыки между ними. Стык цел, если шаг прочитал ровно то, что выдал
+  // прошлый: номер и отпечаток из ответа прошлого шага совпали с `got`
+  // следующего. Сверяет браузер — по тем же ответам, что видела модель.
+  // Источник ищется и в прошлых репликах: «сохрани под другим именем»
+  // берёт конспект из прошлого ответа.
+  function chainStrip(turn, call, card) {
+    if (!turn.chain) {
+      turn.chain = { steps: [], box: document.createElement("div") };
+      turn.chain.box.className = "chain";
+      card.before(turn.chain.box);
+    }
+    const steps = turn.chain.steps;
+    steps.push(call);
+    const out = step => (step.error ? null : step.result);
+    const earlier = turns.filter(one => one !== turn && one.chain)
+      .flatMap(one => one.chain.steps).map(out);
+    let html = "";
+    let broken = 0;
+    steps.forEach((step, i) => {
+      const res = out(step);
+      const got = res && res.got;
+      if (got) {
+        const same = steps.slice(0, i).map(out).find(one => one && one.ref === got.ref);
+        const from = same || earlier.find(one => one && one.ref === got.ref);
+        const state = !from ? "" : from.sha === got.sha ? " ok" : " bad";
+        if (state === " bad") broken += 1;
+        html += `<span class="edge${state}" title="${same ? "выход прошлого шага → вход этого"
+            : "результат из прошлой реплики"}">${same ? "" : "↩ "}#${got.ref} · `
+          + `${escapeHtml(got.sha.slice(0, 6))}`
+          + `${state === " ok" ? " ✓" : state === " bad" ? " ✗" : ""} →</span>`;
+      } else if (i) {
+        html += "<span class='edge'>→</span>";
+      }
+      const what = !res ? "ошибка"
+        : step.name === "search" ? `${res.found} разд.`
+        : step.name === "summarize" ? spell(res.points, "пункт", "пункта", "пунктов")
+        : `<a href="${escapeHtml(res.url)}" target="_blank" rel="noopener">`
+          + `${escapeHtml(res.file)}</a>`;
+      html += `<span class="node${res ? "" : " no"}"><code>${escapeHtml(step.name)}</code>`
+        + `<small>${what}</small></span>`;
+    });
+    const failed = steps.filter(step => step.error).length;
+    const last = out(steps.at(-1));
+    const saved = last && last.file && last.match;
+    // Отказ по дороге не портит цепочку, если модель поправилась и дошла до файла.
+    const bad = broken || !last;
+    const verdict = broken ? `стык разошёлся: ${broken}` : !last ? "шаг с ошибкой"
+      : saved ? "✓ стыки целы, файл на диске" + (failed ? `, отказов по дороге: ${failed}` : "")
+      : steps.length > 1 ? "✓ стыки целы" : "";
+    if (verdict) html += `<span class="verdict${bad ? " bad" : ""}">${verdict}</span>`;
+    turn.chain.box.innerHTML = html;
   }
 
   // Пузырь планировщика (день 18) — срабатывание задания: напоминание или
@@ -1382,6 +1447,44 @@
       || "<li class='none'>задач нет</li>";
   }
 
+  // Цепочки конвейера чата (день 19), как их помнит сервер: шаги по порядку,
+  // у каждого — что прочитал и что выдал. Стык проверен сервером по базе.
+  async function showChains() {
+    const id = currentId;
+    if (!id) return;
+    const feed = await api("GET", `/api/pipeline?chat=${encodeURIComponent(id)}`);
+    if (id !== currentId) return;
+    const kb = size => `${(size / 1024).toFixed(1)} КБ`;
+    const sha = value => `<span class="sha">${escapeHtml(value.slice(0, 6))}</span>`;
+    ui.chainList.innerHTML = feed.chains.map(chain => {
+      const query = (chain[0].meta || {}).query;
+      const flow = chain.map((step, i) => {
+        const meta = step.meta || {};
+        const detail = step.tool === "search" ? `«${escapeHtml(meta.query)}» → ${meta.sections} разд., `
+            + `${number(meta.chars)} зн.`
+          : step.tool === "summarize" ? `${spell(meta.points, "пункт", "пункта", "пунктов")}, `
+            + `${number(meta.chars)} зн.`
+            + (meta.cost ? ` · ${money(meta.cost)}` : "")
+          : `<a href="/api/files/${encodeURIComponent(meta.file)}" target="_blank" rel="noopener">`
+            + `${escapeHtml(meta.file)}</a> · ${kb(meta.bytes)}`
+            + (meta.replaced ? " · перезаписан" : "");
+        const input = step.source
+          ? `<div>вход #${step.source} · ${sha(step.got)} <b class="${step.ok ? "ok" : "bad"}">`
+            + `${step.ok ? "✓" : "✗"}</b></div>` : "<div>вход: запрос</div>";
+        const output = step.tool === "save_to_file"
+          ? `<div>с диска ${sha(step.sha)}</div>` : `<div>выход #${step.ref} · ${sha(step.sha)}</div>`;
+        return (i ? `<span class="arrow ${step.ok ? "ok" : "bad"}">→</span>` : "")
+          + `<div class="step${step.ok ? "" : " bad"}"><code>${escapeHtml(step.tool)}</code>`
+          + input + output + `<div class="what">${detail}</div></div>`;
+      }).join("");
+      const whole = chain.every(step => step.ok);
+      return `<div class="run"><div class="runhead"><b>${escapeHtml(query ? `«${query}»` : "цепочка")}</b>`
+        + `<span class="chip${whole ? " ok" : " no"}">${whole ? "стыки целы" : "стык разошёлся"}</span>`
+        + `<time>${when(chain.at(-1).created)}</time></div><div class="flow">${flow}</div></div>`;
+    }).join("") || "<p class='none'>цепочек нет — попросите ассистента найти что-нибудь в "
+                 + "журнале стенда, сжать и сохранить в файл</p>";
+  }
+
   function defaults() {
     const values = {};
     blocks.forEach(block => block.fields.forEach(field => (values[field.key] = field.default)));
@@ -1838,6 +1941,7 @@
     renderPrefs();
     ui.prefs.hidden = false;
     showTracker().catch(() => {});
+    showChains().catch(() => {});
     renderJobs();
     pollJobs().catch(() => {});
   });
