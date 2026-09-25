@@ -75,16 +75,24 @@ class McpError(Exception):
 
 
 def _unwrap(text):
-    """Полезная часть ответа: телом JSON или первым событием потока SSE."""
+    """Полезная часть ответа: телом JSON или событием потока SSE с ответом.
+
+    В потоке до ответа сервер вправе прислать свои уведомления: DeepWiki на
+    долгом вопросе шлёт `notifications/message` о ходе работы. У уведомления
+    нет ни `result`, ни `error` — ответ на запрос тот, у кого они есть. Первое
+    событие потока — не обязательно ответ (день 20: так терялся текст).
+    """
     text = (text or "").strip()
     if not text:
         return None
     if text.startswith("{"):
         return json.loads(text)
-    for line in text.splitlines():
-        if line.startswith("data:"):
-            return json.loads(line[5:].strip())
-    return None
+    events = [json.loads(line[5:].strip()) for line in text.splitlines()
+              if line.startswith("data:")]
+    for event in events:
+        if isinstance(event, dict) and ("result" in event or "error" in event):
+            return event
+    return events[0] if events else None
 
 
 def _public(host):

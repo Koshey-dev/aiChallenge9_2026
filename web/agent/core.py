@@ -17,8 +17,10 @@ from .settings import DEFAULTS, coerce
 MAIN = "основная"
 
 # Сколько раз за реплику модель может сходить к инструментам. Потом — ответ
-# без них: зациклившаяся модель не должна жечь запросы без конца.
-TOOL_ROUNDS = 4
+# без них: зациклившаяся модель не должна жечь запросы без конца. Четырёх
+# хватало конвейеру дня 19; длинному флоу дня 20 через четыре сервера нужно
+# шесть-семь ходов, если модель зовёт по одному инструменту за ход.
+TOOL_ROUNDS = 8
 
 
 class Agent:
@@ -89,11 +91,13 @@ class Agent:
         # Инструменты MCP (дни 17–18). Ящик с ними даёт стенд: коробка не знает,
         # где сервер и как до него дойти, — только что он умеет и как позвать.
         # Список инструментов берётся у сервера на каждую реплику, вызовы
-        # реплики — для карточек в пузыре.
+        # реплики — для карточек в пузыре. С дня 20 серверов несколько, и
+        # `servers` — как прошло знакомство с каждым: для полосы маршрута.
         self.toolbox = None
         self.tools = []
         self.hint = ""
         self.calls = []
+        self.servers = []
         # Ответы для других профилей: номер реплики — список вариантов.
         # В историю они не идут: разговор продолжается от исходного ответа.
         self.variants = {}
@@ -413,6 +417,7 @@ class Agent:
             "jumped": self.jumped,
             "ahead": self.ahead,
             "calls": self.calls,
+            "servers": self.servers,
         })
 
     async def answer(self, client, messages, wants=None):
@@ -442,21 +447,31 @@ class Agent:
         Вместе со списком приходит `instructions` сервера: она уходит модели
         системным сообщением рядом с ролью (`layout`), поэтому снаряжение идёт
         до раскладки запроса.
+
+        С дня 20 серверов несколько, и не ответивший не отменяет остальных:
+        журнал называет его, а список собирается из тех, кто ответил.
         """
         self.tools = []
         self.hint = ""
+        self.servers = []
         if not (self.settings["mcp_tools"] and self.toolbox):
             return
-        try:
-            self.tools, self.hint = await self.toolbox.open()
-        except mcp.McpError as bad:
-            yield self.note(f"инструменты MCP: сервер не ответил — {bad}")
+        self.tools, self.hint = await self.toolbox.open()
+        self.servers = self.toolbox.servers
+        for seen in self.servers:
+            if seen["state"] == "down":
+                yield self.note(f"сервер {seen['id']} не ответил — {seen['error']}; "
+                                "реплика идёт без его инструментов")
+        yield {"t": "servers", "servers": self.servers}
+        if not self.tools:
             return
         cost = tokens.estimate(json.dumps([mcp.function(tool) for tool in self.tools],
                                           ensure_ascii=False))
-        yield self.note(f"инструменты MCP: {len(self.tools)} "
-                        f"({', '.join(tool['name'] for tool in self.tools)}), "
-                        f"~{cost} ток. к запросу")
+        live = ", ".join(f"{seen['id']} {len(seen['tools'])}"
+                         for seen in self.servers if seen["tools"])
+        off = [seen["id"] for seen in self.servers if seen["state"] == "off"]
+        yield self.note(f"инструменты MCP: {len(self.tools)} ({live}), ~{cost} ток. к запросу"
+                        + (f"; сняты: {', '.join(off)}" if off else ""))
 
     async def converse(self, client, sent, raw):
         """Ответ, по ходу которого модель может звать инструменты.
@@ -487,15 +502,20 @@ class Agent:
                 asked["reasoning_content"] = wants["reasoning"]
             sent.append(asked)
             for call in calls:
-                card, text = await self.run_tool(call)
-                yield self.note(f"вызов {card['name']}: "
+                card, text = await self.run_tool(call, turn + 1)
+                yield self.note(f"вызов {card['server'] or '—'} · {card['name']}: "
                                 + (f"ошибка — {card['error']}" if card["error"]
                                    else f"{card['status']} за {card['ms']} мс"))
                 yield {"t": "tool", **card}
                 sent.append({"role": "tool", "tool_call_id": call["id"], "content": text})
 
-    async def run_tool(self, call):
-        """Один вызов по просьбе модели: карточка для пузыря и текст для модели."""
+    async def run_tool(self, call, round_no):
+        """Один вызов по просьбе модели: карточка для пузыря и текст для модели.
+
+        В карточке — сервер, на который вызов ушёл, и ход модели, в котором она
+        его попросила: вызовы одного хода модель просила, не видя ответов друг
+        друга, и по ходам видно, какой шаг мог опираться на какой (день 20).
+        """
         name = call["function"]["name"]
         try:
             args = json.loads(call["function"]["arguments"] or "{}")
@@ -511,7 +531,8 @@ class Agent:
         result = (step["got"] or {}).get("result") or {}
         card = {"name": name, "args": args,
                 "result": result.get("structuredContent", text),
-                "error": step["error"], "status": step["status"], "ms": step["ms"]}
+                "error": step["error"], "status": step["status"], "ms": step["ms"],
+                "server": step.get("server", ""), "round": round_no}
         self.calls.append(card)
         return card, text
 
@@ -750,6 +771,7 @@ class Agent:
         self.jumped = ""
         self.ahead = ""
         self.calls = []
+        self.servers = []
         self.before = dict(self.usage)
 
         try:

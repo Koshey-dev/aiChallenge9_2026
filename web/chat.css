@@ -802,3 +802,102 @@ body.app #chatpane { flex: 1; min-height: 0; }
   #chatpane .chains .flow { flex-direction: column; }
   #chatpane .chains .arrow { align-self: flex-start; padding-left: 12px; transform: rotate(90deg); }
 }
+
+/* ── День 20: оркестрация MCP ───────────────────────────────────────
+   Цвет сервера — категориальный, в порядке реестра: синий, оранжевый,
+   бирюзовый, жёлтый. Палитра проверена на различимость при дальтонизме в
+   обеих темах; в светлой бирюзовый и жёлтый бледнее 3:1 к фону, поэтому
+   имя сервера всегда подписано рядом, и цвет его только повторяет. */
+body.app { --srv-tracker: #2a78d6; --srv-scheduler: #eb6834; --srv-journal: #1baf7a;
+           --srv-deepwiki: #eda100; }
+@media (prefers-color-scheme: dark) {
+  body.app { --srv-tracker: #3987e5; --srv-scheduler: #d95926; --srv-journal: #199e70;
+             --srv-deepwiki: #c98500; }
+}
+#chatpane [data-srv=tracker] { --c: var(--srv-tracker); }
+#chatpane [data-srv=scheduler] { --c: var(--srv-scheduler); }
+#chatpane [data-srv=journal] { --c: var(--srv-journal); }
+#chatpane [data-srv=deepwiki] { --c: var(--srv-deepwiki); }
+
+/* Значок сервера в строке карточки вызова. */
+#chatpane .toolcall .srv { flex: none; display: inline-flex; align-items: center; gap: 5px;
+                        color: var(--text); font-size: 12px; }
+#chatpane .toolcall .srv::before { content: ""; width: 8px; height: 8px; border-radius: 3px;
+                                background: var(--c, var(--dim)); }
+
+/* Полоса маршрута над карточками: строки — серверы, столбцы — вызовы по ходам. */
+#chatpane .route { align-self: stretch; max-width: 100%; padding: 8px 10px 10px;
+                border: 1px solid var(--line); border-radius: 10px; background: var(--card);
+                font-size: 12.5px; }
+#chatpane .route .routehead { display: flex; align-items: baseline; gap: 8px; color: var(--dim); }
+#chatpane .route .routehead b { color: var(--text); font-weight: 600; }
+#chatpane .route .lanes { margin-top: 4px; overflow-x: auto; }
+#chatpane .route svg { display: block; height: auto; font: 12px ui-monospace, Consolas, monospace; }
+#chatpane .route .lane line { stroke: var(--line); stroke-width: 1; }
+#chatpane .route .lane .mark { fill: var(--c, transparent); stroke: var(--c, var(--bad)); }
+#chatpane .route .lane text { fill: var(--text); font-family: system-ui, "Segoe UI", sans-serif; }
+#chatpane .route .lane .state { fill: var(--dim); font-size: 11px; }
+#chatpane .route .lane.off line, #chatpane .route .lane.down line,
+#chatpane .route .lane.stray line { stroke-dasharray: 3 4; }
+#chatpane .route .lane.off .mark, #chatpane .route .lane.down .mark { fill: none; }
+#chatpane .route .lane.off text, #chatpane .route .lane.down text { fill: var(--dim); }
+#chatpane .route .lane.stray .mark { fill: none; stroke-dasharray: 2 2; }
+#chatpane .route .round { fill: var(--dim); font: 11px system-ui, "Segoe UI", sans-serif;
+                       text-anchor: middle; }
+#chatpane .route .split { stroke: var(--line); stroke-dasharray: 2 3; }
+#chatpane .route .hop { fill: none; stroke: var(--dim); stroke-width: 1.5; stroke-linejoin: round; }
+#chatpane .route .call { cursor: pointer; }
+#chatpane .route .call rect { fill: var(--card); stroke: var(--c, var(--dim)); stroke-width: 2; }
+#chatpane .route .call:hover rect { fill: var(--hover); stroke-width: 3; }
+#chatpane .route .call text { fill: var(--text); }
+#chatpane .route .call .n { fill: var(--dim); font-weight: 600; }
+#chatpane .route .call.no rect { stroke-dasharray: 4 3; }
+#chatpane .route .call.no text { fill: var(--bad); }
+
+/* Сверка с эталоном — под полосой. */
+#chatpane .route .scene { display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+                       margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
+#chatpane .route .scene b { margin-right: 4px; font-weight: 600; }
+#chatpane .route .scene .chip, #chatpane .orchestra .chip { font-size: 12px; }
+#chatpane .route .chip.ok, #chatpane .orchestra .chip.ok { color: var(--ok); border-color: currentColor; }
+#chatpane .route .chip.no, #chatpane .orchestra .chip.no { color: var(--bad); border-color: currentColor; }
+#chatpane .route .scene .sum { margin-left: auto; font-weight: 600; color: var(--ok); }
+#chatpane .route .scene.no .sum { color: var(--bad); }
+#chatpane .route .scene.wait .sum { color: var(--dim); font-weight: 400; }
+#chatpane .route .scene ul { flex-basis: 100%; margin: 2px 0 0; padding: 0; list-style: none;
+                          color: var(--bad); }
+
+/* Реестр серверов и сценарии в окне настроек. */
+#chatpane .orchestra h3 + .fine { margin-top: 0; }
+#chatpane .orchestra .server { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px;
+                            padding: 8px 0; border-top: 1px solid var(--line); font-size: 13.5px; }
+#chatpane .orchestra .server label { display: inline-flex; align-items: center; gap: 8px;
+                                  cursor: pointer; }
+#chatpane .orchestra .server .mark { width: 10px; height: 10px; border-radius: 3px;
+                                  background: var(--c); }
+#chatpane .orchestra .server.off .mark { background: none; outline: 1.5px solid var(--c);
+                                      outline-offset: -1.5px; }
+#chatpane .orchestra .server.off b { color: var(--dim); }
+#chatpane .orchestra .server .id { color: var(--dim); font-size: 12px; }
+#chatpane .orchestra .server .where, #chatpane .orchestra .server .meta,
+#chatpane .orchestra .server .tools { flex-basis: 100%; padding-left: 26px; color: var(--dim);
+                                   font-size: 12px; overflow-wrap: anywhere; }
+#chatpane .orchestra .server .tools { display: flex; flex-wrap: wrap; gap: 4px; }
+#chatpane .orchestra .server .tools code { padding: 0 6px; border-radius: 6px; background: var(--code);
+                                        color: var(--text); font-size: 12px; }
+#chatpane .orchestra #sceneList { display: grid; gap: 8px; margin: 8px 0 14px; }
+#chatpane .orchestra .scenecard { padding: 8px 10px 10px; border: 1px solid var(--line);
+                               border-radius: 10px; background: var(--card); font-size: 13px; }
+#chatpane .orchestra .scenecard .head { display: flex; flex-wrap: wrap; align-items: center;
+                                     justify-content: space-between; gap: 6px; }
+#chatpane .orchestra .scenecard .say { margin: 6px 0; }
+#chatpane .orchestra .scenecard ul { margin: 0 0 8px; padding-left: 18px; color: var(--dim);
+                                  font-size: 12.5px; }
+#chatpane .orchestra .scenecard ul code { margin-right: 2px; padding: 0 5px; border-radius: 5px;
+                                       background: var(--code); color: var(--text);
+                                       font-size: 12px; white-space: nowrap; }
+/* Панель несёт общий класс .tracker ради отступов и заголовков, а его строки
+   списка — flex-ряд задачи; в правилах сценария это обычные пункты. */
+#chatpane .orchestra .scenecard li { display: list-item; padding: 0; border: 0;
+                                  font-size: inherit; overflow-wrap: anywhere; }
+#chatpane .orchestra .scenecard button { padding: 3px 10px; font-size: 12.5px; }

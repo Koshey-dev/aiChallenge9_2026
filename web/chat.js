@@ -22,6 +22,7 @@
     tracker: $("#trackerBox"), trackerList: $("#trackerList"),
     jobs: $("#jobsBox"), jobList: $("#jobList"), jobTick: $("#jobTick"),
     chains: $("#chainsBox"), chainList: $("#chainList"),
+    orchestra: $("#orchestraBox"), serverList: $("#serverList"), sceneList: $("#sceneList"),
     clock: $("#clockPill"), clockKind: $("#clockKind"), clockLeft: $("#clockLeft"),
     profileButton: $("#profileButton"), profileMenu: $("#profileMenu"),
     profileName: $("#profileName"), people: $("#profiles"),
@@ -55,6 +56,9 @@
   let jobs = [];         // активные задания планировщика открытого чата (день 18)
   let idle = null;       // сколько секунд назад цикл планировщика проверял сроки
   let seenRun = 0;       // последнее срабатывание, которое уже в ленте
+  let servers = [];      // серверы MCP в порядке реестра (день 20)
+  let scenarios = [];    // эталоны для сверки выбора и порядка вызовов
+  let registry = null;   // что серверы ответили на последнее знакомство
   // Инструменты, после которых задания меняются: опрос сразу, не через 5 с.
   const SCHEDULER = new Set(["remind", "digest", "cancel_job"]);
   // Инструменты конвейера дня 19: их карточки собираются в полосу цепочки.
@@ -328,7 +332,7 @@
     // профилей. У каждого своя строка меток: что из профиля ушло в запрос.
     const turn = { me, bot, raw: "", trace: $(".trace", bot), gist: $(".gist", bot),
                    lines: $(".lines", bot), text: $(".text", bot), foot: $(".foot", bot),
-                   variants: [], index: 0 };
+                   variants: [], index: 0, calls: [], cards: [], servers: null, done: false };
     turns.push(turn);
     return turn;
   }
@@ -386,7 +390,10 @@
       last = turn;
       fired(i / 2 + 1);
       if (!row) { turn.trace.hidden = true; continue; }
+      turn.servers = row.servers || null;
+      turn.done = true;
       (row.calls || []).forEach(call => toolCard(turn, call));
+      routeMap(turn);
       learned(turn, row);
       stepped(turn, row);
       broke(turn, row);
@@ -449,6 +456,9 @@
     card.innerHTML = "<summary><svg class='i small' viewBox='0 0 24 24'>"
       + "<path d='M14.7 6.3a4 4 0 0 0-5.4 5.1L3 17.7 6.3 21l6.3-6.3a4 4 0 0 0 5.1-5.4"
       + "l-2.5 2.5-2.3-.7-.7-2.3Z'/></svg>"
+      // День 20: на какой сервер ушёл вызов. У вызовов до дня 20 сервера нет.
+      + (call.server ? `<span class='srv' data-srv='${escapeHtml(call.server)}'>`
+                       + `${escapeHtml(call.server)}</span>` : "")
       + `<code>${escapeHtml(call.name)}</code><span class='args'></span>`
       + `<span class='state'>${call.error ? "ошибка"
         : `${call.status} · ${call.ms} мс`}</span></summary>`
@@ -459,7 +469,10 @@
     $(".args", card).textContent = typeof call.args === "string" ? call.args
       : Object.entries(call.args).map(([key, value]) => `${key}: ${value}`).join(", ");
     turn.text.before(card);
+    turn.calls.push(call);
+    turn.cards.push(card);
     if (PIPE.has(call.name)) chainStrip(turn, call, card);
+    routeMap(turn);
   }
 
   // Полоса цепочки (день 19) — над карточками конвейера: шаги по порядку и
@@ -514,6 +527,172 @@
       : steps.length > 1 ? "✓ стыки целы" : "";
     if (verdict) html += `<span class="verdict${bad ? " bad" : ""}">${verdict}</span>`;
     turn.chain.box.innerHTML = html;
+  }
+
+  // Маршрут реплики (день 20) — над карточками вызовов. Строки — серверы,
+  // с которыми агент знакомился на эту реплику, в порядке реестра; столбцы —
+  // вызовы по порядку, сгруппированные по ходам модели: вызовы одного хода
+  // модель просила разом, не видя ответов друг друга. Линия идёт от вызова к
+  // вызову, по ней видно, как реплика ходит между серверами. Имя сервера
+  // подписано у строки: цвет его только повторяет. Клик по вызову раскрывает
+  // его карточку.
+  const LANE = 34, HEAD = 22, LABEL = 100, CHAR = 6.7;
+  const LANE_STATE = { off: "снят", down: "нет связи" };
+
+  function routeMap(turn) {
+    if (!turn.servers) return;
+    const scene = sceneOf(turn);
+    const calls = turn.calls;
+    if (!calls.length && !scene) return;
+    if (!turn.route) {
+      turn.route = document.createElement("div");
+      turn.route.className = "route";
+      (turn.bot.querySelector(".chain, .toolcall") || turn.text).before(turn.route);
+      turn.route.addEventListener("click", event => {
+        const node = event.target.closest("[data-call]");
+        const card = node && turn.cards[Number(node.dataset.call)];
+        if (!card) return;
+        card.open = true;
+        card.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      });
+    }
+    // Вызов мимо реестра — инструмента нет ни на одном сервере реплики —
+    // получает свою строку внизу: модель его попросила, но идти было некуда.
+    const lanes = [...turn.servers];
+    if (calls.some(call => !call.server)) lanes.push({ id: "", state: "stray", tools: [] });
+    const rows = new Map(lanes.map((lane, i) => [lane.id, HEAD + i * LANE + LANE / 2]));
+    let x = LABEL;
+    const spots = calls.map((call, i) => {
+      const width = Math.max(80, (String(i + 1).length + call.name.length) * CHAR + 32);
+      const spot = { call, i, x, width, y: rows.get(call.server || "") };
+      x += width;
+      return spot;
+    });
+    const total = x + 6;
+    const bottom = HEAD + lanes.length * LANE;
+    let svg = "";
+    lanes.forEach((lane, i) => {
+      const y = HEAD + i * LANE + LANE / 2;
+      const note = lane.state === "stray" ? "мимо реестра" : lane.id;
+      const state = LANE_STATE[lane.state] || "";
+      svg += `<g class="lane ${lane.state}" data-srv="${escapeHtml(lane.id)}">`
+        + `<line x1="${LABEL - 6}" x2="${total}" y1="${y}" y2="${y}"/>`
+        + `<rect class="mark" x="4" y="${y - 5}" width="10" height="10" rx="3"/>`
+        + `<text x="20" y="${y + 4}">${escapeHtml(note)}`
+        + (state ? `<tspan class="state" dx="6">${state}</tspan>` : "") + "</text></g>";
+    });
+    // Ходы модели: подпись над группой вызовов и граница между группами.
+    spots.forEach((spot, i) => {
+      const prev = spots[i - 1];
+      if (prev && prev.call.round === spot.call.round) return;
+      let last = i;
+      while (spots[last + 1] && spots[last + 1].call.round === spot.call.round) last += 1;
+      const end = spots[last].x + spots[last].width;
+      svg += `<text class="round" x="${(spot.x + end) / 2}" y="13">ход ${spot.call.round}</text>`;
+      if (prev) svg += `<line class="split" x1="${spot.x}" x2="${spot.x}" y1="4" y2="${bottom}"/>`;
+    });
+    // Линия маршрута: от правого края вызова к левому краю следующего; между
+    // строками — ступенькой в промежутке между ними.
+    spots.slice(1).forEach((spot, i) => {
+      const prev = spots[i];
+      const from = prev.x + prev.width - 6;
+      const to = spot.x + 6;
+      const mid = (from + to) / 2;
+      svg += `<path class="hop" d="M${from} ${prev.y} H${mid} V${spot.y} H${to}"/>`;
+    });
+    spots.forEach(spot => {
+      const call = spot.call;
+      const tip = [`${call.server || "мимо реестра"} · ${call.name} · ход ${call.round}`,
+                   call.error ? `ошибка: ${call.error}` : `${call.status} за ${call.ms} мс`]
+        .join("\n");
+      svg += `<g class="call${call.error ? " no" : ""}" data-srv="${escapeHtml(call.server || "")}" `
+        + `data-call="${spot.i}"><title>${escapeHtml(tip)}</title>`
+        + `<rect x="${spot.x + 6}" y="${spot.y - 11}" width="${spot.width - 12}" height="22" rx="11"/>`
+        + `<text x="${spot.x + 16}" y="${spot.y + 4}"><tspan class="n">${spot.i + 1}</tspan>`
+        + `<tspan dx="7">${escapeHtml(call.name)}</tspan>${call.error ? "<tspan dx='5'>✗</tspan>" : ""}`
+        + "</text></g>";
+    });
+    const used = new Set(calls.map(call => call.server).filter(Boolean)).size;
+    const rounds = new Set(calls.map(call => call.round)).size;
+    const head = calls.length
+      ? `${spell(calls.length, "вызов", "вызова", "вызовов")} · `
+        + `${spell(used, "сервер", "сервера", "серверов")} · ${spell(rounds, "ход", "хода", "ходов")}`
+      : "вызовов нет";
+    const off = turn.servers.filter(lane => lane.state !== "on").map(lane =>
+      `${lane.id} ${LANE_STATE[lane.state]}`);
+    turn.route.innerHTML = `<div class="routehead"><b>Маршрут</b><span>${head}</span>`
+      + (off.length ? `<span>· ${escapeHtml(off.join(", "))}</span>` : "") + "</div>"
+      // Не влезает в пузырь — сжимается, но не мельче 82%: дальше подписи не
+      // прочесть, и полоса прокручивается внутри себя.
+      + (calls.length ? `<div class="lanes"><svg viewBox="0 0 ${total} ${bottom + 4}" `
+        + `style="width: 100%; max-width: ${total}px; min-width: ${Math.round(total * 0.82)}px" `
+        + `role="img" aria-label="Маршрут вызовов по серверам">`
+        + `${svg}</svg></div>` : "")
+      + (scene ? sceneVerdict(scene, turn) : "");
+  }
+
+  // Эталон, с которым сверяется реплика: по тексту вопроса, дословно.
+  function sceneOf(turn) {
+    const text = turn.me.textContent.trim();
+    return scenarios.find(scene => scene.text === text) || null;
+  }
+
+  // Сверка вызовов реплики с эталоном. Считает только то, что видно по
+  // вызовам: кто, где, в каком ходу и что из ответа одного попало в аргументы
+  // другого. Порядок — по ходам: второй шаг берёт данные из ответа первого,
+  // значит, модель должна была его увидеть, то есть позвать ходом позже.
+  // Модель вправе переделать шаг (второй поиск, когда первый не нашёл), поэтому
+  // пара ищется среди всех удачных вызовов, а не только среди первых.
+  function judge(scene, calls, lanes) {
+    const done = calls.filter(call => !call.error);
+    const pairs = (a, b) => done.filter(two => two.name === b).flatMap(two =>
+      done.filter(one => one.name === a && one.round < two.round).map(one => [one, two]));
+    const carried = (value, into) => value !== undefined && into !== undefined
+      && new RegExp(`(^|\\D)${value}(\\D|$)`).test(String(into));
+    const state = id => (lanes.find(lane => lane.id === id) || {}).state;
+    const known = new Set(lanes.flatMap(lane => lane.tools));
+    const groups = [];
+    const add = (title, checks) => { if (checks.length) groups.push({ title, checks }); };
+    add("условие", scene.off.map(id => ({ ok: state(id) === "off", text: `${id} снят` })));
+    add("шаги", scene.need.map(([server, name]) => ({
+      ok: done.some(call => call.name === name && call.server === server),
+      text: `${server} · ${name}` })));
+    add("порядок", scene.before.map(([a, b]) => {
+      const pair = pairs(a, b)[0];
+      return { ok: Boolean(pair),
+               text: `${a} → ${b}` + (pair ? ` (ход ${pair[0].round} → ${pair[1].round})` : "") };
+    }));
+    add("данные", scene.link.map(([a, field, b, arg]) => {
+      const pair = pairs(a, b).find(([one, two]) =>
+        carried((one.result || {})[field], (two.args || {})[arg]));
+      return { ok: Boolean(pair),
+               text: `${a}.${field} → ${b}.${arg}` + (pair ? ` (${pair[0].result[field]})` : "") };
+    }));
+    add("без лишнего", scene.avoid.map(([server, name]) => ({
+      ok: !calls.some(call => call.name === name), text: `${server} · ${name}` })));
+    add("реестр", calls.filter(call => !known.has(call.name))
+      .map(call => ({ ok: false, text: `${call.name} — нет ни на одном сервере` })));
+    const extra = done.filter(call => !scene.need.some(([, name]) => name === call.name)).length;
+    const bad = groups.flatMap(group => group.checks).filter(check => !check.ok).length;
+    return { groups, extra, bad };
+  }
+
+  function sceneVerdict(scene, turn) {
+    const title = `<b>Эталон ${escapeHtml(scene.id)} · ${escapeHtml(scene.title)}</b>`;
+    if (!turn.done) return `<div class="scene wait">${title}<span class="sum">сверю, когда ответ дойдёт</span></div>`;
+    const verdict = judge(scene, turn.calls, turn.servers);
+    const chips = verdict.groups.map(group => {
+      const ok = group.checks.filter(check => check.ok).length;
+      const all = ok === group.checks.length;
+      return `<span class="chip ${all ? "ok" : "no"}">${all ? "✓" : "✗"} ${group.title} `
+        + `${ok}/${group.checks.length}</span>`;
+    }).join("");
+    const misses = verdict.groups.flatMap(group => group.checks.filter(check => !check.ok)
+      .map(check => `<li>✗ ${escapeHtml(group.title)}: ${escapeHtml(check.text)}</li>`)).join("");
+    return `<div class="scene ${verdict.bad ? "no" : "ok"}">${title}${chips}`
+      + (verdict.extra ? `<span class="chip">лишних вызовов: ${verdict.extra}</span>` : "")
+      + `<span class="sum">${verdict.bad ? `✗ расхождений: ${verdict.bad}` : "✓ совпало с эталоном"}</span>`
+      + (misses ? `<ul>${misses}</ul>` : "") + "</div>";
   }
 
   // Пузырь планировщика (день 18) — срабатывание задания: напоминание или
@@ -816,6 +995,8 @@
           render(turn, turn.raw + event.text);
         } else if (event.t === "replace") {
           render(turn, event.text);
+        } else if (event.t === "servers") {
+          turn.servers = event.servers;
         } else if (event.t === "tool") {
           toolCard(turn, event);
           if (!ui.prefs.hidden) showTracker();
@@ -863,6 +1044,8 @@
     } finally {
       busy.delete(item.id);
       live.delete(item.id);
+      turn.done = true;
+      routeMap(turn);
       turn.trace.classList.remove("live");
       if (turn.gist.textContent === "агент работает") turn.gist.textContent = "журнал";
       foot(turn);
@@ -1485,9 +1668,81 @@
                  + "журнале стенда, сжать и сохранить в файл</p>";
   }
 
+  // ── День 20: реестр серверов и сценарии ───────────────────────────
+  // Реестр — с чем агент знакомится на реплику. Галочка — у чата, как все
+  // настройки, и уходит кнопкой «Сохранить». Рядом — что сервер ответил только
+  // что: стенд знакомится со всеми, и со снятыми тоже.
+  async function showServers() {
+    registry = null;
+    // Галочки прошлого открытия окна могли быть от другого чата — с нуля.
+    ui.serverList.textContent = "";
+    renderServers();
+    try {
+      registry = await api("GET", "/api/mcp/registry");
+    } catch (error) {
+      registry = { servers: servers.map(server => ({ id: server.id, tools: [],
+                                                     error: "реестр не ответил: " + error.message })) };
+    }
+    if (!ui.prefs.hidden) renderServers();
+  }
+
+  function renderServers() {
+    ui.serverList.innerHTML = servers.map(server => {
+      const key = "mcp_" + server.id;
+      // Перерисовка после знакомства не должна сбрасывать галочку, которую
+      // успели снять, пока сервер отвечал.
+      const box = ui.serverList.querySelector(`[data-key="${key}"]`);
+      const on = box ? box.checked : Boolean(prefs()[key]);
+      const seen = registry && registry.servers.find(one => one.id === server.id);
+      const state = !seen ? "<span class='chip'>знакомлюсь…</span>"
+        : seen.error ? `<span class='chip no' title='${escapeHtml(seen.error)}'>✗ нет связи</span>`
+        : `<span class='chip ok'>✓ ${escapeHtml(seen.protocol)}</span>`;
+      const meta = seen && !seen.error
+        ? `${spell(seen.tools.length, "инструмент", "инструмента", "инструментов")} · `
+          + `≈${number(seen.tokens)} ток. в запросе · ${number(seen.ms)} мс` : "";
+      const tools = seen ? seen.tools.map(tool =>
+        `<code title="${escapeHtml(tool.description)}">${escapeHtml(tool.name)}</code>`).join("") : "";
+      const where = server.url.replace(/^http:\/\/stand/, "");
+      return `<div class="server${on ? "" : " off"}" data-srv="${escapeHtml(server.id)}">`
+        + `<label><input type="checkbox" data-key="${key}"${on ? " checked" : ""}>`
+        + `<i class="mark"></i><b>${escapeHtml(server.title)}</b>`
+        + `<code class="id">${escapeHtml(server.id)}</code></label>${state}`
+        + `<div class="where">${escapeHtml(where)} · ${escapeHtml(server.note)}</div>`
+        + (meta ? `<div class="meta">${meta}</div>` : "")
+        + (tools ? `<div class="tools">${tools}</div>` : "") + "</div>";
+    }).join("");
+  }
+
+  // Сценарии: что проверяется и чем кончился последний прогон в этом чате.
+  function renderScenes() {
+    const pair = ([server, name]) => `<code>${escapeHtml(server)} · ${escapeHtml(name)}</code>`;
+    ui.sceneList.innerHTML = scenarios.map(scene => {
+      const runs = turns.filter(turn => turn.done && turn.servers && sceneOf(turn) === scene);
+      const last = runs.at(-1);
+      const verdict = last && judge(scene, last.calls, last.servers);
+      const status = !last ? "<span class='chip'>не запускался</span>"
+        : `<span class='chip ${verdict.bad ? "no" : "ok"}'>`
+          + `${verdict.bad ? `✗ расхождений: ${verdict.bad}` : "✓ совпало"}`
+          + `${runs.length > 1 ? ` · прогонов: ${runs.length}` : ""}</span>`;
+      const rules = [
+        scene.need.length && `шаги: ${scene.need.map(pair).join(" ")}`,
+        scene.before.length && `порядок: ${scene.before.map(([a, b]) => `${a} → ${b}`).join(", ")}`,
+        scene.link.length && `данные: ${scene.link.map(([a, f, b, g]) => `${a}.${f} → ${b}.${g}`).join(", ")}`,
+        scene.avoid.length && `не звать: ${scene.avoid.map(pair).join(" ")}`,
+        scene.off.length && `условие: снять ${scene.off.join(", ")} — сейчас `
+          + (scene.off.every(id => !prefs()["mcp_" + id]) ? "✓ снят" : "✗ включён: снимите галочку выше и сохраните"),
+      ].filter(Boolean).map(text => `<li>${text}</li>`).join("");
+      return `<div class="scenecard"><div class="head"><b>${escapeHtml(scene.id)} · `
+        + `${escapeHtml(scene.title)}</b>${status}</div>`
+        + `<p class="say">«${escapeHtml(scene.text)}»</p><ul>${rules}</ul>`
+        + `<button class="plain" data-scene="${escapeHtml(scene.id)}">В поле ввода</button></div>`;
+    }).join("");
+  }
+
   function defaults() {
     const values = {};
     blocks.forEach(block => block.fields.forEach(field => (values[field.key] = field.default)));
+    servers.forEach(server => (values["mcp_" + server.id] = true));
     return values;
   }
 
@@ -1942,10 +2197,27 @@
     ui.prefs.hidden = false;
     showTracker().catch(() => {});
     showChains().catch(() => {});
+    showServers().catch(() => {});
+    renderScenes();
     renderJobs();
     pollJobs().catch(() => {});
   });
   $("#closePrefs").addEventListener("click", () => (ui.prefs.hidden = true));
+  ui.serverList.addEventListener("change", event => {
+    const row = event.target.closest(".server");
+    if (row) row.classList.toggle("off", !event.target.checked);
+  });
+  // Сценарий дня 20 — текстом в поле ввода: отправляет человек, как обычную реплику.
+  ui.sceneList.addEventListener("click", event => {
+    const button = event.target.closest("[data-scene]");
+    const scene = button && scenarios.find(one => one.id === button.dataset.scene);
+    if (!scene) return;
+    ui.prefs.hidden = true;
+    ui.prompt.value = scene.text;
+    fit();
+    count();
+    ui.prompt.focus();
+  });
   ui.prefs.addEventListener("click", event => {
     if (event.target === ui.prefs) ui.prefs.hidden = true;
   });
@@ -1956,6 +2228,9 @@
   $("#resetPrefs").addEventListener("click", async () => {
     await savePrefs(defaults());
     renderPrefs();
+    ui.serverList.textContent = "";
+    renderServers();
+    renderScenes();
   });
 
   document.addEventListener("click", event => {
@@ -1988,6 +2263,8 @@
     stages = config.stages;
     modes = config.modes;
     kinds = config.kinds;
+    servers = config.servers;
+    scenarios = config.scenarios;
     profiles = config.profiles;
     chats = await api("GET", "/api/chats");
 

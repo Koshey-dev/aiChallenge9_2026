@@ -23,6 +23,11 @@
 
 С дня 19 обработчик может быть и корутиной: конспект конвейера ждёт модель,
 а держать цикл событий стенда на время её ответа нельзя.
+
+С дня 20 серверов три, и `register` больше нет: протокол — класс `Server`,
+у каждого экземпляра свои инструменты, своя подсказка и свои сессии. Трекер,
+планировщик и конвейер — три таких сервера на трёх адресах; сессия, выданная
+одним, другому ничего не значит.
 """
 
 import inspect
@@ -37,14 +42,8 @@ import store
 # в списке, сервер отвечает ей же, иначе — последней своей.
 VERSIONS = ["2025-06-18", "2025-03-26"]
 
-INFO = {"name": "aichallenge-tracker", "version": "1.0"}
-
 INSTRUCTIONS = ("Мини-трекер задач стенда. Задачи живут в статусах todo → doing → done, "
                 "приоритет low, normal или high. Номер задачи берите из list_tasks.")
-
-# Подсказки других модулей для instructions — функции, а не строки: текст
-# собирается на каждое рукопожатие, и «сейчас» планировщика в нём свежее.
-HINTS = []
 
 STATUSES = ["todo", "doing", "done"]
 PRIORITIES = ["low", "normal", "high"]
@@ -66,10 +65,6 @@ SEED = [("Собрать демо дня 16", "normal", "done"),
         ("Выкатить стенд на VPS", "high", "doing")]
 
 FIELDS = ("id", "title", "priority", "status", "created", "updated")
-
-# Сессии, выданные на `initialize`. В памяти: сервер живёт в процессе стенда,
-# и перезапуск честно обрывает старые разговоры — клиент поздоровается заново.
-SESSIONS = set()
 
 
 def connect():
@@ -165,27 +160,7 @@ TOOLS = [
      }, "required": ["id", "status"]},
      "run": update_status},
 ]
-BY_NAME = {tool["name"]: tool for tool in TOOLS}
-
 KINDS = {"string": str, "integer": int, "object": dict}
-
-
-def register(tools, hint=None):
-    """Инструменты другого модуля — в тот же сервер (день 18). `hint` — его
-    строка в instructions, вызывается на каждое рукопожатие."""
-    TOOLS.extend(tools)
-    BY_NAME.update({tool["name"]: tool for tool in tools})
-    if hint:
-        HINTS.append(hint)
-
-
-def instructions():
-    return " ".join([INSTRUCTIONS, *(hint() for hint in HINTS)])
-
-
-def listed():
-    """Инструменты так, как их видит клиент: без обработчика."""
-    return [{key: value for key, value in tool.items() if key != "run"} for tool in TOOLS]
 
 
 def checked(tool, args):
@@ -221,65 +196,88 @@ class RpcError(Exception):
         self.code = code
 
 
-async def call(params, chat):
-    tool = BY_NAME.get(params.get("name"))
-    if tool is None:
-        raise RpcError(-32602, f"инструмента {params.get('name')!r} нет")
-    try:
-        args = checked(tool, params.get("arguments") or {})
-    except ValueError as bad:
-        raise RpcError(-32602, f"{tool['name']}: {bad}") from bad
-    try:
-        data = tool["run"](args, chat)
-        if inspect.isawaitable(data):
-            data = await data
-    except Failed as failed:
-        return {"content": [{"type": "text", "text": str(failed)}], "isError": True}
-    # Текстом — для модели и клиентов, которые знают только `content`;
-    # структурой — для тех, кто умеет `structuredContent` (протокол 2025-06-18).
-    return {"content": [{"type": "text", "text": json.dumps(data, ensure_ascii=False)}],
-            "structuredContent": data, "isError": False}
+class Server:
+    """Один MCP-сервер: имя, подсказка для модели и свои инструменты.
 
-
-async def handle(message, session, chat=""):
-    """Одно сообщение JSON-RPC. Отдаёт код ответа, тело и выданную сессию.
-
-    Уведомление (сообщение без `id`) ответа не получает — только 202.
-    Всё, кроме `initialize`, требует сессию, выданную на рукопожатии: без
-    знакомства разговор не начинается, как у GitMCP из дня 16.
-    `chat` — из какого чата стенд зовёт инструмент; у внешнего клиента пусто.
+    `about` — функция, а не строка: подсказка собирается на каждое рукопожатие,
+    и «сейчас» планировщика в ней свежее. Сессии, выданные на `initialize`, —
+    в памяти: сервер живёт в процессе стенда, и перезапуск честно обрывает
+    старые разговоры — клиент поздоровается заново.
     """
-    if not isinstance(message, dict) or message.get("jsonrpc") != "2.0" \
-            or not isinstance(message.get("method"), str):
-        return 400, fault(None, -32600, "это не запрос JSON-RPC 2.0"), ""
-    method = message["method"]
-    if "id" not in message:
-        return 202, None, ""
-    ident = message["id"]
-    params = message.get("params") or {}
-    given = ""
-    try:
-        if method == "initialize":
-            asked = params.get("protocolVersion")
-            given = uuid.uuid4().hex
-            SESSIONS.add(given)
-            result = {"protocolVersion": asked if asked in VERSIONS else VERSIONS[0],
-                      "capabilities": {"tools": {"listChanged": False}},
-                      "serverInfo": INFO, "instructions": instructions()}
-        elif session not in SESSIONS:
-            return 400, fault(ident, -32000, "Mcp-Session-Id не выдан: сначала initialize"), ""
-        elif method == "ping":
-            result = {}
-        elif method == "tools/list":
-            result = {"tools": listed()}
-        elif method == "tools/call":
-            result = await call(params, chat)
-        else:
-            raise RpcError(-32601, f"метода {method} нет")
-    except RpcError as bad:
-        return 200, fault(ident, bad.code, str(bad)), given
-    return 200, {"jsonrpc": "2.0", "id": ident, "result": result}, given
+
+    def __init__(self, name, about, tools):
+        self.info = {"name": name, "version": "1.0"}
+        self.about = about
+        self.tools = tools
+        self.by_name = {tool["name"]: tool for tool in tools}
+        self.sessions = set()
+
+    def listed(self):
+        """Инструменты так, как их видит клиент: без обработчика."""
+        return [{key: value for key, value in tool.items() if key != "run"}
+                for tool in self.tools]
+
+    async def call(self, params, chat):
+        tool = self.by_name.get(params.get("name"))
+        if tool is None:
+            raise RpcError(-32602, f"инструмента {params.get('name')!r} нет")
+        try:
+            args = checked(tool, params.get("arguments") or {})
+        except ValueError as bad:
+            raise RpcError(-32602, f"{tool['name']}: {bad}") from bad
+        try:
+            data = tool["run"](args, chat)
+            if inspect.isawaitable(data):
+                data = await data
+        except Failed as failed:
+            return {"content": [{"type": "text", "text": str(failed)}], "isError": True}
+        # Текстом — для модели и клиентов, которые знают только `content`;
+        # структурой — для тех, кто умеет `structuredContent` (протокол 2025-06-18).
+        return {"content": [{"type": "text", "text": json.dumps(data, ensure_ascii=False)}],
+                "structuredContent": data, "isError": False}
+
+    async def handle(self, message, session, chat=""):
+        """Одно сообщение JSON-RPC. Отдаёт код ответа, тело и выданную сессию.
+
+        Уведомление (сообщение без `id`) ответа не получает — только 202.
+        Всё, кроме `initialize`, требует сессию, выданную на рукопожатии: без
+        знакомства разговор не начинается, как у GitMCP из дня 16.
+        `chat` — из какого чата стенд зовёт инструмент; у внешнего клиента пусто.
+        """
+        if not isinstance(message, dict) or message.get("jsonrpc") != "2.0"                 or not isinstance(message.get("method"), str):
+            return 400, fault(None, -32600, "это не запрос JSON-RPC 2.0"), ""
+        method = message["method"]
+        if "id" not in message:
+            return 202, None, ""
+        ident = message["id"]
+        params = message.get("params") or {}
+        given = ""
+        try:
+            if method == "initialize":
+                asked = params.get("protocolVersion")
+                given = uuid.uuid4().hex
+                self.sessions.add(given)
+                result = {"protocolVersion": asked if asked in VERSIONS else VERSIONS[0],
+                          "capabilities": {"tools": {"listChanged": False}},
+                          "serverInfo": self.info, "instructions": self.about()}
+            elif session not in self.sessions:
+                return 400, fault(ident, -32000,
+                                  "Mcp-Session-Id не выдан: сначала initialize"), ""
+            elif method == "ping":
+                result = {}
+            elif method == "tools/list":
+                result = {"tools": self.listed()}
+            elif method == "tools/call":
+                result = await self.call(params, chat)
+            else:
+                raise RpcError(-32601, f"метода {method} нет")
+        except RpcError as bad:
+            return 200, fault(ident, bad.code, str(bad)), given
+        return 200, {"jsonrpc": "2.0", "id": ident, "result": result}, given
 
 
 def fault(ident, code, message):
     return {"jsonrpc": "2.0", "id": ident, "error": {"code": code, "message": message}}
+
+
+SERVER = Server("aichallenge-tracker", lambda: INSTRUCTIONS, TOOLS)
