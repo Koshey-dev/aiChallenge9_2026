@@ -996,7 +996,9 @@
         } else if (event.t === "replace") {
           render(turn, event.text);
         } else if (event.t === "servers") {
+          // Эталонная реплика получает полосу сразу: сверка ждёт ответа.
           turn.servers = event.servers;
+          routeMap(turn);
         } else if (event.t === "tool") {
           toolCard(turn, event);
           if (!ui.prefs.hidden) showTracker();
