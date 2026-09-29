@@ -103,8 +103,9 @@
     const kept = docs.filter(d => !d.skipped);
     const chars = kept.reduce((s, d) => s + d.chars, 0);
     $("#ragTotals").textContent = docs.length
-      ? `В индексе ${kept.length} из ${docs.length} файлов: ${fmt(chars)} символов — примерно ` +
-        `${fmt(Math.round(chars / 1800))} машинописных страниц по 1800 знаков. ` +
+      ? `В индексе ${kept.length} из ${docs.length} файлов: ${fmt(chars)} символов — это примерно ` +
+        `${fmt(Math.round(chars / 1800))} ${plural(Math.round(chars / 1800),
+          ["машинописная страница", "машинописные страницы", "машинописных страниц"])} по 1800 знаков. ` +
         `Файл, где текста меньше страницы, не индексируется — причина в строке.`
       : "Документов пока нет.";
     $("#ragDocs").innerHTML = `<tr><th>Документ</th><th>Тип</th><th class="num">Стр.</th>
@@ -425,7 +426,7 @@
     for (const s of ["fixed", "struct"]) {
       const cell = document.createElement("div");
       box.append(cell);
-      const W = cell.clientWidth, H = Math.round(Math.min(420, Math.max(300, W * .66))), P = 16, T = 24;
+      const W = cell.clientWidth, H = Math.round(Math.min(440, Math.max(320, W * .7))), P = 16, T = 42;
       const pts = state.map[s];
       const found = state.found?.[s];
       const xs = pts.map(p => p.x).concat(found ? [found.at[0]] : []);
@@ -437,9 +438,10 @@
       el("rect", { x: .5, y: T + .5, width: W - 1, height: H - T - 1, rx: 8, fill: "none", stroke: "var(--line)" }, svg);
       const own = pts.filter(p => p.doc === state.doc).length;
       const share = state.view.meta.maps_var?.[s];
+      const title = (titles[state.doc] || "").length > 42 ? titles[state.doc].slice(0, 40) + "…" : titles[state.doc];
       el("text", { x: 0, y: 15, class: "lead" }, svg).textContent =
-        `${state.view.strategies[s]} · ${chunksWord(pts.length)}` + (share ? ` · оси объясняют ${share}% разброса` : "") +
-        (own ? ` · цветные — ${own} из «${titles[state.doc]}»` : "");
+        `${state.view.strategies[s]} · ${chunksWord(pts.length)}` + (share ? ` · оси держат ${fmt(share)}% разброса` : "");
+      if (own) el("text", { x: 0, y: 33 }, svg).textContent = `цветные — ${own} из «${title}»`;
       const hits = new Map((found?.hits || []).map((h, i) => [h.id, i + 1]));
       const order = [...pts.filter(p => p.doc !== state.doc), ...pts.filter(p => p.doc === state.doc)];
       for (const p of order) {

@@ -42,7 +42,7 @@
 .rag-meterrow span:last-child { color: var(--dim); font-variant-numeric: tabular-nums; }
 .rag-meter { height: 8px; background: var(--line); border-radius: 4px; overflow: hidden; }
 .rag-meter i { display: block; height: 100%; width: 0; border-radius: 4px; transition: width .25s; }
-.rag-lines { margin: 8px 0 0; padding-left: 22px; max-height: 230px; overflow-y: auto;
+.rag-lines { margin: 8px 0 0; padding: 0; list-style: none; max-height: 230px; overflow-y: auto;
              font: 13px/1.55 ui-monospace, Consolas, monospace; color: var(--dim); }
 .rag-lines li.stage { color: var(--text); }
 .rag-lines li.skip { color: var(--warn); }
