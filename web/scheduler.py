@@ -31,6 +31,8 @@ from contextlib import closing
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from dotenv import load_dotenv
+
 import store
 import tracker
 
@@ -42,7 +44,11 @@ TICK = 5
 
 # Часовой пояс пользователя стенда: в нём модель видит «сейчас» и в нём же
 # отдаёт сроки заданий. Сервер живёт в UTC, база — тоже.
-ZONE_NAME = os.environ.get("STAND_TZ", "Europe/Moscow")
+# Пояс читается при импорте, а app.py грузит .env после своих импортов —
+# поэтому .env модуль грузит сам. Пустая строка — «не задано»: ZoneInfo("")
+# падает не с ZoneInfoNotFoundError, и стенд бы не поднялся.
+load_dotenv()
+ZONE_NAME = os.environ.get("STAND_TZ") or "Europe/Moscow"
 try:
     ZONE = ZoneInfo(ZONE_NAME)
 except ZoneInfoNotFoundError:
