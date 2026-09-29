@@ -15,6 +15,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response, StreamingRes
 from pydantic import BaseModel
 
 import pipeline
+import rag
 import scheduler
 import store
 import tracker
@@ -1458,6 +1459,70 @@ def pipeline_file(name: str):
     if path is None:
         raise HTTPException(status_code=404, detail=f"файла {name} нет")
     return FileResponse(path, media_type="text/plain; charset=utf-8")
+
+
+# ── День 21: индекс документов ──────────────────────────────────────
+
+class RagBuildIn(BaseModel):
+    fresh: bool = False
+
+
+class RagSearchIn(BaseModel):
+    q: str
+    k: int = 5
+
+
+@app.get("/rag.js")
+def rag_script():
+    return FileResponse(HERE / "rag.js")
+
+
+@app.get("/rag.css")
+def rag_style():
+    return FileResponse(HERE / "rag.css")
+
+
+@app.get("/api/rag")
+def rag_overview():
+    return rag.overview()
+
+
+@app.post("/api/rag/build")
+def rag_build(body: RagBuildIn):
+    """Сборка индекса потоком событий: извлечение, чанки, эмбеддинги, запись."""
+    return StreamingResponse((line(e) for e in rag.build(body.fresh)),
+                             media_type="application/x-ndjson")
+
+
+@app.get("/api/rag/doc/{doc_id}")
+def rag_document(doc_id: str):
+    found = rag.document(doc_id)
+    if found is None:
+        raise HTTPException(status_code=404, detail=f"документа {doc_id} нет в индексе")
+    return found
+
+
+@app.get("/api/rag/chunk/{chunk_id}")
+def rag_chunk(chunk_id: str):
+    found = rag.chunk(chunk_id)
+    if found is None:
+        raise HTTPException(status_code=404, detail=f"чанка {chunk_id} нет в индексе")
+    return found
+
+
+@app.get("/api/rag/map")
+def rag_map():
+    return rag.points()
+
+
+@app.post("/api/rag/search")
+def rag_search(body: RagSearchIn):
+    if not body.q.strip():
+        raise HTTPException(status_code=400, detail="пустой запрос")
+    try:
+        return rag.search(body.q.strip(), max(1, min(body.k, 10)))
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=503, detail=f"Ollama не ответила: {e}")
 
 
 @app.get("/chat.js")

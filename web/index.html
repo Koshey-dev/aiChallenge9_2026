@@ -120,7 +120,7 @@
   .verdict { margin-top: 20px; }
   .verdict .body { max-height: none; }
 
-  .tabs { display: flex; gap: 8px; margin: 0 0 22px;
+  .tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 22px;
           border-bottom: 1px solid var(--line); }
   .tab { border-bottom: none; border-radius: 8px 8px 0 0; margin-bottom: -1px; }
   .tab.on { border-color: var(--accent); color: var(--accent); background: #16201b; }
@@ -229,6 +229,7 @@
 
 </style>
 <link rel="stylesheet" href="/chat.css">
+<link rel="stylesheet" href="/rag.css">
 </head>
 <body>
 
@@ -237,6 +238,7 @@
   <button class="tab" data-pane="week2">Неделя 2</button>
   <button class="tab" data-pane="week3">Неделя 3</button>
   <button class="tab" data-pane="week4">Неделя 4</button>
+  <button class="tab" data-pane="week5">Неделя 5</button>
 </nav>
 
 <!-- Неделя 4 продолжает того же ассистента, поэтому панель чата у недель 3 и 4
@@ -745,6 +747,73 @@
 
 </section>
 
+<!-- Неделя 5 — индекс документов для RAG: своя вкладка, не чат. Логика в
+     rag.js, стили в rag.css, данные — /api/rag/*. -->
+<section class="pane rag" id="week5" hidden>
+
+<h1>Индекс документов: две стратегии чанкинга</h1>
+<p class="sub" id="ragSub">Индекс ещё не собран.</p>
+
+<div class="rag-bar">
+  <button class="main" id="ragBuild">Собрать индекс</button>
+  <label class="rag-check"><input type="checkbox" id="ragFresh"> мимо кеша эмбеддингов</label>
+  <span class="hint" id="ragBuildNote"></span>
+</div>
+<div class="rag-log" id="ragLog" hidden>
+  <div class="rag-progress" id="ragProgress"></div>
+  <ol class="rag-lines" id="ragLines"></ol>
+</div>
+
+<section class="rag-card" id="ragSet">
+  <h2>Набор документов</h2>
+  <p class="rag-note" id="ragTotals"></p>
+  <div class="rag-scroll"><table class="rag-table" id="ragDocs"></table></div>
+</section>
+
+<section class="rag-card" id="ragCut">
+  <h2>Разрез документа</h2>
+  <p class="rag-note">Один и тот же текст, порезанный двумя способами. Пунктир — начала разделов,
+    штриховка — чанк захватил два раздела и больше. Клик по чанку — его метаданные и вектор.</p>
+  <div class="rag-bar"><select id="ragDoc"></select></div>
+  <div class="rag-strip" id="ragStrip"></div>
+  <div class="rag-chunk" id="ragChunk" hidden></div>
+</section>
+
+<section class="rag-card" id="ragCompare">
+  <h2>Сравнение стратегий</h2>
+  <p class="rag-note" id="ragParams"></p>
+  <div class="rag-split">
+    <table class="rag-table rag-metrics" id="ragMetrics"></table>
+    <div class="rag-hists" id="ragHists"></div>
+  </div>
+</section>
+
+<section class="rag-card" id="ragChecks">
+  <h2>Контрольные вопросы</h2>
+  <p class="rag-note">Для каждого вопроса известно, в каком документе ответ и какие строки обязаны быть
+    в чанке. В ячейке — место такого чанка в топ-5 стратегии, «—» — не нашёлся. Клик по вопросу
+    отправляет его в пробу поиска.</p>
+  <div class="rag-scroll"><table class="rag-table" id="ragQuestions"></table></div>
+</section>
+
+<section class="rag-card" id="ragSearch">
+  <h2>Проба поиска и карта эмбеддингов</h2>
+  <div class="rag-bar">
+    <input id="ragQuery" placeholder="Вопрос по документам — например, какой бюджет нужен на тест в TikTok?">
+    <button class="main" id="ragAsk">Найти</button>
+  </div>
+  <div class="rag-results" id="ragResults"></div>
+  <p class="rag-note">Карта — все чанки в плоскости двух главных компонент (PCA) из 768 измерений.
+    Серые точки — весь индекс, цветные — документ из разреза выше, ромб — запрос, кольца — топ-5 поиска.
+    Две оси из 768 держат малую долю разброса, поэтому расстояние на карте — не косинус: соседи по
+    смыслу ложатся кучкой, но запрос может встать в стороне от своих находок.</p>
+  <div class="rag-maps" id="ragMaps"></div>
+</section>
+
+<div class="rag-tip" id="ragTip" hidden></div>
+
+</section>
+
 <template id="chatHead">
   <div class="col">
     <h2 class="title"></h2>
@@ -1098,7 +1167,7 @@ const node = name => $("#" + stand.ids[name]);
 // Какую секцию показывает вкладка. Панель чата одна, и недели 3 и 4 открывают
 // её же: неделя 4 — тот же ассистент, но с заданиями своих дней.
 const PANES = { week1: "week1", week2: "week2",
-                week3: "chatpane", week4: "chatpane" };
+                week3: "chatpane", week4: "chatpane", week5: "week5" };
 
 function showPane(name) {
   shown = name;
@@ -1111,6 +1180,8 @@ function showPane(name) {
   $("#chatpane").dataset.week = name === "week4" ? "4" : "3";
   document.querySelectorAll(".tab")
     .forEach(t => t.classList.toggle("on", t.dataset.pane === name));
+  // Индекс недели 5 рисует полосы по ширине экрана — только когда виден.
+  if (name === "week5") window.ragShow?.();
   if (!STANDS[name]) {
     $("#cues").hidden = true;
     return;
@@ -1982,5 +2053,6 @@ $("#modal").addEventListener("click", event => {
 </script>
 <script src="/chat.js"></script>
 <script src="/mcp.js"></script>
+<script src="/rag.js"></script>
 </body>
 </html>

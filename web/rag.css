@@ -1,0 +1,101 @@
+/* Неделя 5 — индекс документов. Страница тёмная, как недели 1 и 2: цвета
+   берутся из :root. Два цвета стратегий прогнаны валидатором палитры на фоне
+   карточки (#181a24): расходятся и при нарушениях цветовосприятия, контраст
+   к фону выше 3:1. Серый — всё, что не выделено. Классы с префиксом rag-,
+   чтобы не пересечься с общими .row, .grid, .panel страницы. */
+
+.rag { --rag-a: #3987e5; --rag-b: #d95926; --rag-dot: #4d5163; --rag-ink: #0b0c12;
+       max-width: 1380px; }
+
+.rag-bar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
+.rag-check { display: inline-flex; gap: 6px; align-items: center; color: var(--dim); font-size: 14px; }
+.rag-check input { width: 16px; height: 16px; }
+.rag select { min-width: 360px; }
+#ragQuery { flex: 1; min-width: 240px; }
+
+.rag-card { background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+            padding: 16px 18px; margin-bottom: 18px; }
+.rag-card h2 { font-size: 18px; margin: 0 0 4px; }
+.rag-note { color: var(--dim); font-size: 13.5px; margin: 0 0 12px; max-width: 1000px; }
+.rag-scroll { overflow-x: auto; }
+
+.rag-table { font-family: inherit; font-size: 14px; }
+.rag-table th, .rag-table td { text-align: left; padding: 5px 10px; vertical-align: top; }
+.rag-table .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rag-table tr.skip td { color: var(--dim); }
+.rag-table tr.sum td { border-top: 1px solid var(--line); border-bottom: none; }
+.rag-table b { font-weight: 650; }
+.rag-table .file { color: var(--dim); font-size: 12px; }
+.rag-q { cursor: pointer; }
+.rag-q:hover td:first-child { color: var(--accent); }
+
+.swatch { display: inline-block; width: 10px; height: 10px; border-radius: 3px;
+          margin-right: 6px; vertical-align: 0; }
+.swatch.fixed { background: var(--rag-a); }
+.swatch.struct { background: var(--rag-b); }
+
+.rag-log { background: var(--card); border: 1px solid var(--accent); border-radius: 12px;
+           padding: 12px 16px; margin-bottom: 18px; }
+.rag-progress { display: grid; gap: 6px; }
+.rag-meterrow { display: grid; grid-template-columns: 150px 1fr 200px; gap: 10px;
+                align-items: center; font-size: 13px; }
+.rag-meterrow span:last-child { color: var(--dim); font-variant-numeric: tabular-nums; }
+.rag-meter { height: 8px; background: var(--line); border-radius: 4px; overflow: hidden; }
+.rag-meter i { display: block; height: 100%; width: 0; border-radius: 4px; transition: width .25s; }
+.rag-lines { margin: 8px 0 0; padding-left: 22px; max-height: 230px; overflow-y: auto;
+             font: 13px/1.55 ui-monospace, Consolas, monospace; color: var(--dim); }
+.rag-lines li.stage { color: var(--text); }
+.rag-lines li.skip { color: var(--warn); }
+.rag-lines li.err { color: var(--bad); }
+.rag-lines li.done { color: var(--accent); }
+
+.rag-strip svg, .rag-hists svg, .rag-maps svg { display: block; width: 100%; }
+.rag-strip text, .rag-hists text, .rag-maps text { fill: var(--dim); font-size: 12px; }
+.rag-strip text.lead, .rag-hists text.lead, .rag-maps text.lead { fill: var(--text); font-size: 13px; }
+.rag-legend { display: flex; gap: 18px; flex-wrap: wrap; color: var(--dim); font-size: 13px; margin-top: 6px; }
+.rag-legend .hatch { display: inline-block; width: 16px; height: 10px; border-radius: 2px; margin-right: 6px;
+                     background: repeating-linear-gradient(45deg, var(--rag-a) 0 3px, var(--card) 3px 5px); }
+.rag-legend .dash { display: inline-block; width: 0; height: 12px; margin: 0 8px 0 4px;
+                    border-left: 1px dashed var(--text); vertical-align: -1px; }
+
+.rag-chunk { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 14px;
+             display: grid; grid-template-columns: minmax(0, 380px) minmax(0, 1fr); gap: 20px; }
+.rag-chunk h3 { grid-column: 1 / -1; margin: 0; font-size: 15px; font-family: ui-monospace, Consolas, monospace; }
+.rag-chunk dl { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 4px 10px;
+                margin: 0; font-size: 13.5px; align-content: start; }
+.rag-chunk dt { color: var(--dim); }
+.rag-chunk dd { margin: 0; overflow-wrap: anywhere; }
+.rag-chunk dd code { font-size: 12.5px; }
+.rag-chunk pre { white-space: pre-wrap; margin: 0; background: #14151d; border-radius: 8px;
+                 padding: 10px 12px; max-height: 300px; overflow-y: auto;
+                 font: 14px/1.5 system-ui, "Segoe UI", sans-serif; }
+
+.rag-split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 28px; align-items: start; }
+.rag-hists { display: grid; gap: 12px; }
+
+.rag-results { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; margin-bottom: 12px; }
+.rag-results h3 { margin: 0; font-size: 15px; }
+.rag-hit { border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; margin-top: 8px; cursor: pointer; }
+.rag-hit:hover { border-color: var(--dim); }
+.rag-hit .head { display: flex; gap: 10px; font-size: 13px; color: var(--dim); }
+.rag-hit .head b { color: var(--text); font-variant-numeric: tabular-nums; font-weight: 600; }
+.rag-hit .head span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rag-hit p { margin: 4px 0 0; font-size: 13.5px; color: #cfd3e0; }
+
+.rag-maps { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
+.rag-maps circle.pt { cursor: pointer; }
+
+.rag-tip { position: fixed; z-index: 20; pointer-events: none; max-width: 380px;
+           background: var(--rag-ink); border: 1px solid var(--line); border-radius: 8px;
+           padding: 6px 10px; font-size: 13px; line-height: 1.45;
+           box-shadow: 0 6px 24px rgba(0, 0, 0, .45); }
+.rag-tip[hidden] { display: none; }
+.rag-tip b { font-weight: 600; }
+.rag-tip span { color: var(--dim); }
+
+@media (max-width: 900px) {
+  .rag-split, .rag-results, .rag-maps, .rag-chunk { grid-template-columns: minmax(0, 1fr); }
+  .rag select { min-width: 0; width: 100%; }
+  .rag-meterrow { grid-template-columns: 110px 1fr; }
+  .rag-meterrow span:last-child { grid-column: 2; }
+}
