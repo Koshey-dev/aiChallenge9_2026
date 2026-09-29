@@ -75,8 +75,24 @@
     drawMaps();
   }
 
+  // Подвкладки недели 5 — по дню на каждую; адрес помнит открытую: #week5/22.
+  // По умолчанию — последний день. День 22 живёт в ask.js (window.askShow).
+  const DAYS = [...document.querySelectorAll("#ragDays .rag-daytab")].map(b => b.dataset.day);
+  function showDay(day) {
+    state.day = DAYS.includes(day) ? day : DAYS.at(-1);
+    document.querySelectorAll("#week5 .rag-day").forEach(d => (d.hidden = d.dataset.day !== state.day));
+    document.querySelectorAll("#ragDays .rag-daytab")
+      .forEach(b => b.classList.toggle("on", b.dataset.day === state.day));
+    history.replaceState(null, "", "#week5/" + state.day);
+    if (state.day === "22") window.askShow?.();
+    else requestAnimationFrame(redraw);
+  }
+  document.querySelectorAll("#ragDays .rag-daytab")
+    .forEach(b => b.addEventListener("click", () => showDay(b.dataset.day)));
+
   window.ragShow = () => {
-    if (state.shown) return requestAnimationFrame(redraw);
+    showDay(state.day || location.hash.split("/")[1]);
+    if (state.shown) return;
     state.shown = true;
     load().catch(e => ($("#ragSub").textContent = "Индекс не прочитан: " + e.message));
   };

@@ -27,6 +27,10 @@ float32, итоги сборки и кеш эмбеддингов по хешу 
 
 Запуск из консоли: `py web/rag.py` — собрать и напечатать сравнение,
 `--fresh` — мимо кеша.
+
+С дня 22 здесь же всё, что вокруг первого RAG-запроса: какие чанки взять,
+как сложить их с вопросом в промпт, десять контрольных вопросов с ожиданием
+и сверка ответа с ним. Сам запрос к модели делает app.py.
 """
 
 import hashlib
@@ -47,6 +51,8 @@ from pathlib import Path
 import httpx
 import numpy as np
 from dotenv import load_dotenv
+
+import store
 
 # Модуль читает настройки при импорте, а app.py грузит .env позже, — и из
 # консоли (`py web/rag.py`) его тоже никто не грузит. Пустая строка из
@@ -619,6 +625,197 @@ def search(q, k=TOP):
                             "score": round(float(scores[i]), 4)}
                            for i in np.argsort(-scores)[:k]]}
     return out
+
+
+# ── День 22: первый RAG-запрос ───────────────────────────────────────────
+#
+# Вопрос → поиск чанков → объединение с вопросом → запрос к LLM. Сам запрос
+# к модели делает стенд (app.py знает провайдеров и ключи), здесь — всё, что
+# вокруг: какие чанки взять, как сложить промпт и как проверить ответ.
+
+ROLE = "Ты ассистент команды, которая делает мобильные и браузерные игры. Отвечай по-русски, кратко и по делу."
+RAG_RULES = (
+    " Отвечай только по фрагментам документов из сообщения пользователя. После каждого "
+    "утверждения ставь номер фрагмента в квадратных скобках: [1], [2]. Если во фрагментах "
+    "ответа нет, так и скажи: «В документах этого нет» — и ничего не добавляй от себя.")
+ANSWER_TOKENS = 500
+
+# Контрольный набор дня 22: девять вопросов с ответом в базе и один мимо неё.
+# `facts` — что обязано быть в ответе: список групп, группа засчитана, если в
+# ответе есть любой её вариант. `sources` — документы, где лежит ответ.
+# У вопроса вне базы фактов нет: правильный ответ — отказ.
+QUESTIONS = [
+    {"q": "Какой бюджет советуют закладывать на тест рекламы в Snapchat Ads?",
+     "expect": "От 1000 установок на тест, бюджет не лимитируется",
+     "facts": [("1000 установок", "1 000 установок", "1000 инсталл")],
+     "sources": ["2024-gayd-istochniki-mobi"], "section": "Snapchat Ads"},
+    {"q": "Какое удержание первого дня у казуальных игр в Европе по данным GameAnalytics за Q1 2024?",
+     "expect": "31,79% у топ-25% игр — самое высокое среди жанров в Европе",
+     "facts": [("31,79", "31.79")],
+     "sources": ["gameanalytics-q1-2024-mob"], "section": "Europe | Retention"},
+    {"q": "Сколько в среднем стоит реклама в Telegram, если заходить через посредника?",
+     "expect": "В среднем €1500 без учёта комиссий и НДС (напрямую — депозит от €2 млн)",
+     # Сумма — вместе с евро: без RAG модель пишет «1 500–10 000 ₽», и голое
+     # число засчитало бы чужой ответ.
+     "facts": [("€1500", "€ 1500", "€1 500", "1500 €", "1 500 €", "1500 евро", "1 500 евро")],
+     "sources": ["2024-gayd-istochniki-mobi"], "section": "Telegram"},
+    {"q": "Как в чате игры получить список только тех участников, кто сейчас онлайн?",
+     "expect": "Передать isOnline: true дополнительным аргументом в метод fetchMembers",
+     "facts": [("isonline",), ("fetchmembers",)],
+     "sources": ["gayd-vstraivaem-chat-v-ig"], "section": "Проверка онлайна игроков"},
+    {"q": "Что исполнитель по договору подряда обязан сделать до передачи результатов заказчику?",
+     "expect": "Согласовать с заказчиком окончательный вид и работу продукта (п. 2.1.3)",
+     "facts": [("согласова",), ("окончательный вид",)],
+     "sources": ["obrazets-dogovor-podryada"], "section": "2. Права и обязанности сторон"},
+    {"q": "Что входит в финансовый план игры?",
+     "expect": "Бюджет и расходы, источники финансирования, риски, расчёт даты окупаемости и возврата инвестиций",
+     "facts": [("бюджет",), ("источник",), ("риск",), ("окупаемост",), ("возврат",)],
+     "sources": ["sozdanie-biznes-plana-igr"], "section": "Основные пункты финансового плана"},
+    {"q": "Какой плагин для Unity добавляет окно с историей выделения объектов?",
+     "expect": "Selection History",
+     "facts": [("selection history",)],
+     "sources": ["assety-po-kategoriyam"], "section": "Список"},
+    {"q": "Что такое RuStore?",
+     "expect": "Российский аналог Google Play для Android: скачать приложение в РФ без ограничений",
+     "facts": [("google play",), ("android", "андроид")],
+     "sources": ["spisok-ploschadok-dlya-re"], "section": "RuStore"},
+    {"q": "На каких площадках можно выпустить браузерную игру?",
+     "expect": "Яндекс Игры, CrazyGames, Одноклассники; ещё Game Distribution, Facebook Instant Games, Y8",
+     "facts": [("яндекс игр", "яндекс.игр", "yandex games"), ("crazygames", "crazy games"),
+               ("одноклассник", "game distribution", "gamedistribution", "instant games", "y8")],
+     "sources": ["unity-conf-2024-bonus-den", "spisok-ploschadok-dlya-re"], "section": "Браузерные платформы"},
+    {"q": "Сколько стоит подписка Unity Pro в 2026 году?",
+     "expect": "Цен Unity в базе нет — честное «в документах этого нет», без выдуманной суммы",
+     "facts": [], "sources": [], "section": "", "outside": True},
+]
+
+# Отказ ответить — по этим словам. Без RAG модель тоже может честно сказать,
+# что не знает, и это засчитывается так же.
+REFUSAL = ("в документах этого нет", "в документах нет", "нет в документах", "в документах не",
+           "во фрагментах нет", "во фрагментах не", "нет информации", "нет данных", "не знаю",
+           "не располагаю", "не могу сказать", "не могу точно", "не указан", "не содерж")
+
+CITE = re.compile(r"\[(\d+)\]")
+
+RUNS = """
+CREATE TABLE IF NOT EXISTS rag_runs (
+    id       INTEGER PRIMARY KEY AUTOINCREMENT,
+    created  TEXT NOT NULL,
+    model    TEXT NOT NULL,
+    strategy TEXT NOT NULL,
+    k        INTEGER NOT NULL,
+    results  TEXT NOT NULL
+)
+"""
+
+
+def retrieve(q, strategy="struct", k=TOP):
+    """Топ-k одной стратегии — это и есть контекст RAG-запроса."""
+    return search(q, k)[strategy]["hits"]
+
+
+def rag_prompt(q, hits):
+    """Объединение с вопросом: пронумерованные фрагменты с метаданными, потом вопрос."""
+    blocks = []
+    for n, h in enumerate(hits, 1):
+        page = "" if not h["page_from"] else f", стр. {h['page_from']}" + (
+            f"–{h['page_to']}" if h["page_to"] != h["page_from"] else "")
+        blocks.append(f"[{n}] «{h['title']}» › {h['section']}{page}\n{h['text']}")
+    return "Фрагменты документов:\n\n" + "\n\n".join(blocks) + f"\n\nВопрос: {q}"
+
+
+def messages(q, hits=None):
+    """Сообщения модели: без RAG — только вопрос, с RAG — правила, фрагменты и вопрос."""
+    if hits is None:
+        return [{"role": "system", "content": ROLE}, {"role": "user", "content": q}]
+    return [{"role": "system", "content": ROLE + RAG_RULES},
+            {"role": "user", "content": rag_prompt(q, hits)}]
+
+
+def norm(text):
+    return text.lower().replace("ё", "е").replace("\xa0", " ").replace(" ", " ")
+
+
+def grade(question, answer, hits=None):
+    """Сверка ответа с ожиданием: факты, отказ, источники (только у RAG)."""
+    low = norm(answer)
+    found = [any(norm(alt) in low for alt in group) for group in question["facts"]]
+    refused = any(m in low for m in REFUSAL)
+    out = {"facts": sum(found), "of": len(found), "found": found, "refused": refused}
+    if hits is not None:
+        cited = sorted({int(n) for n in CITE.findall(answer) if 0 < int(n) <= len(hits)})
+        out["cited"] = cited
+        out["retrieved"] = any(h["doc"] in question["sources"] for h in hits)
+        out["cited_ok"] = any(hits[n - 1]["doc"] in question["sources"] for n in cited)
+    if question.get("outside"):
+        ok = refused
+        out["verdict"] = "ok" if ok else "bad"
+    else:
+        share = out["facts"] / out["of"]
+        out["verdict"] = "ok" if share == 1 else "part" if share else "bad"
+    return out
+
+
+def question_of(q):
+    """Контрольный вопрос, если реплика совпала с ним дословно, — чтобы сверить и её."""
+    return next((x for x in QUESTIONS if x["q"].strip() == q.strip()), None)
+
+
+def summary(results):
+    """Итог прогона по режимам: факты, вердикты, отказ вне базы, источники, расход."""
+    out = {}
+    for mode in ("plain", "rag"):
+        rows = [(QUESTIONS[r["i"]], r[mode]) for r in results if r and r.get(mode)]
+        if not rows:
+            continue
+        inside = [a["grade"] for x, a in rows if not x.get("outside")]
+        outside = [a["grade"]["refused"] for x, a in rows if x.get("outside")]
+        n = len(rows)
+        out[mode] = {
+            "facts": sum(g["facts"] for g in inside), "of": sum(g["of"] for g in inside),
+            **{v: sum(a["grade"]["verdict"] == v for _, a in rows) for v in ("ok", "part", "bad")},
+            "total": n, "outside_refused": all(outside) if outside else None,
+            "tokens_in": round(sum(a["metrics"]["in"] for _, a in rows) / n),
+            "tokens_out": round(sum(a["metrics"]["out"] for _, a in rows) / n),
+            "seconds": round(sum(a["metrics"]["seconds"] for _, a in rows) / n, 1),
+            "cost": round(sum(a["metrics"]["cost"] for _, a in rows), 5)}
+        if mode == "rag":
+            out[mode]["retrieved"] = sum(g["retrieved"] for g in inside)
+            out[mode]["cited_ok"] = sum(g["cited_ok"] for g in inside)
+            out[mode]["inside"] = len(inside)
+    return out
+
+
+def runs_db():
+    db = sqlite3.connect(store.FILE, timeout=5)
+    db.execute(RUNS)
+    return db
+
+
+def save_run(model, strategy, k, results):
+    with closing(runs_db()) as db, db:
+        db.execute("INSERT INTO rag_runs (created, model, strategy, k, results) VALUES (?, ?, ?, ?, ?)",
+                   (time.strftime("%Y-%m-%d %H:%M"), model, strategy, k,
+                    json.dumps(results, ensure_ascii=False)))
+
+
+def last_run():
+    with closing(runs_db()) as db:
+        row = db.execute("SELECT created, model, strategy, k, results FROM rag_runs "
+                         "ORDER BY id DESC LIMIT 1").fetchone()
+    if not row:
+        return None
+    return dict(zip(("created", "model", "strategy", "k"), row[:4]), results=json.loads(row[4]))
+
+
+def question_set():
+    """Набор для экрана: вопрос, ожидание, какие документы — с названиями."""
+    with closing(connect()) as db:
+        titles = dict(db.execute("SELECT id, title FROM docs"))
+    return [{"q": x["q"], "expect": x["expect"], "outside": bool(x.get("outside")),
+             "facts": [" / ".join(g) for g in x["facts"]], "section": x["section"],
+             "sources": [{"id": s, "title": titles.get(s, s)} for s in x["sources"]]}
+            for x in QUESTIONS]
 
 
 if __name__ == "__main__":

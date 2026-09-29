@@ -1525,6 +1525,169 @@ def rag_search(body: RagSearchIn):
         raise HTTPException(status_code=503, detail=f"Ollama не ответила: {e}")
 
 
+# ── День 22: первый RAG-запрос ──────────────────────────────────────
+# Промпт и проверку собирает rag.py, запрос к модели — здесь: стенд знает
+# провайдеров, ключи и прайс. Модели — те же, что у чата недели 3.
+
+class RagAskIn(BaseModel):
+    q: str
+    mode: str = "both"  # plain — без RAG, rag — с RAG, both — обе колонки рядом
+    model: str = CHAT_DEFAULT
+    strategy: str = "struct"
+    k: int = 5
+
+
+class RagEvalIn(BaseModel):
+    model: str = CHAT_DEFAULT
+    strategy: str = "struct"
+    k: int = 5
+
+
+def rag_setup(model_id, strategy, k):
+    model = CHAT_BY_ID.get(model_id) or CHAT_BY_ID[CHAT_DEFAULT]
+    return model, strategy if strategy in rag.STRATEGIES else "struct", max(1, min(k, 10))
+
+
+async def rag_column(client, model, target, messages):
+    """Одна колонка: ответ модели потоком, последнее событие — done с расходом."""
+    provider = PROVIDERS[model["provider"]]
+    spent, text, trouble = new_metrics(), [], ""
+    started = time.monotonic()
+    if not provider["key"]:
+        trouble = f"на сервере нет ключа {provider['title']}"
+        yield {"t": "error", "target": target, "message": trouble}
+    else:
+        quirks = {"thinking": {"type": "disabled"}} if model["id"].startswith("deepseek") else {}
+        async for event in call(client, provider["key"], messages, target, spent, text,
+                                url=provider["url"], model=model["id"],
+                                max_tokens=rag.ANSWER_TOKENS, **quirks):
+            if event["t"] == "error":
+                trouble = event["message"]
+            yield event
+    price = CHAT_PRICES.get(model["id"]) or (0, 0)
+    yield {"t": "done", "target": target, "answer": "".join(text).strip(), "error": trouble,
+           "metrics": {"in": spent["prompt_tokens"], "out": spent["completion_tokens"],
+                       "seconds": round(time.monotonic() - started, 1),
+                       "cost": round(spent["prompt_tokens"] / 1e6 * price[0]
+                                     + spent["completion_tokens"] / 1e6 * price[1], 6)}}
+
+
+async def rag_run(client, q, mode, model, strategy, k):
+    """Вопрос → поиск чанков → объединение с вопросом → LLM. Колонки «без RAG» и
+    «с RAG» идут параллельно; контрольный вопрос сверяется с ожиданием."""
+    hits = None
+    if mode in ("rag", "both"):
+        started = time.monotonic()
+        hits = await asyncio.to_thread(rag.retrieve, q, strategy, k)
+        yield {"t": "search", "strategy": strategy, "k": k,
+               "ms": round((time.monotonic() - started) * 1000),
+               "hits": [{f: h[f] for f in ("id", "doc", "title", "section", "page_from", "page_to",
+                                           "chars", "score", "text")} for h in hits]}
+        prompt = rag.messages(q, hits)
+        yield {"t": "prompt", "system": prompt[0]["content"], "user": prompt[1]["content"]}
+    columns = [("plain", rag.messages(q))] if mode in ("plain", "both") else []
+    if hits is not None:
+        columns.append(("rag", rag.messages(q, hits)))
+    question = rag.question_of(q)
+    queue = asyncio.Queue()
+    workers = [asyncio.create_task(drain(rag_column(client, model, target, messages), queue))
+               for target, messages in columns]
+    left = len(workers)
+    while left:
+        event = await queue.get()
+        if event is None:
+            left -= 1
+            continue
+        if event["t"] == "done":
+            used = hits if event["target"] == "rag" else None
+            if used is not None:
+                event["cited"] = sorted({int(n) for n in rag.CITE.findall(event["answer"])
+                                         if 0 < int(n) <= len(used)})
+            if question:
+                event["grade"] = rag.grade(question, event["answer"], used)
+        yield event
+    await asyncio.gather(*workers)
+
+
+@app.get("/ask.js")
+def ask_script():
+    return FileResponse(HERE / "ask.js")
+
+
+@app.get("/api/rag/questions")
+def rag_questions():
+    """Контрольный набор, последний прогон и модели, у которых есть ключ."""
+    last = rag.last_run()
+    if last:
+        last["summary"] = rag.summary(last["results"])
+    return {"questions": rag.question_set(), "last": last, "default": CHAT_DEFAULT,
+            "strategies": rag.STRATEGIES, "k": rag.TOP,
+            "models": [{"id": m["id"], "title": m["title"]} for m in CHAT_MODELS
+                       if PROVIDERS[m["provider"]]["key"]]}
+
+
+@app.post("/api/rag/ask")
+def rag_ask(body: RagAskIn):
+    if not body.q.strip():
+        raise HTTPException(status_code=400, detail="пустой вопрос")
+    model, strategy, k = rag_setup(body.model, body.strategy, body.k)
+    mode = body.mode if body.mode in ("plain", "rag", "both") else "both"
+
+    async def run():
+        yield line({"t": "start", "mode": mode, "model": model["id"], "strategy": strategy, "k": k})
+        async with httpx.AsyncClient(timeout=90, default_encoding="utf-8", proxy=PROXY) as client:
+            try:
+                async for event in rag_run(client, body.q.strip(), mode, model, strategy, k):
+                    yield line(event)
+            except httpx.HTTPError as e:
+                yield line({"t": "error", "target": "search", "message": f"Ollama не ответила: {e}"})
+        yield line({"t": "end"})
+
+    return StreamingResponse(run(), media_type="application/x-ndjson")
+
+
+@app.post("/api/rag/eval")
+def rag_eval(body: RagEvalIn):
+    """Все контрольные вопросы в обоих режимах: по три вопроса разом, строка
+    таблицы — по мере готовности. Прогон сохраняется и виден после перезагрузки."""
+    model, strategy, k = rag_setup(body.model, body.strategy, body.k)
+
+    async def run():
+        yield line({"t": "start", "total": len(rag.QUESTIONS), "model": model["id"],
+                    "strategy": strategy, "k": k})
+        results = [None] * len(rag.QUESTIONS)
+        gate, queue = asyncio.Semaphore(3), asyncio.Queue()
+
+        async def one(i, question):
+            async with gate:
+                record = {"i": i, "hits": []}
+                try:
+                    async for event in rag_run(client, question["q"], "both", model, strategy, k):
+                        if event["t"] == "search":
+                            record["hits"] = [{f: h[f] for f in ("id", "doc", "title", "section",
+                                                                   "page_from", "score")}
+                                              for h in event["hits"]]
+                        elif event["t"] == "done":
+                            record[event["target"]] = {f: event.get(f) for f in
+                                                       ("answer", "error", "metrics", "grade", "cited")}
+                except httpx.HTTPError as e:
+                    record["error"] = f"Ollama не ответила: {e}"
+                results[i] = record
+                await queue.put({"t": "result", **record})
+
+        async with httpx.AsyncClient(timeout=90, default_encoding="utf-8", proxy=PROXY) as client:
+            workers = [asyncio.create_task(one(i, q)) for i, q in enumerate(rag.QUESTIONS)]
+            for _ in workers:
+                yield line(await queue.get())
+            await asyncio.gather(*workers)
+        done = [r for r in results if r and r.get("plain") and r.get("rag")]
+        if len(done) == len(results):
+            rag.save_run(model["id"], strategy, k, results)
+        yield line({"t": "done", "summary": rag.summary(done), "saved": len(done) == len(results)})
+
+    return StreamingResponse(run(), media_type="application/x-ndjson")
+
+
 @app.get("/chat.js")
 def chat_script():
     return FileResponse(HERE / "chat.js")

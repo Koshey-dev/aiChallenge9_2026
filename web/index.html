@@ -747,9 +747,17 @@
 
 </section>
 
-<!-- Неделя 5 — индекс документов для RAG: своя вкладка, не чат. Логика в
-     rag.js, стили в rag.css, данные — /api/rag/*. -->
+<!-- Неделя 5 — RAG: своя вкладка, не чат, внутри — подвкладка на каждый день
+     (#week5/21, #week5/22). День 21 — индекс документов (rag.js), день 22 —
+     первый RAG-запрос (ask.js). Стили обоих — rag.css, данные — /api/rag/*. -->
 <section class="pane rag" id="week5" hidden>
+
+<nav class="rag-days" id="ragDays">
+  <button class="rag-daytab" data-day="21">День 21 · индекс документов</button>
+  <button class="rag-daytab" data-day="22">День 22 · первый RAG-запрос</button>
+</nav>
+
+<div class="rag-day" data-day="21" hidden>
 
 <h1>Индекс документов: две стратегии чанкинга</h1>
 <p class="sub" id="ragSub">Индекс ещё не собран.</p>
@@ -809,6 +817,69 @@
     смыслу ложатся кучкой, но запрос может встать в стороне от своих находок.</p>
   <div class="rag-maps" id="ragMaps"></div>
 </section>
+
+</div>
+
+<div class="rag-day" data-day="22" hidden>
+
+<h1>Первый RAG-запрос: ответ без RAG и с RAG</h1>
+<p class="sub">Вопрос → поиск чанков в индексе дня 21 → фрагменты вместе с вопросом → модель.
+  Без RAG тот же вопрос уходит той же модели без фрагментов.</p>
+
+<section class="rag-card" id="askCard">
+  <div class="rag-bar">
+    <div class="ask-modes" id="askModes" role="group" aria-label="Режим агента">
+      <button data-mode="plain">Без RAG</button>
+      <button data-mode="rag">С RAG</button>
+      <button data-mode="both">Оба рядом</button>
+    </div>
+    <select id="askModel" aria-label="Модель"></select>
+    <select id="askStrategy" aria-label="Стратегия чанков"></select>
+    <label class="rag-check">топ <select id="askK" aria-label="Сколько чанков"></select> чанков</label>
+  </div>
+  <div class="rag-bar">
+    <input id="askQ" placeholder="Вопрос по гайдам — или клик по контрольному вопросу ниже">
+    <button class="main" id="askGo">Спросить</button>
+  </div>
+  <ol class="ask-flow" id="askFlow">
+    <li data-step="q"><b>1 · Вопрос</b><span>—</span></li>
+    <li data-step="search"><b>2 · Поиск чанков</b><span>—</span></li>
+    <li data-step="prompt"><b>3 · Объединение с вопросом</b><span>—</span></li>
+    <li data-step="llm"><b>4 · Запрос к LLM</b><span>—</span></li>
+  </ol>
+  <div class="ask-cols" id="askCols">
+    <div class="ask-col" data-col="plain">
+      <h3>Без RAG</h3>
+      <div class="ask-answer"></div>
+      <div class="ask-grade"></div>
+      <div class="ask-meta"></div>
+    </div>
+    <div class="ask-col" data-col="rag">
+      <h3>С RAG</h3>
+      <div class="ask-answer"></div>
+      <div class="ask-grade"></div>
+      <div class="ask-meta"></div>
+      <ol class="ask-sources"></ol>
+      <details class="ask-prompt"><summary>Что ушло в модель</summary><pre></pre></details>
+    </div>
+  </div>
+</section>
+
+<section class="rag-card" id="evalCard">
+  <h2>Контрольные вопросы: 9 из базы и 1 мимо неё</h2>
+  <p class="rag-note">У каждого вопроса записано ожидание и документ, где лежит ответ. Сверка
+    автоматическая: в ответе должны быть ключевые строки ожидания, у RAG — ссылка [n] на фрагмент
+    из нужного документа, на вопросе вне базы правильный ответ — отказ. Клик по строке показывает
+    оба ответа прогона наверху.</p>
+  <div class="rag-bar">
+    <button class="main" id="evalGo">Прогнать все 10</button>
+    <span class="hint" id="evalNote"></span>
+  </div>
+  <table class="rag-table rag-metrics ask-summary" id="evalSummary"></table>
+  <div class="rag-scroll"><table class="rag-table ask-table" id="evalTable"></table></div>
+</section>
+
+</div>
 
 <div class="rag-tip" id="ragTip" hidden></div>
 
@@ -1196,7 +1267,9 @@ document.querySelectorAll(".tab").forEach(tab => {
     showPane(tab.dataset.pane);
   });
 });
-showPane(location.hash.slice(1) in PANES ? location.hash.slice(1) : "week1");
+// У недели 5 после имени вкладки — подвкладка дня: #week5/22.
+const opened = location.hash.slice(1).split("/")[0];
+showPane(opened in PANES ? opened : "week1");
 
 // ── Диалоги второй недели ──────────────────────────────────────────
 // Колонка диалога — один и тот же компонент в обоих режимах. Разница только
@@ -2054,5 +2127,6 @@ $("#modal").addEventListener("click", event => {
 <script src="/chat.js"></script>
 <script src="/mcp.js"></script>
 <script src="/rag.js"></script>
+<script src="/ask.js"></script>
 </body>
 </html>
