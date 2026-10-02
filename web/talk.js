@@ -185,16 +185,18 @@
     $("#tkSend").disabled = true;
     $("#tkText").value = "";
     state.pinned = null;
+    // Номер хода — до отправки: к концу ответа ход уже в списке, и длина на единицу больше.
+    const index = state.chat.turns.length;
     const t = { user: text, kind: "", answer: "", changes: [], sources: [] };
     const scenario = state.config.scenarios.find(s => s.id === state.chat.scenario);
-    t.kind = scenario?.turns[state.chat.turns.length]?.say === text ? scenario.turns[state.chat.turns.length].kind : "";
+    t.kind = scenario?.turns[index]?.say === text ? scenario.turns[index].kind : "";
     root.querySelector(".tk-empty")?.remove();
-    $("#tkThread").insertAdjacentHTML("beforeend", turnHtml(t, state.chat.turns.length));
+    $("#tkThread").insertAdjacentHTML("beforeend", turnHtml(t, index));
     const el = $("#tkThread").lastElementChild;
     drawWindow();
     $("#tkThread").scrollTop = $("#tkThread").scrollHeight;
     const redraw = () => {
-      el.outerHTML = turnHtml(t, state.chat.turns.length);
+      el.outerHTML = turnHtml(t, index);
       $("#tkThread").scrollTop = $("#tkThread").scrollHeight;
     };
     let current = el;
