@@ -1328,6 +1328,383 @@ def question_set24():
              "sources": [{"id": s, "title": titles.get(s, s)} for s in x["sources"]]} for x in QUESTIONS24]
 
 
+# ── День 25: мини-чат с RAG и памятью задачи ────────────────────────────
+#
+# Ход чата: планировщик одним JSON-запросом обновляет память задачи и пишет
+# самостоятельные поисковые запросы, по одному на тему сообщения → поиск с
+# порогом → ответ потоком со ссылками [n], источники к ним подставляет код.
+# История в запросе — только окно последних WINDOW реплик; цель, уточнения,
+# ограничения, термины и выводы едут в каждый запрос карточкой памяти, так что
+# из окна выпадают реплики, а не задача. Сообщению без вопроса (итог,
+# договорённость) в контекст добавляются фрагменты, на которые уже ссылались
+# прошлые ответы диалога.
+
+WINDOW, PLAN_WINDOW = 6, 4  # реплик дословно: в запросе ответа и планировщика
+CHAT_CONTEXT, DIALOG_CONTEXT = 5, 8  # чанков в контексте: по запросам и вместе с источниками диалога
+PLAN_TOKENS = 700
+# «Решено и выяснено» — сверх трёх полей задания: без него итог теряет выводы,
+# которые выпали из окна истории (первый прогон сценария 2 потерял площадку и
+# всё про договор). Его пишет планировщик по прошлому ответу ассистента.
+STATE_KEYS = ("goal", "clarified", "constraints", "terms", "decisions")
+STATE_TITLES = {"goal": "Цель", "clarified": "Уточнено", "constraints": "Ограничения", "terms": "Термины",
+                "decisions": "Решено и выяснено"}
+MAX_ITEMS, MAX_ITEM = 10, 200
+
+PLAN_ROLE = (
+    "Ты ведёшь память задачи в диалоге пользователя с ассистентом по базе гайдов для разработчиков "
+    "мобильных и браузерных игр. На входе — память задачи, последние реплики и новое сообщение "
+    "пользователя. Верни только JSON: {\"state\": {\"goal\": \"цель диалога одной фразой\", "
+    "\"clarified\": [\"что пользователь уточнил о себе, продукте и задаче\"], "
+    "\"constraints\": [\"ограничения: бюджет, платформа, рынок, сроки, состав команды\"], "
+    "\"terms\": [\"термин — что он значит в этом диалоге\"], "
+    "\"decisions\": [\"что выяснили и решили по ходу диалога\"]}, \"queries\": [\"поисковый запрос\"]}. "
+    "Память: возвращай карточку целиком; чего сообщение не отменило — перенеси дословно; что "
+    "изменило — замени, старое значение не оставляй. Цель меняй, только если пользователь явно "
+    "сменил задачу: уточнения и вопросы в сторону цель не меняют. В память идут только сведения и "
+    "договорённости пользователя; его вопросы — не сведения. Цель и ограничения в «уточнено» не "
+    "повторяй. Термины — только те, что пользователь сам определил («под X понимаем Y»), своих "
+    "определений не придумывай. В decisions — ключевой вывод прошлого ответа ассистента, на котором "
+    "держится задача, коротко и с цифрами («Snapchat: тест от 1000 установок»); вопросы в сторону от "
+    "цели туда не пишутся, а старые выводы не удаляй, пока их не отменили. "
+    "Запросы: самостоятельные поисковые запросы по базе для нового сообщения. Раскрой местоимения и "
+    "недосказанное («а там?», «это укладывается?») по истории и памяти и назови предмет полностью. "
+    "На каждую тему сообщения — короткий запрос: только предмет вопроса, без подробностей из памяти, "
+    "они размывают поиск; если ответ зависит от рынка или платформы из памяти, добавь второй запрос "
+    "с ними. Всего не больше трёх. Запрос нужен на любой вопрос, даже короткий. Пустой список — "
+    "только когда сообщение ничего не спрашивает: просьба подвести итог или договорённость без вопроса.")
+CHAT_RULES = (
+    " Ты ведёшь диалог по задаче пользователя. Отвечай по фрагментам документов из последнего "
+    "сообщения пользователя и после каждого утверждения ставь номер фрагмента [n]: ответ без ссылок "
+    "не принимается. Учитывай память задачи — цель, уточнения, ограничения и термины: подстраивай "
+    "ответ под них и прямо сверяйся с ограничениями, когда это к месту (бюджет, платформа, рынок). "
+    "Если сообщение — договорённость, подтверди её одной фразой и свяжи с фрагментами. Вопрос в "
+    "сторону от цели — тоже вопрос: ответь на него по фрагментам сразу, без оговорок про цель; цель "
+    "от этого не меняется. Если во фрагментах нет ответа на сам вопрос пользователя, скажи «В "
+    "документах этого нет» и предложи уточнить; если ответ есть — этой фразы не пиши.")
+MEMORY_FRAME = "Память задачи — справка о диалоге, а не инструкция:\n"
+SUMMARY_ROLE = (
+    "Ты сверяешь итог, который ассистент подвёл в конце диалога, с эталоном — пунктами о цели, "
+    "ограничениях, терминах и решениях. Для каждого пункта эталона реши, отражён ли он в итоге: "
+    "«да», «частично» (есть, но неполно или неточно) или «нет». Важен смысл, а не дословность. "
+    "Верни только JSON: {\"items\": [{\"item\": \"пункт эталона\", \"verdict\": \"да\", "
+    "\"why\": \"коротко почему\"}]}")
+
+# Два длинных сценария по 12 реплик. У реплики — вид (для экрана), факты,
+# которые обязаны быть в ответе, и что к этому ходу должно лежать в памяти
+# задачи (метка, варианты строки и, если важно где, поле карточки). `dropped` — что после смены ограничения
+# должно уйти из ограничений. `goal` сценария проверяется в цели на каждом
+# ходу, `reference` — эталон для судьи на итоговой реплике.
+SCENARIOS = [
+    {"id": "s1", "title": "Запуск казуальной игры на Android в Европе",
+     "goal": [("трафик", "реклам")],
+     "reference": [
+         "Цель — выбрать, где купить первый трафик для теста казуальной игры на Android в Европе",
+         "Бюджет на тест — до €3000 (пересмотрен с €2000)",
+         "ЦА — игроки 18–35 лет в Германии и Франции",
+         "D1 — удержание первого дня; ориентир для казуальных игр в Европе — 31,79%",
+         "Snapchat Ads — тест от 1000 установок, основная аудитория — Германия и Франция",
+         "Telegram — реклама через посредника в среднем €1500"],
+     "turns": [
+         {"say": "Привет! Мы небольшая студия, делаем казуальную игру под Android и хотим запустить её "
+                 "в Европе. Цель — выбрать, где купить первый трафик для теста. Бюджет на тест — до €2000. "
+                 "С каких источников обычно начинают такой тест?",
+          "kind": "цель", "memory": [("Android", ("android", "андроид")), ("Европа", ("европ",)),
+                                     ("€2000", ("2000", "2 000"), "constraints")]},
+         {"say": "Что советуют по Snapchat Ads — с какого объёма начинать тест?",
+          "kind": "вопрос", "facts": [("1000", "1 000")]},
+         {"say": "А какая там основная аудитория?",
+          "kind": "эллипсис", "facts": [("герман",), ("франц",)]},
+         {"say": "Договоримся: под ЦА я имею в виду игроков 18–35 лет в Германии и Франции.",
+          "kind": "термин", "memory": [("ЦА", ("ца ", "ца:", "ца —", "ца -", "(ца)", "целев")),
+                                       ("18–35", ("18–35", "18-35", "18 – 35", "18 - 35", "от 18 до 35"))]},
+         {"say": "А Telegram нам подойдёт? Сколько стоит реклама там через посредника?",
+          "kind": "вопрос", "facts": [("1500", "1 500")]},
+         {"say": "Это укладывается в наш бюджет?",
+          "kind": "эллипсис", "facts": [("2000", "2 000")]},
+         {"say": "Кстати, не по теме: мы встраиваем в игру свой внутриигровой чат — как показать в нём "
+                 "только тех игроков, кто сейчас онлайн?",
+          "kind": "в сторону", "facts": [("isonline",)]},
+         {"say": "Окей, вернёмся к запуску. Какое удержание первого дня у казуальных игр в Европе "
+                 "считается хорошим?",
+          "kind": "возврат", "facts": [("31,79", "31.79")]},
+         {"say": "Дальше под D1 понимаем удержание первого дня. И бюджет пересмотрели: теперь до €3000.",
+          "kind": "смена", "memory": [("D1", ("d1",)), ("€3000", ("3000", "3 000"), "constraints")],
+          "dropped": ["2000", "2 000"]},
+         {"say": "Как в игре выделить цветом разные команды или противников?",
+          "kind": "вопрос", "facts": [("контраст",)]},
+         {"say": "С новым бюджетом мы потянем тест и в Snapchat, и в Telegram?",
+          "kind": "эллипсис", "facts": [("3000", "3 000")]},
+         {"say": "Подведи итог: какая у нас цель, что мы уточнили и что решили по трафику?",
+          "kind": "итог"},
+     ]},
+    {"id": "s2", "title": "Браузерная игра и художник по договору",
+     "goal": [("браузер",), ("договор", "подряд", "художник")],
+     "reference": [
+         "Цель — выпустить браузерную игру на площадке и нанять художника по договору подряда",
+         "Команда — два человека, игроки — из России",
+         "Только браузерная версия: мобильные сторы и RuStore не нужны",
+         "Площадка — Яндекс Игры как самая популярная в России; есть и CrazyGames",
+         "По договору подряда исключительные права на результат переходят заказчику",
+         "До передачи исполнитель согласует с заказчиком окончательный вид и работу продукта",
+         "«Результат» — готовые спрайты и анимации",
+         "Бюджет — 300 тыс. ₽ на полгода, на художника — не больше 100 тыс. ₽"],
+     "turns": [
+         {"say": "Привет! Нас двое, делаем браузерную игру для игроков из России. Цель — выпустить её "
+                 "на браузерной площадке и нанять художника по договору подряда.",
+          "kind": "цель", "memory": [("двое", ("двое", "2 человек", "два человек", "двух")), ("Россия", ("росси",))]},
+         {"say": "На каких площадках можно выпустить браузерную игру?",
+          "kind": "вопрос", "facts": [("яндекс",), ("crazygames", "crazy games")]},
+         {"say": "А какая из них самая популярная у нас?",
+          "kind": "эллипсис", "facts": [("яндекс",)]},
+         {"say": "Важно: делаем только браузерную версию, мобильные сторы не рассматриваем. "
+                 "Нужен ли нам тогда RuStore?",
+          "kind": "ограничение", "facts": [("android", "андроид")],
+          "memory": [("только браузер", ("только браузер", "мобильн"), "constraints")]},
+         {"say": "Теперь про художника. Кому по договору подряда переходят исключительные права на результат?",
+          "kind": "вопрос", "facts": [("заказчик",)]},
+         {"say": "А что исполнитель обязан сделать до передачи результата?",
+          "kind": "эллипсис", "facts": [("согласова",)]},
+         {"say": "Зафиксируем термин: «результат» — это готовые спрайты и анимации для игры.",
+          "kind": "термин", "memory": [("результат", ("спрайт",))]},
+         {"say": "Кстати, не по теме: как собрать ключевые фразы для ASO через ChatGPT?",
+          "kind": "в сторону"},
+         {"say": "Вернёмся к делу. Нам нужен финплан для инвестора — что в него входит?",
+          "kind": "возврат", "facts": [("бюджет",), ("риск",), ("окупаем",)]},
+         {"say": "Бюджет у нас 300 тысяч рублей на полгода, на художника — не больше 100 тысяч.",
+          "kind": "ограничение", "memory": [("300 тыс.", ("300",), "constraints"),
+                                            ("100 тыс.", ("100",), "constraints")]},
+         {"say": "Мы хотим добавить в игру чат. Как это сделать на Construct 3?",
+          "kind": "вопрос", "facts": [("gamepush",)]},
+         {"say": "Подведи итог: какая у нас цель, какие ограничения и термины, что решили по площадке "
+                 "и по договору?",
+          "kind": "итог"},
+     ]},
+]
+SCENARIO_BY_ID = {s["id"]: s for s in SCENARIOS}
+
+CHATS = """
+CREATE TABLE IF NOT EXISTS rag_chats (
+    id       TEXT PRIMARY KEY,
+    title    TEXT NOT NULL,
+    scenario TEXT NOT NULL DEFAULT '',
+    model    TEXT NOT NULL,
+    created  TEXT NOT NULL,
+    updated  TEXT NOT NULL,
+    state    TEXT NOT NULL,
+    turns    TEXT NOT NULL
+)
+"""
+
+
+def empty_state():
+    return {"goal": "", **{key: [] for key in STATE_KEYS[1:]}}
+
+
+def clean_state(data, old):
+    """Карточка планировщика по схеме; поля, которых он не вернул, — из старой."""
+    if not isinstance(data, dict):
+        return old
+    out = {"goal": str(data.get("goal") or old["goal"]).strip()[:MAX_ITEM]}
+    for key in STATE_KEYS[1:]:
+        items = data.get(key) if isinstance(data.get(key), list) else old[key]
+        out[key] = [str(x).strip()[:MAX_ITEM] for x in items if str(x).strip()][:MAX_ITEMS]
+    return out
+
+
+def state_text(state):
+    lines = [f"{STATE_TITLES['goal']}: {state['goal'] or '—'}"]
+    lines += [f"{STATE_TITLES[k]}: " + ("; ".join(state[k]) if state[k] else "—") for k in STATE_KEYS[1:]]
+    return "\n".join(lines)
+
+
+def state_changes(old, new):
+    """Что ход поменял в памяти: цель и пункты списков — добавленные и убранные."""
+    out = []
+    if old["goal"] != new["goal"]:
+        out.append({"key": "goal", "add": new["goal"], "drop": old["goal"]})
+    for key in STATE_KEYS[1:]:
+        out += [{"key": key, "add": x} for x in new[key] if x not in old[key]]
+        out += [{"key": key, "drop": x} for x in old[key] if x not in new[key]]
+    return out
+
+
+def history(turns, size):
+    """Последние `size` реплик дословно — окно короткой памяти."""
+    talk = []
+    for t in turns:
+        talk += [{"role": "user", "content": t["user"]}, {"role": "assistant", "content": t["answer"]}]
+    return talk[-size:]
+
+
+def plan_messages(state, turns, text):
+    talk = "\n".join(f"{'Пользователь' if m['role'] == 'user' else 'Ассистент'}: {m['content'][:600]}"
+                     for m in history(turns, PLAN_WINDOW))
+    return [{"role": "system", "content": PLAN_ROLE},
+            {"role": "user", "content": f"Память задачи:\n{json.dumps(state, ensure_ascii=False)}\n\n"
+                                        f"Последние реплики:\n{talk or '—'}\n\nНовое сообщение: {text}"}]
+
+
+def chat_messages(state, turns, text, context):
+    """Запрос ответа: правила и память задачи, окно истории, сообщение и фрагменты.
+
+    Сообщение — перед фрагментами, а не после, как в дне 22: в конце, за
+    длинными фрагментами, модель читала вопрос в сторону как продолжение
+    прошлой темы (на ходу про чат после Telegram — отказ 3 раза из 3, с
+    сообщением впереди — ответ 3 из 3)."""
+    user = text
+    if context:
+        fragments = rag_prompt(text, context).rsplit("\n\nВопрос: ", 1)[0]
+        user = f"Сообщение: {text}\n\n{fragments}\n\nОтветь на сообщение выше по этим фрагментам."
+    return ([{"role": "system", "content": ROLE + CHAT_RULES + "\n\n" + MEMORY_FRAME + state_text(state)}]
+            + history(turns, WINDOW) + [{"role": "user", "content": user}])
+
+
+def chat_context(queries, text, turns):
+    """Контекст хода. По каждому запросу планировщика — топ-K₁ и порог, в
+    контекст идут лучшие прошедшие без повторов; не прошёл никто — «не знаю».
+    Без запросов поиск всё равно идёт — по самой реплике (планировщик бывает
+    уверен, что вопроса нет, и ошибается), а к найденному добавляются
+    фрагменты, на которые ссылался диалог; «не знаю» в этой ветке нет."""
+    kept, best, near = {}, 0.0, []
+    for q in queries or [text]:
+        hits = retrieve(q, "struct", CANDIDATES)
+        best, near = max(best, hits[0]["score"] if hits else 0.0), near or hits[:5]
+        for h in second_stage(hits, "cos", THRESHOLD, 0, KEEP):
+            if h["kept"] and h["score"] > kept.get(h["id"], {"score": -1})["score"]:
+                kept[h["id"]] = h
+    context = sorted(kept.values(), key=lambda h: -h["score"])[:CHAT_CONTEXT]
+    if queries:
+        return context, best, near, not context
+    return (context + [c for c in dialog_sources(turns) if c["id"] not in kept])[:DIALOG_CONTEXT], best, near, False
+
+
+def chunks_by_id(ids):
+    chunks, _ = loaded()["index"]["struct"]
+    by_id = {c["id"]: c for c in chunks}
+    return [{k: by_id[i][k] for k in ("id", "doc", "title", "section", "page_from", "page_to", "chars", "text")}
+            for i in ids if i in by_id]
+
+
+def dialog_sources(turns, limit=8):
+    """Чанки, на которые ссылались прошлые ответы, — свежие первыми, без повторов."""
+    seen = []
+    for t in reversed(turns):
+        seen += [s["chunk_id"] for s in t.get("sources", []) if s["chunk_id"] not in seen]
+    return chunks_by_id(seen[:limit])
+
+
+def cited_sources(answer, context):
+    """Источники ответа — фрагменты, на которые он сослался [n]; номера мимо контекста — отдельно."""
+    nums = sorted({int(n) for n in CITE.findall(answer)})
+    good = [n for n in nums if 0 < n <= len(context)]
+    return ([{"n": n, "chunk_id": context[n - 1]["id"],
+              **{k: context[n - 1][k] for k in ("title", "section", "page_from", "page_to")}} for n in good],
+            [n for n in nums if n not in good])
+
+
+def found(text, groups):
+    low = norm(text)
+    return [any(norm(alt) in low for alt in group) for group in groups]
+
+
+def turn_check(scenario, spec, state, answer, sources, bad_refs, gate):
+    """Проверки хода сценария: источники, цель в памяти, факты ответа, что записано и что убрано."""
+    out = {"sources": bool(sources) and not bad_refs, "gate": gate,
+           "goal": all(found(state["goal"], scenario["goal"]))}
+    if spec.get("facts"):
+        # Факт внутри отказа («в документах этого нет, там только isOnline») не засчитывается.
+        hits = found(answer, spec["facts"])
+        out["refused"] = any(m in norm(answer) for m in REFUSAL)
+        out["facts"], out["of"] = 0 if out["refused"] else sum(hits), len(hits)
+    if spec.get("memory"):
+        card = state_text(state)
+        out["memory"] = [{"label": label, "ok": found("; ".join(state[field[0]]) if field else card, [alts])[0]}
+                         for label, alts, *field in spec["memory"]]
+    if spec.get("dropped"):
+        out["dropped"] = not any(found("; ".join(state["constraints"]), [tuple(spec["dropped"])]))
+    return out
+
+
+def summary_messages(answer, reference):
+    items = "\n".join(f"- {x}" for x in reference)
+    return [{"role": "system", "content": SUMMARY_ROLE},
+            {"role": "user", "content": f"Итог ассистента:\n{answer}\n\nЭталон:\n{items}"}]
+
+
+def summary_verdict(data):
+    """Вердикты по пунктам эталона: без «нет» — цель не потеряна, одно-два «нет» — частично."""
+    items = [x for x in (data or {}).get("items") or [] if isinstance(x, dict)]
+    if not items:
+        return None
+    word = {"да": "yes", "частично": "partial", "нет": "no"}
+    out = [{"item": str(x.get("item") or ""), "verdict": word.get(str(x.get("verdict")).strip().lower(), "no"),
+            "why": str(x.get("why") or "")} for x in items]
+    count = {v: sum(x["verdict"] == v for x in out) for v in ("yes", "partial", "no")}
+    return {"items": out, **count, "verdict": "ok" if not count["no"] else "part" if count["no"] <= 2 else "bad"}
+
+
+def chat_score(chat):
+    """Счёт сценарного чата по ходам: источники, цель в памяти, факты, память, итог."""
+    checks = [t["check"] for t in chat["turns"] if t.get("check")]
+    memory = [m for c in checks for m in c.get("memory", [])]
+    judged = next((t["judge"] for t in reversed(chat["turns"]) if t.get("judge")), None)
+    return {"turns": len(chat["turns"]), "checked": len(checks),
+            "sources": sum(c["sources"] for c in checks), "goal": sum(c["goal"] for c in checks),
+            "facts": sum(c.get("facts", 0) for c in checks), "of": sum(c.get("of", 0) for c in checks),
+            "memory": sum(m["ok"] for m in memory), "memory_of": len(memory),
+            "dropped": [c["dropped"] for c in checks if "dropped" in c],
+            "judge": {k: judged[k] for k in ("verdict", "yes", "partial", "no")} if judged else None}
+
+
+def chats_db():
+    db = sqlite3.connect(store.FILE, timeout=5)
+    db.execute(CHATS)
+    return db
+
+
+def new_chat(scenario, model):
+    now = time.strftime("%Y-%m-%d %H:%M:%S")
+    title = SCENARIO_BY_ID[scenario]["title"] if scenario in SCENARIO_BY_ID else "Новый чат"
+    chat = {"id": hashlib.sha1(f"{now}{time.monotonic()}".encode()).hexdigest()[:10], "title": title,
+            "scenario": scenario if scenario in SCENARIO_BY_ID else "", "model": model,
+            "created": now, "updated": now, "state": empty_state(), "turns": []}
+    save_chat(chat)
+    return chat
+
+
+def save_chat(chat):
+    with closing(chats_db()) as db, db:
+        db.execute("INSERT OR REPLACE INTO rag_chats VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                   (chat["id"], chat["title"], chat["scenario"], chat["model"], chat["created"], chat["updated"],
+                    json.dumps(chat["state"], ensure_ascii=False), json.dumps(chat["turns"], ensure_ascii=False)))
+
+
+def load_chat(chat_id):
+    with closing(chats_db()) as db:
+        row = db.execute("SELECT id, title, scenario, model, created, updated, state, turns FROM rag_chats "
+                         "WHERE id = ?", (chat_id,)).fetchone()
+    if not row:
+        return None
+    chat = dict(zip(("id", "title", "scenario", "model", "created", "updated"), row[:6]))
+    chat.update(state={**empty_state(), **json.loads(row[6])}, turns=json.loads(row[7]))
+    return chat
+
+
+def list_chats():
+    with closing(chats_db()) as db:
+        ids = [r[0] for r in db.execute("SELECT id FROM rag_chats ORDER BY updated DESC LIMIT 30")]
+    out = []
+    for chat in map(load_chat, ids):
+        out.append({k: chat[k] for k in ("id", "title", "scenario", "updated")}
+                   | {"count": len(chat["turns"]), "score": chat_score(chat) if chat["scenario"] else None})
+    return out
+
+
+def scenario_set():
+    return [{"id": s["id"], "title": s["title"], "reference": s["reference"],
+             "turns": [{"say": t["say"], "kind": t["kind"]} for t in s["turns"]]} for s in SCENARIOS]
+
+
 if __name__ == "__main__":
     sys.stdout.reconfigure(encoding="utf-8")
     for e in build(fresh="--fresh" in sys.argv):

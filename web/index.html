@@ -748,10 +748,10 @@
 </section>
 
 <!-- Неделя 5 — RAG: своя вкладка, не чат, внутри — подвкладка на каждый день
-     (#week5/21 … #week5/24). День 21 — индекс документов (rag.js),
+     (#week5/21 … #week5/25). День 21 — индекс документов (rag.js),
      день 22 — первый RAG-запрос (ask.js), день 23 — реранкинг и фильтр
-     (rerank.js), день 24 — цитаты и «не знаю» (cite.js). Стили — rag.css,
-     данные — /api/rag/*. -->
+     (rerank.js), день 24 — цитаты и «не знаю» (cite.js), день 25 — мини-чат
+     с памятью задачи (talk.js). Стили — rag.css, данные — /api/rag/*. -->
 <section class="pane rag" id="week5" hidden>
 
 <nav class="rag-days" id="ragDays">
@@ -759,6 +759,7 @@
   <button class="rag-daytab" data-day="22">День 22 · первый RAG-запрос</button>
   <button class="rag-daytab" data-day="23">День 23 · реранкинг и фильтр</button>
   <button class="rag-daytab" data-day="24">День 24 · цитаты и «не знаю»</button>
+  <button class="rag-daytab" data-day="25">День 25 · мини-чат с памятью</button>
 </nav>
 
 <div class="rag-day" data-day="21" hidden>
@@ -1027,6 +1028,49 @@
   </div>
   <div class="ct-tiles" id="ctTiles"></div>
   <div class="rag-scroll"><table class="rag-table ask-table ct-table" id="ctTable"></table></div>
+</section>
+
+</div>
+
+<div class="rag-day" data-day="25" hidden>
+
+<h1>Мини-чат с RAG и памятью задачи</h1>
+<p class="sub">На каждое сообщение планировщик обновляет память задачи и пишет поисковые запросы, поиск
+  идёт по индексу с порогом, ответ приходит потоком со ссылками [n], а источники к ним подставляет код.
+  В запрос ответа идут только последние 6 реплик: цель, уточнения, ограничения, термины и выводы держит
+  память задачи.</p>
+
+<div class="tk-app">
+  <aside class="tk-side">
+    <button class="main" id="tkNew">Новый чат</button>
+    <select id="tkModel" aria-label="Модель"></select>
+    <h3>Сценарии</h3>
+    <div class="tk-scen" id="tkScen"></div>
+    <h3>Чаты</h3>
+    <ol class="tk-chats" id="tkChats"></ol>
+  </aside>
+  <section class="tk-main">
+    <div class="tk-head"><b id="tkTitle">Новый чат</b><span class="hint" id="tkScore"></span></div>
+    <div class="tk-thread" id="tkThread"></div>
+    <div class="tk-compose">
+      <textarea id="tkText" rows="2" placeholder="Сообщение — или запустите сценарий слева"></textarea>
+      <button class="main" id="tkSend">Отправить</button>
+    </div>
+  </section>
+  <aside class="tk-memory">
+    <div class="tk-memhead"><h3>Память задачи</h3><span class="hint" id="tkMemAt">—</span></div>
+    <div id="tkMem"></div>
+  </aside>
+</div>
+
+<section class="rag-card" id="tkCheckCard" hidden>
+  <h2 id="tkCheckTitle">Проверка сценария</h2>
+  <p class="rag-note">На каждом ходу код проверяет, что у ответа есть источники из контекста, что цель
+    сценария осталась в памяти задачи, что в ответе есть факты из базы и что договорённости записаны в
+    память. На итоговой реплике судья — другая модель — сверяет итог с эталоном сценария.</p>
+  <div class="ct-tiles" id="tkTiles"></div>
+  <div class="rag-scroll"><table class="rag-table ask-table tk-table" id="tkTable"></table></div>
+  <div class="tk-judge" id="tkJudge"></div>
 </section>
 
 </div>
@@ -2280,5 +2324,6 @@ $("#modal").addEventListener("click", event => {
 <script src="/ask.js"></script>
 <script src="/rerank.js"></script>
 <script src="/cite.js"></script>
+<script src="/talk.js"></script>
 </body>
 </html>

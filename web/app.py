@@ -2042,6 +2042,132 @@ def cite_eval(body: CiteIn):
     return StreamingResponse(run(), media_type="application/x-ndjson")
 
 
+# ── День 25: мини-чат с RAG и памятью задачи ────────────────────────
+# Ход: планировщик (память задачи + поисковый запрос) → поиск с порогом →
+# ответ потоком; источники по [n] и проверки сценария считает rag.py. Чаты
+# лежат в agent.db целиком, вместе с памятью задачи после каждого хода.
+
+class TalkNewIn(BaseModel):
+    scenario: str = ""
+    model: str = CHAT_DEFAULT
+
+
+class TalkSendIn(BaseModel):
+    chat: str
+    text: str
+
+
+async def talk_turn(client, chat, text):
+    """Один ход чата. Ниже порога — «не знаю» и уточнение, как в дне 24;
+    без запросов планировщика — поиск по самой реплике плюс источники диалога."""
+    model = CHAT_BY_ID.get(chat["model"]) or CHAT_BY_ID[CHAT_DEFAULT]
+    scenario = rag.SCENARIO_BY_ID.get(chat["scenario"])
+    step = len(chat["turns"])
+    spec = (scenario["turns"][step] if scenario and step < len(scenario["turns"])
+            and scenario["turns"][step]["say"] == text else None)
+    old, spent = chat["state"], {}
+    done = await rag_once(client, model, "plan", rag.plan_messages(old, chat["turns"], text),
+                          max_tokens=rag.PLAN_TOKENS, **JSON_MODE)
+    plan = rag.parse_json(done["answer"]) or {}
+    queries = plan.get("queries") if isinstance(plan.get("queries"), list) else [plan.get("query")]
+    queries = [str(q).strip() for q in queries if str(q or "").strip()][:3]
+    state = rag.clean_state(plan.get("state"), old)
+    changes = rag.state_changes(old, state)
+    spent["plan"] = done["metrics"]
+    yield {"t": "plan", "state": state, "changes": changes, "queries": queries, "error": done["error"],
+           "metrics": done["metrics"]}
+
+    started = time.monotonic()
+    context, best, near, gate = await asyncio.to_thread(rag.chat_context, queries, text, chat["turns"])
+    search = {"queries": queries, "gate": gate, "best": best, "ms": round((time.monotonic() - started) * 1000),
+              "context": [{k: h.get(k) for k in ("id", "title", "section", "page_from", "page_to", "score")}
+                          for h in context]}
+    yield {"t": "search", **search}
+
+    answer, trouble = "", ""
+    if gate:
+        done = await rag_once(client, model, "clarify", rag.clarify_messages(text, near), **JSON_MODE)
+        clarify = str((rag.parse_json(done["answer"]) or {}).get("clarify") or "").strip()
+        answer, trouble, spent["answer"] = (rag.unknown_text(best, rag.THRESHOLD)
+                                            + (f"\n\n{clarify}" if clarify else "")), done["error"], done["metrics"]
+        yield {"t": "delta", "target": "answer", "text": answer}
+    else:
+        async for event in rag_column(client, model, "answer", rag.chat_messages(state, chat["turns"], text, context)):
+            if event["t"] == "done":
+                answer, trouble, spent["answer"] = event["answer"], event["error"], event["metrics"]
+            else:
+                yield event
+
+    sources, bad = rag.cited_sources(answer, context)
+    turn = {"user": text, "kind": spec["kind"] if spec else "", "queries": queries, "state": state,
+            "changes": changes, "search": search, "answer": answer, "error": trouble, "sources": sources,
+            "bad_refs": bad, "metrics": spent, "at": time.strftime("%H:%M:%S"),
+            "check": rag.turn_check(scenario, spec, state, answer, sources, bad, gate) if spec else None}
+    if spec and spec["kind"] == "итог":
+        judge = CHAT_BY_ID[JUDGE] if PROVIDERS[CHAT_BY_ID[JUDGE]["provider"]]["key"] else model
+        done = await rag_once(client, judge, "judge", rag.summary_messages(answer, scenario["reference"]),
+                              max_tokens=rag.JUDGE_TOKENS, **JSON_MODE)
+        turn["judge"], spent["judge"] = rag.summary_verdict(rag.parse_json(done["answer"])), done["metrics"]
+        yield {"t": "judge", "judge": turn["judge"], "model": judge["id"], "error": done["error"]}
+    chat["turns"].append(turn)
+    chat["state"], chat["updated"] = state, time.strftime("%Y-%m-%d %H:%M:%S")
+    if not chat["scenario"] and len(chat["turns"]) == 1:
+        chat["title"] = text[:60]
+    await asyncio.to_thread(rag.save_chat, chat)
+    yield {"t": "done", "turn": turn, "score": rag.chat_score(chat) if scenario else None}
+
+
+@app.get("/talk.js")
+def talk_script():
+    return FileResponse(HERE / "talk.js")
+
+
+@app.get("/api/rag/talk/setup")
+def talk_config():
+    """Сценарии, модели, окно истории и список чатов."""
+    judge = CHAT_BY_ID[JUDGE] if PROVIDERS[CHAT_BY_ID[JUDGE]["provider"]]["key"] else CHAT_BY_ID[CHAT_DEFAULT]
+    return {"scenarios": rag.scenario_set(), "chats": rag.list_chats(), "window": rag.WINDOW,
+            "threshold": rag.THRESHOLD, "default": CHAT_DEFAULT, "judge": judge["title"],
+            "titles": rag.STATE_TITLES,
+            "models": [{"id": m["id"], "title": m["title"]} for m in CHAT_MODELS
+                       if PROVIDERS[m["provider"]]["key"]]}
+
+
+@app.get("/api/rag/talk/chat/{chat_id}")
+def talk_chat(chat_id: str):
+    chat = rag.load_chat(chat_id)
+    if not chat:
+        raise HTTPException(status_code=404, detail="нет такого чата")
+    return {**chat, "score": rag.chat_score(chat) if chat["scenario"] else None}
+
+
+@app.post("/api/rag/talk/new")
+def talk_new(body: TalkNewIn):
+    model = CHAT_BY_ID.get(body.model) or CHAT_BY_ID[CHAT_DEFAULT]
+    return rag.new_chat(body.scenario, model["id"])
+
+
+@app.post("/api/rag/talk/send")
+def talk_send(body: TalkSendIn):
+    chat = rag.load_chat(body.chat)
+    if not chat:
+        raise HTTPException(status_code=404, detail="нет такого чата")
+    if not body.text.strip():
+        raise HTTPException(status_code=400, detail="пустое сообщение")
+
+    async def run():
+        yield line({"t": "start", "turn": len(chat["turns"])})
+        async with httpx.AsyncClient(timeout=90, default_encoding="utf-8", proxy=PROXY) as client:
+            try:
+                async for event in talk_turn(client, chat, body.text.strip()):
+                    yield line(event)
+            except httpx.HTTPError as e:
+                yield line({"t": "error", "target": "search", "message": f"Ollama не ответила: {e}"})
+        yield line({"t": "end"})
+
+    return StreamingResponse(run(), media_type="application/x-ndjson")
+
+
 @app.get("/chat.js")
 def chat_script():
     return FileResponse(HERE / "chat.js")
