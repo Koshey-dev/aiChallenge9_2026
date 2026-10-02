@@ -128,17 +128,18 @@
     return `<span class="ask-mark ${g.verdict}">${sign} ${word}</span> ${parts.join(" · ")}`;
   }
 
-  function meta(a) {
+  function meta(a, mode) {
     if (a.empty) return "контекст пуст — модель не вызывалась, отказ без запроса";
     const m = a.metrics, x = a.extra;
     let text = `ответ: ${fmt(m.in)} ток. на входе · ${fmt(m.out)} на выходе · ${dec(m.seconds, 1)} с · $${m.cost.toFixed(5)}`;
-    if (x && x.in) text += ` · rewrite и реранкер: ${fmt(x.in + x.out)} ток. · ${dec(x.seconds, 1)} с · $${x.cost.toFixed(5)}`;
+    if (x && x.in) text += ` · ${mode === "rerank" ? "rewrite и реранкер" : "rewrite"}: ${fmt(x.in + x.out)} ток. · ` +
+      `${dec(x.seconds, 1)} с · $${x.cost.toFixed(5)}`;
     return text;
   }
 
   function answer(name, a) {
     render(name, a.answer);
-    $(".ask-meta", col(name)).textContent = meta(a);
+    $(".ask-meta", col(name)).textContent = meta(a, name === "base" ? "base" : state.mode);
     $(".ask-grade", col(name)).innerHTML = a.error ? `<span class="err">${esc(a.error)}</span>` : gradeLine(a.grade);
   }
 

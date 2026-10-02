@@ -239,7 +239,8 @@
 .rr-key.a.fill { background: var(--rag-a); }
 
 /* Итоги прогона — две таблицы рядом, строки вопросов — по наборам. */
-.rr-sums { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; margin-bottom: 14px; }
+.rr-sums { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 620px), 1fr));
+           gap: 20px; margin-bottom: 14px; }
 .rr-sums > div { overflow-x: auto; }
 .rr-sums h3 { margin: 0 0 4px; font-size: 15px; }
 .rr-table .rr-group td { color: var(--text); font-weight: 600; border-top: 1px solid var(--line); padding-top: 12px; }
@@ -254,5 +255,4 @@
   .rr-cos { flex: 1 1 100%; }
   .rr-llm:empty { display: none; }
   .rr-row p { padding-left: 10px; }
-  .rr-sums { grid-template-columns: minmax(0, 1fr); }
 }
