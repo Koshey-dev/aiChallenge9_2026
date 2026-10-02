@@ -91,7 +91,7 @@
     $("#ctUnknown").innerHTML = `<div class="ct-no">Не знаю</div>
       <p>${gate ? `Лучший кандидат — cos ${dec(best, 3)}, ниже порога ${dec(threshold)}: модель не отвечала по существу.`
         : "Чанки прошли порог, но модель не нашла в них ответа и вернула status «unknown»."}</p>
-      ${check.clarify ? `<div class="ct-ask"><span>Уточните:</span> ${esc(check.clarify)}</div>`
+      ${check.clarify ? `<div class="ct-ask"><span>Ассистент спрашивает:</span> ${esc(check.clarify)}</div>`
         : `<div class="ct-ask err">Уточняющего вопроса нет</div>`}
       ${near?.length ? `<div class="ct-near"><span class="hint">Ближайшее в базе, ниже порога:</span> ${near.slice(0, 5).map(h =>
         `<span class="ct-chip">${esc(h.section)} <i>cos ${dec(h.score, 3)}</i></span>`).join("")}</div>` : ""}`;
