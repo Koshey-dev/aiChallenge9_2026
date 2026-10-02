@@ -77,7 +77,7 @@
 
   // Подвкладки недели 5 — по дню на каждую; адрес помнит открытую: #week5/22.
   // По умолчанию — последний день. День 22 живёт в ask.js (window.askShow),
-  // день 23 — в rerank.js (window.rerankShow).
+  // день 23 — в rerank.js (window.rerankShow), день 24 — в cite.js (window.citeShow).
   const DAYS = [...document.querySelectorAll("#ragDays .rag-daytab")].map(b => b.dataset.day);
   function showDay(day) {
     state.day = DAYS.includes(day) ? day : DAYS.at(-1);
@@ -87,6 +87,7 @@
     history.replaceState(null, "", "#week5/" + state.day);
     if (state.day === "22") window.askShow?.();
     else if (state.day === "23") window.rerankShow?.();
+    else if (state.day === "24") window.citeShow?.();
     else requestAnimationFrame(redraw);
   }
   document.querySelectorAll("#ragDays .rag-daytab")

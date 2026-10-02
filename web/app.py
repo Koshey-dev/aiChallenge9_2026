@@ -1548,8 +1548,9 @@ def rag_setup(model_id, strategy, k):
     return model, strategy if strategy in rag.STRATEGIES else "struct", max(1, min(k, 10))
 
 
-async def rag_column(client, model, target, messages):
-    """Одна колонка: ответ модели потоком, последнее событие — done с расходом."""
+async def rag_column(client, model, target, messages, max_tokens=rag.ANSWER_TOKENS, **extra):
+    """Одна колонка: ответ модели потоком, последнее событие — done с расходом.
+    `extra` уходит в запрос как есть — с дня 24 это JSON-режим ответа."""
     provider = PROVIDERS[model["provider"]]
     spent, text, trouble = new_metrics(), [], ""
     started = time.monotonic()
@@ -1560,7 +1561,7 @@ async def rag_column(client, model, target, messages):
         quirks = {"thinking": {"type": "disabled"}} if model["id"].startswith("deepseek") else {}
         async for event in call(client, provider["key"], messages, target, spent, text,
                                 url=provider["url"], model=model["id"],
-                                max_tokens=rag.ANSWER_TOKENS, **quirks):
+                                max_tokens=max_tokens, **quirks, **extra):
             if event["t"] == "error":
                 trouble = event["message"]
             yield event
@@ -1717,9 +1718,9 @@ def rerank_setup(body):
                    "min_score": max(0.0, min(body.min_score, 10.0))}
 
 
-async def rag_once(client, model, target, messages):
+async def rag_once(client, model, target, messages, **extra):
     """Короткий запрос целиком (rewrite, оценки реранкера) — событие done колонки."""
-    async for event in rag_column(client, model, target, messages):
+    async for event in rag_column(client, model, target, messages, **extra):
         if event["t"] == "done":
             return event
 
@@ -1888,6 +1889,157 @@ def rerank_sweep(strategy: str = "struct"):
         return rag.sweep(strategy if strategy in rag.STRATEGIES else "struct", rag.CANDIDATES, rewrites)
     except httpx.HTTPError as e:
         raise HTTPException(status_code=503, detail=f"Ollama не ответила: {e}")
+
+
+# ── День 24: цитаты, источники и «не знаю» ──────────────────────────
+# Формат ответа, сверка цитат и итоги — в rag.py, здесь — запросы к моделям:
+# ответ JSON, уточняющий вопрос ниже порога и судья смысла. Судья — другая
+# модель, чтобы ответ не проверял сам себя.
+
+JUDGE = "deepseek-v4-pro"
+JSON_MODE = {"response_format": {"type": "json_object"}}
+
+
+class CiteIn(BaseModel):
+    model: str = CHAT_DEFAULT
+    threshold: float = rag.THRESHOLD
+
+
+class CiteAskIn(CiteIn):
+    q: str
+
+
+def cite_setup(body):
+    model, _, _ = rag_setup(body.model, "struct", 1)
+    judge = CHAT_BY_ID[JUDGE] if PROVIDERS[CHAT_BY_ID[JUDGE]["provider"]]["key"] else model
+    return model, judge, round(max(0.0, min(body.threshold, 1.0)), 3)
+
+
+async def cite_run(client, q, model, judge, threshold):
+    """Вопрос → поиск → порог релевантности → ответ JSON → проверки → судья.
+    Ниже порога модель не отвечает: «не знаю» и уточняющий вопрос по
+    названиям ближайших разделов."""
+    question = rag.question24(q)
+    started = time.monotonic()
+    hits = await asyncio.to_thread(rag.retrieve, q, "struct", rag.CANDIDATES)
+    for h in hits:
+        h["relevant"] = rag.relevant(question, h)
+    listed = rag.second_stage(hits, "cos", threshold, 0, rag.KEEP)
+    kept = [h for h in listed if h["kept"]]
+    best = hits[0]["score"] if hits else 0.0
+    yield {"t": "search", "ms": round((time.monotonic() - started) * 1000), "best": best,
+           "threshold": threshold, "candidates": listed}
+    spent = {}
+    if kept:
+        messages = rag.messages24(q, kept)
+        yield {"t": "prompt", "system": messages[0]["content"], "user": messages[1]["content"]}
+        async for event in rag_column(client, model, "answer", messages, max_tokens=rag.CITE_TOKENS, **JSON_MODE):
+            if event["t"] != "done":
+                yield event
+                continue
+            spent["answer"], raw, trouble = event["metrics"], event["answer"], event["error"]
+        check = rag.check24(kept, rag.parse_json(raw))
+    else:
+        done = await rag_once(client, model, "clarify", rag.clarify_messages(q, listed[:5]), **JSON_MODE)
+        spent["clarify"], raw, trouble = done["metrics"], done["answer"], done["error"]
+        clarify = str((rag.parse_json(raw) or {}).get("clarify") or "").strip()
+        check = rag.check24([], {"status": "unknown", "answer": rag.unknown_text(best, threshold), "clarify": clarify})
+    yield {"t": "checked", "gate": not kept, "raw": raw, "error": trouble, "check": check}
+    verdict = None
+    if check.get("status") == "answer" and check["quotes"]:
+        done = await rag_once(client, judge, "judge", rag.judge_messages(check["answer"], check["quotes"]),
+                              max_tokens=rag.JUDGE_TOKENS, **JSON_MODE)
+        spent["judge"] = done["metrics"]
+        verdict = rag.judge_summary(rag.parse_json(done["answer"]))
+        yield {"t": "judge", "model": judge["id"], "judge": verdict, "error": done["error"],
+               "metrics": done["metrics"]}
+    yield {"t": "done", "gate": not kept, "check": check, "judge": verdict, "metrics": spent,
+           "expected": rag.verdict24(question, check, kept) if question else None,
+           "context": [{k: h[k] for k in ("id", "title", "section", "page_from", "page_to", "score", "text")}
+                       for h in kept]}
+
+
+@app.get("/cite.js")
+def cite_script():
+    return FileResponse(HERE / "cite.js")
+
+
+@app.get("/api/rag/cite/setup")
+def cite_config():
+    """Контрольный набор дня 24, судья, порог и последний прогон."""
+    last = rag.last_run24()
+    if last:
+        last["summary"] = rag.summary24(last["results"])
+    judge = cite_setup(CiteIn())[1]
+    return {"questions": rag.question_set24(), "last": last, "default": CHAT_DEFAULT,
+            "judge": {"id": judge["id"], "title": judge["title"]},
+            "threshold": rag.THRESHOLD, "keep": rag.KEEP, "candidates": rag.CANDIDATES,
+            "models": [{"id": m["id"], "title": m["title"]} for m in CHAT_MODELS
+                       if PROVIDERS[m["provider"]]["key"]]}
+
+
+@app.post("/api/rag/cite/ask")
+def cite_ask(body: CiteAskIn):
+    if not body.q.strip():
+        raise HTTPException(status_code=400, detail="пустой вопрос")
+    model, judge, threshold = cite_setup(body)
+
+    async def run():
+        yield line({"t": "start", "model": model["id"], "judge": judge["id"], "threshold": threshold})
+        async with httpx.AsyncClient(timeout=90, default_encoding="utf-8", proxy=PROXY) as client:
+            try:
+                async for event in cite_run(client, body.q.strip(), model, judge, threshold):
+                    yield line(event)
+            except httpx.HTTPError as e:
+                yield line({"t": "error", "target": "search", "message": f"Ollama не ответила: {e}"})
+        yield line({"t": "end"})
+
+    return StreamingResponse(run(), media_type="application/x-ndjson")
+
+
+@app.post("/api/rag/cite/eval")
+def cite_eval(body: CiteIn):
+    """Десять контрольных вопросов по три разом; прогон сохраняется в agent.db."""
+    model, judge, threshold = cite_setup(body)
+    questions = rag.QUESTIONS24
+
+    async def run():
+        yield line({"t": "start", "total": len(questions), "model": model["id"], "judge": judge["id"],
+                    "threshold": threshold})
+        results = [None] * len(questions)
+        gate, queue = asyncio.Semaphore(3), asyncio.Queue()
+
+        async def one(i, question):
+            async with gate:
+                record = {"i": i}
+                try:
+                    async for event in cite_run(client, question["q"], model, judge, threshold):
+                        if event["t"] == "search":
+                            record["best"] = event["best"]
+                            record["candidates"] = [{k: v for k, v in h.items() if k != "text"}
+                                                    for h in event["candidates"]]
+                        elif event["t"] == "checked":
+                            record.update(raw=event["raw"], error=event["error"])
+                        elif event["t"] == "done":
+                            record.update({k: event[k] for k in ("gate", "check", "judge", "metrics",
+                                                                 "expected", "context")})
+                except httpx.HTTPError as e:
+                    record["error"] = f"Ollama не ответила: {e}"
+                results[i] = record
+                await queue.put({"t": "result", **record})
+
+        async with httpx.AsyncClient(timeout=90, default_encoding="utf-8", proxy=PROXY) as client:
+            workers = [asyncio.create_task(one(i, q)) for i, q in enumerate(questions)]
+            for _ in workers:
+                yield line(await queue.get())
+            await asyncio.gather(*workers)
+        done = [r for r in results if r and r.get("check")]
+        saved = len(done) == len(results)
+        if saved:
+            rag.save_run24(model["id"], judge["id"], {"threshold": threshold}, results)
+        yield line({"t": "done", "summary": rag.summary24(done), "saved": saved})
+
+    return StreamingResponse(run(), media_type="application/x-ndjson")
 
 
 @app.get("/chat.js")

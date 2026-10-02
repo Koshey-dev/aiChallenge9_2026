@@ -256,3 +256,73 @@
   .rr-llm:empty { display: none; }
   .rr-row p { padding-left: 10px; }
 }
+
+/* День 24. Ответ в три части — текст, источники, цитаты; цитата показана на
+   своём месте в тексте чанка. Проверки — строка значков, где цвет повторяет
+   знак. «Не знаю» — своя карточка с уточняющим вопросом. */
+#ctCard select { min-width: 0; }
+#ctQ { flex: 1; min-width: 240px; }
+.ct-flow { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.ct-flow li.stop { border-color: var(--warn); color: var(--text); }
+.ct-flow li.stop span { color: var(--warn); }
+.ct-checks { list-style: none; margin: 0 0 14px; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.ct-checks li { border: 1px solid var(--line); border-radius: 16px; padding: 4px 11px; font-size: 13px; }
+.ct-checks li.ok { border-color: #2c4436; color: var(--accent); }
+.ct-checks li.part { border-color: #5a4630; color: var(--warn); }
+.ct-checks li.bad { border-color: #5a3434; color: var(--bad); }
+.ct-checks li.run { color: var(--dim); border-style: dashed; }
+.ct-doc { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 440px); gap: 14px; }
+.ct-doc[hidden] { display: none; }
+.ct-part { border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; min-width: 0; }
+.ct-part h3 { margin: 0 0 8px; font-size: 13px; color: var(--dim); font-weight: 600; letter-spacing: .03em; }
+.ct-wide { grid-column: 1 / -1; }
+.ct-answer { font-size: 15.5px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.ct-sources { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; font-size: 13.5px; }
+.ct-sources li { border: 1px solid var(--line); border-radius: 8px; padding: 6px 9px; }
+.ct-sources li.bad { border-color: #5a3434; }
+.ct-sources li.hot, .ct-quote.hot { border-color: var(--accent); }
+.ct-sources code, .ct-qhead code { font-size: 12px; color: var(--dim); overflow-wrap: anywhere; }
+.ct-quotes { display: grid; gap: 10px; }
+.ct-quote { border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; min-width: 0; }
+.ct-qhead { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; font-size: 13px; }
+.ct-kind { margin-left: auto; font-weight: 600; white-space: nowrap; }
+.ct-kind.ok { color: var(--accent); }
+.ct-kind.part { color: var(--warn); }
+.ct-kind.bad { color: var(--bad); }
+.ct-quote blockquote { margin: 6px 0; padding: 2px 0 2px 12px; border-left: 3px solid var(--accent); font-size: 15px;
+                       overflow-wrap: anywhere; }
+.ct-quote.part blockquote { border-left-color: var(--warn); }
+.ct-quote.bad blockquote { border-left-color: var(--bad); }
+.ct-inchunk { background: #14151d; border-radius: 8px; padding: 8px 10px; font-size: 13px; color: var(--dim);
+              white-space: pre-wrap; overflow-wrap: anywhere; max-height: 220px; overflow-y: auto; }
+.ct-inchunk mark { background: #1f3a2b; color: var(--text); border-radius: 3px; padding: 0 1px; }
+.ct-inchunk mark.part { background: #3d3220; }
+.ct-inchunk.miss { color: var(--bad); }
+.ct-unknown { border: 1px solid #5a4630; background: #221d14; border-radius: 12px; padding: 14px 18px; margin-bottom: 14px; }
+.ct-unknown[hidden] { display: none; }
+.ct-no { font-size: 22px; font-weight: 700; color: var(--warn); }
+.ct-unknown p { margin: 6px 0 10px; color: var(--dim); }
+.ct-ask { font-size: 16px; padding: 10px 14px; background: var(--card); border-radius: 10px; border: 1px solid var(--line); }
+.ct-ask span { color: var(--warn); font-weight: 600; }
+.ct-near { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 13px; }
+.ct-chip { border: 1px solid var(--line); border-radius: 14px; padding: 3px 10px; }
+.ct-chip i { color: var(--dim); font-style: normal; font-variant-numeric: tabular-nums; }
+.ct-claimsbox { margin-top: 12px; overflow-x: auto; }
+.ct-claimsbox[hidden] { display: none; }
+.ct-claimsbox summary { cursor: pointer; color: var(--dim); font-size: 13px; }
+.ct-claims { margin-top: 6px; }
+.ct-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; margin-bottom: 14px; }
+.ct-tile { border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; display: grid; gap: 2px; }
+.ct-tile span { color: var(--dim); font-size: 13px; }
+.ct-tile b { font-size: 24px; font-weight: 650; }
+.ct-tile i { font-style: normal; color: var(--dim); font-size: 12.5px; }
+.ct-tile.ok b { color: var(--accent); }
+.ct-tile.part b { color: var(--warn); }
+.ct-tile.bad b { color: var(--bad); }
+.ct-table td:nth-child(n+4):not(:last-child) { white-space: nowrap; }
+
+@media (max-width: 900px) {
+  .ct-flow { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .ct-flow li:nth-child(odd)::before { content: none; }
+  .ct-doc { grid-template-columns: minmax(0, 1fr); }
+}

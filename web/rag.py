@@ -36,8 +36,14 @@ float32, итоги сборки и кеш эмбеддингов по хешу 
 прошедшие порог (косинус или оценка LLM-реранкера), не больше K₂, а до поиска
 модель может переписать вопрос. Тут же разговорный двойник контрольного
 набора и данные для подбора порога.
+
+День 24 требует от ответа три части — текст, источники по chunk_id и
+дословные цитаты — и проверяет их: источники из контекста, цитаты в своих
+чанках, смысл ответа против цитат (судья — другая модель). Ниже порога
+релевантности ответа нет: «не знаю» и уточняющий вопрос.
 """
 
+import difflib
 import hashlib
 import html
 import json
@@ -1038,6 +1044,288 @@ def sweep(strategy, k, rewrites):
 def question_set23():
     """Набор дня 23: точная и разговорная формулировки рядом."""
     return [{**x, "talk": talk} for x, talk in zip(question_set(), TALK)]
+
+
+# ── День 24: цитаты, источники и «не знаю» ──────────────────────────────
+#
+# Ответ модели — строгий JSON: статус, текст со ссылками [n], источники по
+# chunk_id и дословные цитаты. Документ и раздел источника подставляет код по
+# chunk_id: модель называет только id, и id не из контекста сразу виден.
+# Цитата сверяется с текстом своего чанка по словам — регистр и пунктуация не
+# в счёт. Смысл ответа против цитат проверяет судья — другая модель. Если
+# лучший кандидат ниже порога, отвечает правило, а не модель: «не знаю», а
+# уточняющий вопрос модель пишет по названиям ближайших разделов.
+
+CITE_TOKENS, JUDGE_TOKENS = 900, 800
+CLOSE = 0.85  # доля совпавших слов подряд, с которой цитата «почти дословная»
+
+CITE_RULES = (
+    " Отвечай только по фрагментам документов из сообщения пользователя. Верни только JSON:"
+    " {\"status\": \"answer\" или \"unknown\", \"answer\": \"ответ\","
+    " \"sources\": [{\"n\": номер фрагмента, \"chunk_id\": \"id фрагмента\"}],"
+    " \"quotes\": [{\"n\": номер фрагмента, \"chunk_id\": \"id фрагмента\", \"text\": \"цитата\"}],"
+    " \"clarify\": \"\"}. Правила: после каждого утверждения в answer ставь номер фрагмента [n];"
+    " в sources — каждый фрагмент, на который ссылается ответ, chunk_id копируй из заголовка"
+    " фрагмента; в quotes — для каждого источника хотя бы одна цитата: дословная выдержка из"
+    " текста фрагмента, одно-два предложения, без пересказа, перевода, многоточий и пропусков."
+    " Каждое утверждение ответа должно подтверждаться одной из цитат: чего нет в quotes, того не"
+    " пиши и в answer. Если во фрагментах нет ответа или вопрос слишком общий и фрагменты отвечают на разные его"
+    " варианты — status \"unknown\", answer начни с «Не знаю», sources и quotes оставь пустыми,"
+    " а в clarify задай один уточняющий вопрос.")
+CLARIFY_ROLE = (
+    "Ты ассистент по базе гайдов для разработчиков мобильных и браузерных игр. На вопрос "
+    "пользователя в базе не нашлось достаточно близких фрагментов, поэтому отвечать по существу "
+    "нельзя: не называй фактов, цен и советов. Задай один короткий уточняющий вопрос, чтобы "
+    "пользователь переформулировал запрос под то, что есть в базе. Ближайшие разделы базы даны "
+    "только как подсказка, о чём база. Если они на ту же тему, что вопрос, — вопрос слишком общий: "
+    "не говори, что данных нет, а спроси, какой из вариантов нужен, и назови два-три из них. Если "
+    "вопрос не про них, скажи, что такой темы в базе нет, и предложи, о чём можно спросить. Верни "
+    "только JSON: {\"clarify\": \"вопрос пользователю\"}")
+JUDGE_ROLE = (
+    "Ты проверяешь ответ ассистента по цитатам из документов. Разбей ответ на отдельные "
+    "утверждения — проверяемые сообщения о фактах. Для каждого реши, подтверждают ли его цитаты: "
+    "«да» — цитата говорит то же самое (перевод и пересказ допустимы), «частично» — подтверждена "
+    "только часть, «нет» — в цитатах этого нет или сказано другое. Своими знаниями не пользуйся, "
+    "только цитатами. Номера в квадратных скобках в ответе — ссылки на источники, не утверждения. "
+    "Верни только JSON: {\"claims\": [{\"claim\": \"утверждение\", \"verdict\": \"да\", "
+    "\"quote\": номер подтверждающей цитаты или 0, \"why\": \"коротко почему\"}]}")
+
+# Семь вопросов дня 22 с ответом в базе и три со слабым контекстом: два вне
+# базы и один слишком общий — у всех трёх лучший кандидат ниже порога, и
+# правильное поведение — «не знаю» с уточняющим вопросом.
+QUESTIONS24 = [QUESTIONS[i] for i in (0, 1, 2, 3, 4, 5, 8, 9)] + [
+    {"q": "Какие налоги платит инди-разработчик в России?",
+     "expect": "Налогов в базе нет — «не знаю» и уточняющий вопрос",
+     "facts": [], "sources": [], "section": "", "outside": True},
+    {"q": "Сколько стоит реклама?",
+     "expect": "Вопрос слишком общий: цены есть по разным площадкам — «не знаю» и вопрос, какая площадка",
+     "facts": [], "sources": [], "section": "", "outside": True},
+]
+
+RUNS24 = """
+CREATE TABLE IF NOT EXISTS cite_runs (
+    id       INTEGER PRIMARY KEY AUTOINCREMENT,
+    created  TEXT NOT NULL,
+    model    TEXT NOT NULL,
+    judge    TEXT NOT NULL,
+    settings TEXT NOT NULL,
+    results  TEXT NOT NULL
+)
+"""
+
+NUMBER = re.compile(r"\d+(?:[.,]\d+)?")
+
+
+def question24(q):
+    return next((x for x in QUESTIONS24 if x["q"].strip() == q.strip()), None)
+
+
+def cite_prompt(q, hits):
+    """Фрагменты с chunk_id в заголовке — модель копирует его в источники и цитаты."""
+    blocks = []
+    for n, h in enumerate(hits, 1):
+        page = "" if not h["page_from"] else f", стр. {h['page_from']}" + (
+            f"–{h['page_to']}" if h["page_to"] != h["page_from"] else "")
+        blocks.append(f"[{n}] chunk_id: {h['id']}\n«{h['title']}» › {h['section']}{page}\n{h['text']}")
+    return "Фрагменты документов:\n\n" + "\n\n".join(blocks) + f"\n\nВопрос: {q}"
+
+
+def messages24(q, hits):
+    return [{"role": "system", "content": ROLE + CITE_RULES},
+            {"role": "user", "content": cite_prompt(q, hits)}]
+
+
+def clarify_messages(q, near):
+    topics = "\n".join(f"- «{h['title']}» › {h['section']} (cos {h['score']:.2f})" for h in near)
+    return [{"role": "system", "content": CLARIFY_ROLE},
+            {"role": "user", "content": f"Вопрос: {q}\n\nБлижайшие разделы базы (ниже порога):\n{topics}"}]
+
+
+def judge_messages(answer, quotes):
+    body = "\n".join(f"[{i}] {q['text']}" for i, q in enumerate(quotes, 1))
+    return [{"role": "system", "content": JUDGE_ROLE},
+            {"role": "user", "content": f"Ответ:\n{answer}\n\nЦитаты:\n{body}"}]
+
+
+def parse_json(text):
+    """JSON ответа модели; вокруг него бывает текст или ограда ```json."""
+    try:
+        return json.loads(text)
+    except ValueError:
+        found = re.search(r"\{.*\}", text, re.S)
+        try:
+            return json.loads(found.group(0)) if found else None
+        except ValueError:
+            return None
+
+
+def unknown_text(best, threshold):
+    best, threshold = f"{best:.3f}".replace(".", ","), f"{threshold:.2f}".replace(".", ",")
+    return f"Не знаю: в базе нет фрагментов, достаточно близких к вопросу (лучший cos {best} ниже порога {threshold})."
+
+
+def letters(s):
+    """Только буквы и цифры в нижнем регистре, ё = е, и где каждая стояла в
+    исходной строке: пробелы, дефисы и кавычки на сверку цитаты не влияют
+    («flash-играми» и «flashиграми» — одно и то же)."""
+    kept = [(i, c) for i, c in enumerate(s.lower().replace("ё", "е")) if c.isalnum()]
+    return "".join(c for _, c in kept), [i for i, _ in kept]
+
+
+def locate(quote, text):
+    """Где цитата в тексте чанка. `exact` — те же буквы подряд, `close` —
+    совпало не меньше CLOSE букв цитаты на отрезке не длиннее полутора цитат,
+    `missing` — такого в чанке нет. start/stop — для подсветки на экране."""
+    q, _ = letters(quote)
+    t, at = letters(text)
+    if not q or not t:
+        return {"kind": "missing", "ratio": 0}
+    pos = t.find(q)
+    if pos >= 0:
+        return {"kind": "exact", "ratio": 1, "start": at[pos], "stop": at[pos + len(q) - 1] + 1}
+    blocks = [b for b in difflib.SequenceMatcher(None, q, t, autojunk=False).get_matching_blocks() if b.size >= 3]
+    ratio = sum(b.size for b in blocks) / len(q)
+    if blocks and ratio >= CLOSE and blocks[-1].b + blocks[-1].size - blocks[0].b <= 1.5 * len(q):
+        return {"kind": "close", "ratio": round(ratio, 2), "start": at[blocks[0].b],
+                "stop": at[blocks[-1].b + blocks[-1].size - 1] + 1}
+    return {"kind": "missing", "ratio": round(ratio, 2)}
+
+
+def numbers(text):
+    """Числа от двух цифр без ссылок [n]: «1 500» и «31,79» приводятся к «1500»
+    и «31.79». Одиночные цифры — обычно номера и названия («Day 1», «Y8»)."""
+    text = re.sub(r"\[\d+\]", " ", text)
+    text = re.sub(r"(?<=\d)[   ](?=\d{3}\b)", "", text)
+    return {m.replace(",", ".") for m in NUMBER.findall(text) if len(re.sub(r"\D", "", m)) >= 2}
+
+
+def check24(hits, data):
+    """Обязательные части ответа и их сверка с контекстом (hits — чанки, ушедшие в модель).
+
+    Номер источника берётся по chunk_id — это номер фрагмента в промпте; на
+    него и должны указывать ссылки [n] ответа."""
+    if not isinstance(data, dict):
+        return {"format": False}
+    by_id = {h["id"]: (n, h) for n, h in enumerate(hits, 1)}
+    meta = ("title", "section", "page_from", "page_to")
+
+    def entry(item):
+        cid = str(item.get("chunk_id") or "") if isinstance(item, dict) else ""
+        n, h = by_id.get(cid, (None, None))
+        return cid, n, h
+
+    sources = []
+    for item in data.get("sources") or []:
+        cid, n, h = entry(item)
+        sources.append({"n": n, "chunk_id": cid, "known": h is not None, **({k: h[k] for k in meta} if h else {})})
+    quotes = []
+    for item in data.get("quotes") or []:
+        cid, n, h = entry(item)
+        text = str(item.get("text") or "") if isinstance(item, dict) else ""
+        quotes.append({"n": n, "chunk_id": cid, "text": text, "known": h is not None,
+                       **(locate(text, h["text"]) if h else {"kind": "foreign", "ratio": 0})})
+    answer = str(data.get("answer") or "")
+    cited = sorted({int(n) for n in CITE.findall(answer)})
+    quoted = {q["chunk_id"] for q in quotes}
+    in_quotes = set().union(*(numbers(q["text"]) for q in quotes)) if quotes else set()
+    return {"format": True, "status": data.get("status") if data.get("status") in ("answer", "unknown") else "",
+            "answer": answer, "clarify": str(data.get("clarify") or "").strip(),
+            "sources": sources, "quotes": quotes, "cited": cited,
+            "has_sources": bool(sources) and all(s["known"] for s in sources),
+            "has_quotes": bool(quotes),
+            "cites_ok": bool(cited) and set(cited) <= {s["n"] for s in sources},
+            "covered": bool(sources) and all(s["chunk_id"] in quoted for s in sources),
+            "exact": sum(q["kind"] == "exact" for q in quotes),
+            "close": sum(q["kind"] == "close" for q in quotes),
+            "missing": sum(q["kind"] in ("missing", "foreign") for q in quotes),
+            "numbers_missing": sorted(numbers(answer) - in_quotes)}
+
+
+def judge_summary(data):
+    """Вердикты судьи по утверждениям и итог: все «да» — совпадает, есть «нет» — нет."""
+    claims = [c for c in (data or {}).get("claims") or [] if isinstance(c, dict)]
+    if not claims:
+        return None
+    norm_verdict = {"да": "yes", "частично": "partial", "нет": "no"}
+    out = [{"claim": str(c.get("claim") or ""), "verdict": norm_verdict.get(str(c.get("verdict")).strip().lower(), "no"),
+            "quote": c.get("quote") if isinstance(c.get("quote"), int) else 0, "why": str(c.get("why") or "")}
+           for c in claims]
+    count = {v: sum(c["verdict"] == v for c in out) for v in ("yes", "partial", "no")}
+    return {"claims": out, **count, "verdict": "bad" if count["no"] else "part" if count["partial"] else "ok"}
+
+
+def verdict24(question, check, hits):
+    """То ли сделал ассистент, чего ждали: ответ с фактами из ожидания или
+    «не знаю» с уточнением на вопросе со слабым контекстом."""
+    if not check.get("format"):
+        return {"verdict": "bad", "note": "ответ не разобран как JSON"}
+    if question.get("outside"):
+        if check.get("status") != "unknown":
+            return {"verdict": "bad", "note": "ответил, хотя должен был сказать «не знаю»"}
+        return {"verdict": "ok" if check.get("clarify") else "part",
+                "note": "не знаю и уточнение" if check.get("clarify") else "не знаю без уточнения"}
+    if check.get("status") != "answer":
+        return {"verdict": "bad", "note": "сказал «не знаю», хотя ответ в базе есть"}
+    g = grade(question, check["answer"], hits)
+    return {"verdict": g["verdict"], "note": f"факты {g['facts']} из {g['of']}"}
+
+
+def summary24(results):
+    """Итог прогона: обязательные части, дословность цитат, смысл, поведение."""
+    rows = [r for r in results if r and r.get("check")]
+    answers = [r for r in rows if r["check"].get("status") == "answer"]
+    weak = [r for r in rows if QUESTIONS24[r["i"]].get("outside")]
+    judged = [r["judge"] for r in answers if r.get("judge")]
+    quotes = [q for r in answers for q in r["check"]["quotes"]]
+    n = len(rows) or 1
+    return {
+        "total": len(rows), "answers": len(answers),
+        "has_sources": sum(r["check"]["has_sources"] for r in answers),
+        "has_quotes": sum(r["check"]["has_quotes"] for r in answers),
+        "covered": sum(r["check"]["covered"] for r in answers),
+        "cites_ok": sum(r["check"]["cites_ok"] for r in answers),
+        "quotes": len(quotes), "exact": sum(q["kind"] == "exact" for q in quotes),
+        "close": sum(q["kind"] == "close" for q in quotes),
+        "missing": sum(q["kind"] in ("missing", "foreign") for q in quotes),
+        "numbers_ok": sum(not r["check"]["numbers_missing"] for r in answers),
+        "judged": len(judged), **{f"meaning_{v}": sum(j["verdict"] == v for j in judged) for v in ("ok", "part", "bad")},
+        "claims": sum(len(j["claims"]) for j in judged), "claims_yes": sum(j["yes"] for j in judged),
+        "weak": len(weak), "weak_unknown": sum(r["check"].get("status") == "unknown" for r in weak),
+        "weak_clarify": sum(r["check"].get("status") == "unknown" and bool(r["check"].get("clarify")) for r in weak),
+        **{v: sum(r["expected"]["verdict"] == v for r in rows) for v in ("ok", "part", "bad")},
+        "tokens": round(sum(sum(m["in"] + m["out"] for m in r["metrics"].values()) for r in rows) / n),
+        "seconds": round(sum(sum(m["seconds"] for m in r["metrics"].values()) for r in rows) / n, 1),
+        "cost": round(sum(sum(m["cost"] for m in r["metrics"].values()) for r in rows), 5)}
+
+
+def runs24_db():
+    db = sqlite3.connect(store.FILE, timeout=5)
+    db.execute(RUNS24)
+    return db
+
+
+def save_run24(model, judge, settings, results):
+    with closing(runs24_db()) as db, db:
+        db.execute("INSERT INTO cite_runs (created, model, judge, settings, results) VALUES (?, ?, ?, ?, ?)",
+                   (time.strftime("%Y-%m-%d %H:%M"), model, judge, json.dumps(settings),
+                    json.dumps(results, ensure_ascii=False)))
+
+
+def last_run24():
+    with closing(runs24_db()) as db:
+        row = db.execute("SELECT created, model, judge, settings, results FROM cite_runs "
+                         "ORDER BY id DESC LIMIT 1").fetchone()
+    if not row:
+        return None
+    return {"created": row[0], "model": row[1], "judge": row[2], "settings": json.loads(row[3]),
+            "results": json.loads(row[4])}
+
+
+def question_set24():
+    with closing(connect()) as db:
+        titles = dict(db.execute("SELECT id, title FROM docs"))
+    return [{"q": x["q"], "expect": x["expect"], "outside": bool(x.get("outside")), "section": x["section"],
+             "sources": [{"id": s, "title": titles.get(s, s)} for s in x["sources"]]} for x in QUESTIONS24]
 
 
 if __name__ == "__main__":

@@ -748,15 +748,17 @@
 </section>
 
 <!-- Неделя 5 — RAG: своя вкладка, не чат, внутри — подвкладка на каждый день
-     (#week5/21, #week5/22, #week5/23). День 21 — индекс документов (rag.js),
+     (#week5/21 … #week5/24). День 21 — индекс документов (rag.js),
      день 22 — первый RAG-запрос (ask.js), день 23 — реранкинг и фильтр
-     (rerank.js). Стили — rag.css, данные — /api/rag/*. -->
+     (rerank.js), день 24 — цитаты и «не знаю» (cite.js). Стили — rag.css,
+     данные — /api/rag/*. -->
 <section class="pane rag" id="week5" hidden>
 
 <nav class="rag-days" id="ragDays">
   <button class="rag-daytab" data-day="21">День 21 · индекс документов</button>
   <button class="rag-daytab" data-day="22">День 22 · первый RAG-запрос</button>
   <button class="rag-daytab" data-day="23">День 23 · реранкинг и фильтр</button>
+  <button class="rag-daytab" data-day="24">День 24 · цитаты и «не знаю»</button>
 </nav>
 
 <div class="rag-day" data-day="21" hidden>
@@ -967,6 +969,64 @@
     <div><h3>Разговорные</h3><table class="rag-table rag-metrics" id="rrSumTalk"></table></div>
   </div>
   <div class="rag-scroll"><table class="rag-table ask-table rr-table" id="rrTable"></table></div>
+</section>
+
+</div>
+
+<div class="rag-day" data-day="24" hidden>
+
+<h1>Цитаты, источники и «не знаю»</h1>
+<p class="sub">Модель отвечает строгим JSON: текст со ссылками [n], источники по chunk_id и дословные
+  цитаты из найденных чанков. Код проверяет, что источники были в контексте, а цитаты есть в своих
+  чанках; смысл ответа против цитат сверяет судья — другая модель. Если лучший кандидат ниже порога,
+  ассистент говорит «не знаю» и просит уточнить вопрос.</p>
+
+<section class="rag-card" id="ctCard">
+  <div class="rag-bar">
+    <select id="ctModel" aria-label="Модель ответа"></select>
+    <span class="hint" id="ctJudge"></span>
+    <label class="rag-check rr-range">порог cos
+      <input type="range" id="ctTau" min="0.3" max="0.7" step="0.01"><output id="ctTauOut"></output></label>
+  </div>
+  <div class="rag-bar">
+    <input id="ctQ" placeholder="Вопрос по гайдам — или клик по контрольному вопросу ниже">
+    <button class="main" id="ctGo">Спросить</button>
+  </div>
+  <ol class="ask-flow ct-flow" id="ctFlow">
+    <li data-step="q"><b>1 · Вопрос</b><span>—</span></li>
+    <li data-step="search"><b>2 · Поиск</b><span>—</span></li>
+    <li data-step="gate"><b>3 · Порог релевантности</b><span>—</span></li>
+    <li data-step="answer"><b>4 · Ответ, JSON</b><span>—</span></li>
+    <li data-step="check"><b>5 · Источники и цитаты</b><span>—</span></li>
+    <li data-step="judge"><b>6 · Судья смысла</b><span>—</span></li>
+  </ol>
+  <div id="ctOut" hidden>
+    <ul class="ct-checks" id="ctChecks"></ul>
+    <div class="ct-unknown" id="ctUnknown" hidden></div>
+    <div class="ct-doc" id="ctDoc">
+      <section class="ct-part"><h3>Ответ</h3><div class="ct-answer" id="ctAnswer"></div></section>
+      <section class="ct-part"><h3>Источники</h3><ol class="ct-sources" id="ctSources"></ol></section>
+      <section class="ct-part ct-wide"><h3>Цитаты — и где они в своих чанках</h3><div class="ct-quotes" id="ctQuotes"></div></section>
+    </div>
+    <details class="ct-claimsbox" id="ctClaimsBox" hidden><summary>Судья: утверждение → цитата</summary>
+      <table class="rag-table ct-claims" id="ctClaims"></table></details>
+    <details class="ask-prompt"><summary>Что вернула модель</summary><pre id="ctRaw"></pre></details>
+    <details class="ask-prompt"><summary>Что ушло в модель</summary><pre id="ctPrompt"></pre></details>
+  </div>
+</section>
+
+<section class="rag-card" id="ctEvalCard">
+  <h2>10 контрольных вопросов: 7 из базы и 3 со слабым контекстом</h2>
+  <p class="rag-note">У вопросов из базы проверяется, что в ответе есть источники и цитаты, что цитаты
+    дословно стоят в своих чанках и что судья находит в цитатах каждое утверждение ответа. У двух
+    вопросов вне базы и одного слишком общего правильное поведение — «не знаю» и уточняющий вопрос. Клик
+    по строке выводит ответ прогона наверх.</p>
+  <div class="rag-bar">
+    <button class="main" id="ctEvalGo">Прогнать 10 вопросов</button>
+    <span class="hint" id="ctEvalNote"></span>
+  </div>
+  <div class="ct-tiles" id="ctTiles"></div>
+  <div class="rag-scroll"><table class="rag-table ask-table ct-table" id="ctTable"></table></div>
 </section>
 
 </div>
@@ -2219,5 +2279,6 @@ $("#modal").addEventListener("click", event => {
 <script src="/rag.js"></script>
 <script src="/ask.js"></script>
 <script src="/rerank.js"></script>
+<script src="/cite.js"></script>
 </body>
 </html>
