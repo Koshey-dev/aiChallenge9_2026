@@ -31,6 +31,11 @@ float32, итоги сборки и кеш эмбеддингов по хешу 
 С дня 22 здесь же всё, что вокруг первого RAG-запроса: какие чанки взять,
 как сложить их с вопросом в промпт, десять контрольных вопросов с ожиданием
 и сверка ответа с ним. Сам запрос к модели делает app.py.
+
+День 23 добавляет второй этап после поиска: из топ-K₁ кандидатов остаются
+прошедшие порог (косинус или оценка LLM-реранкера), не больше K₂, а до поиска
+модель может переписать вопрос. Тут же разговорный двойник контрольного
+набора и данные для подбора порога.
 """
 
 import hashlib
@@ -816,6 +821,223 @@ def question_set():
              "facts": [" / ".join(g) for g in x["facts"]], "section": x["section"],
              "sources": [{"id": s, "title": titles.get(s, s)} for s in x["sources"]]}
             for x in QUESTIONS]
+
+
+# ── День 23: реранкинг, фильтр и переписывание запроса ──────────────────
+#
+# Поиск отдаёт топ-K₁ кандидатов, второй этап оставляет прошедших порог — не
+# больше K₂. Порог — по косинусу или по оценке LLM-реранкера (0–10). Пустой
+# контекст — отказ без запроса к модели. Перед поиском модель может
+# переписать вопрос: разговорный («что писать в финплане?») по косинусу далёк
+# от текста гайдов, и порог, верный для точных вопросов, отрезает у него всё.
+
+CANDIDATES, KEEP = 10, 3  # K₁ — до фильтра, K₂ — после
+THRESHOLD = 0.45          # порог косинуса
+MIN_SCORE = 5             # порог оценки реранкера: «есть часть ответа»
+
+# Базовый режим — день 22 как есть: исходный вопрос, топ-5, без фильтра.
+MODES23 = {
+    "base": {"title": "Базовый", "rewrite": False, "stage": None},
+    "filter": {"title": "Фильтр по cos", "rewrite": False, "stage": "cos"},
+    "rewrite": {"title": "Rewrite + фильтр", "rewrite": True, "stage": "cos"},
+    "rerank": {"title": "Rewrite + реранкер", "rewrite": True, "stage": "llm"},
+}
+
+# Те же десять вопросов разговорным языком, в порядке QUESTIONS: факты и
+# источники у них общие. Сленг и сокращения уводят косинус с 0,5–0,7 до
+# 0,2–0,5 — ниже, чем у вопроса вне базы в точной формулировке.
+TALK = [
+    "сколько денег кидать на снэпчат, чтобы потестить?",
+    "какой ретеншн у казуалок в европе?",
+    "почём реклама в телеге, если идти через посредника?",
+    "как узнать, кто сейчас онлайн в чате?",
+    "что подрядчик должен сделать, прежде чем отдать работу?",
+    "что писать в финплане?",
+    "какой плагин в юньке показывает историю выделения?",
+    "что за русский гугл плей?",
+    "куда залить html5-игру?",
+    # Год обязателен: в базе есть «$2000 за Pro-версию Unity» для выпуска на
+    # Xbox, и без года этот ответ по документам был бы верным.
+    "почём юнити про в 2026-м?",
+]
+
+REWRITE_ROLE = (
+    "Ты переписываешь вопрос пользователя в поисковый запрос по базе гайдов для разработчиков "
+    "мобильных и браузерных игр: реклама и трафик, аналитика рынка, договоры, бизнес-план, "
+    "площадки для релиза, ассеты Unity, арт. Раскрой сленг и сокращения, назови предмет полными "
+    "терминами, как их пишут в документах, добавь два-три ключевых слова. Не отвечай на вопрос и "
+    "не добавляй фактов: чисел, цен, названий, которых нет в вопросе. Общих слов про игры и их "
+    "разработку не добавляй — они есть в каждом документе. Верни одну строку — запрос, без "
+    "кавычек и пояснений.")
+RERANK_ROLE = (
+    "Ты оцениваешь, насколько каждый фрагмент документа помогает ответить на вопрос. Оценка от 0 "
+    "до 10: 10 — во фрагменте прямой ответ, 5–7 — есть часть ответа, 1–4 — та же тема, но ответа "
+    "нет, 0 — не о том. Верни только JSON: {\"scores\": [оценка фрагмента 1, оценка фрагмента 2, "
+    "…]} — столько чисел, сколько фрагментов, по порядку.")
+
+RUNS23 = """
+CREATE TABLE IF NOT EXISTS rerank_runs (
+    id       INTEGER PRIMARY KEY AUTOINCREMENT,
+    created  TEXT NOT NULL,
+    model    TEXT NOT NULL,
+    settings TEXT NOT NULL,
+    results  TEXT NOT NULL
+)
+"""
+
+
+def question23(q):
+    """Контрольный вопрос по точной или разговорной формулировке."""
+    q = q.strip()
+    return next((x for x, talk in zip(QUESTIONS, TALK) if q in (x["q"].strip(), talk)), None)
+
+
+def rewrite_messages(q):
+    return [{"role": "system", "content": REWRITE_ROLE}, {"role": "user", "content": q}]
+
+
+def parse_rewrite(text):
+    """Первая непустая строка ответа без кавычек и подписи «Запрос:»."""
+    first = next((s for s in text.splitlines() if s.strip()), "")
+    return re.sub(r"^(запрос|поисковый запрос)\s*:\s*", "", first.strip(), flags=re.I).strip(" «»\"'")
+
+
+def rerank_messages(q, hits):
+    """Реранкеру — исходный вопрос (что спросил человек) и кандидаты целиком."""
+    blocks = [f"[{n}] «{h['title']}» › {h['section']}\n{h['text']}" for n, h in enumerate(hits, 1)]
+    return [{"role": "system", "content": RERANK_ROLE},
+            {"role": "user", "content": f"Вопрос: {q}\n\nФрагменты:\n\n" + "\n\n".join(blocks)}]
+
+
+def parse_scores(text, n):
+    """Оценки 0–10 по порядку кандидатов; не тот JSON или не то число — None."""
+    found = re.search(r"\{.*\}", text, re.S)
+    try:
+        scores = json.loads(found.group(0))["scores"] if found else None
+    except (ValueError, KeyError, TypeError):
+        return None
+    if not isinstance(scores, list) or len(scores) != n:
+        return None
+    try:
+        return [max(0.0, min(10.0, float(s))) for s in scores]
+    except (TypeError, ValueError):
+        return None
+
+
+def relevant(question, hit):
+    """Чанк из нужного документа, где есть хотя бы один факт ожидания."""
+    if not question or question.get("outside") or hit["doc"] not in question["sources"]:
+        return False
+    low = norm(hit["text"])
+    return any(norm(alt) in low for group in question["facts"] for alt in group)
+
+
+def second_stage(hits, stage, threshold, min_score, keep):
+    """Кандидаты в итоговом порядке с отметкой, кто взят в контекст и почему нет.
+
+    `stage` None — без фильтра (взять первые `keep`), `cos` — порог косинуса,
+    `llm` — сортировка по оценке реранкера (при равной — по косинусу) и её порог.
+    """
+    order = list(range(len(hits)))
+    if stage == "llm":
+        order.sort(key=lambda i: (-hits[i]["rerank"], -hits[i]["score"]))
+    out, taken = [], 0
+    for place, i in enumerate(order, 1):
+        h = {**hits[i], "place": i + 1, "final": place}
+        passed = (stage is None or (h["rerank"] >= min_score if stage == "llm"
+                                    else h["score"] >= threshold))
+        h["kept"] = passed and taken < keep
+        h["why"] = "" if h["kept"] else "порог" if not passed else "K₂"
+        taken += h["kept"]
+        out.append(h)
+    return out
+
+
+def context_grade(question, listed):
+    """Что попало в контекст: сколько чанков, сколько из них с фактом ожидания."""
+    kept = [h for h in listed if h["kept"]]
+    good = sum(h.get("relevant", False) for h in kept)
+    return {"kept": len(kept), "relevant": good,
+            "found": bool(good) if question and not question.get("outside") else None}
+
+
+def summary23(results):
+    """Итог прогона: на каждый набор и режим — ответы, контекст и расход."""
+    out = {}
+    for name in ("exact", "talk"):
+        rows = [r for r in results if r and r["set"] == name]
+        out[name] = {}
+        for mode in MODES23:
+            got = [(QUESTIONS[r["i"]], r["modes"][mode]) for r in rows if r["modes"].get(mode)]
+            if not got:
+                continue
+            inside = [(x, a) for x, a in got if not x.get("outside")]
+            outside = [a["grade"]["refused"] for x, a in got if x.get("outside")]
+            kept = [a["context"]["kept"] for _, a in got]
+            n = len(got)
+            total = lambda a, f: a["metrics"][f] + a["extra"][f]
+            out[name][mode] = {
+                **{v: sum(a["grade"]["verdict"] == v for _, a in got) for v in ("ok", "part", "bad")},
+                "total": n, "outside_refused": all(outside) if outside else None,
+                "found": sum(bool(a["context"]["found"]) for _, a in inside), "inside": len(inside),
+                "kept": round(sum(kept) / n, 1),
+                "precision": round(100 * sum(a["context"]["relevant"] for _, a in inside)
+                                   / max(1, sum(a["context"]["kept"] for _, a in inside))),
+                "tokens_in": round(sum(a["metrics"]["in"] for _, a in got) / n),
+                "tokens_all": round(sum(total(a, "in") + total(a, "out") for _, a in got) / n),
+                "seconds": round(sum(total(a, "seconds") for _, a in got) / n, 1),
+                "cost": round(sum(total(a, "cost") for _, a in got), 5)}
+    return out
+
+
+def runs23_db():
+    db = sqlite3.connect(store.FILE, timeout=5)
+    db.execute(RUNS23)
+    return db
+
+
+def save_run23(model, settings, results):
+    with closing(runs23_db()) as db, db:
+        db.execute("INSERT INTO rerank_runs (created, model, settings, results) VALUES (?, ?, ?, ?)",
+                   (time.strftime("%Y-%m-%d %H:%M"), model, json.dumps(settings),
+                    json.dumps(results, ensure_ascii=False)))
+
+
+def last_run23():
+    with closing(runs23_db()) as db:
+        row = db.execute("SELECT created, model, settings, results FROM rerank_runs "
+                         "ORDER BY id DESC LIMIT 1").fetchone()
+    if not row:
+        return None
+    return {"created": row[0], "model": row[1], "settings": json.loads(row[2]),
+            "results": json.loads(row[3])}
+
+
+def sweep(strategy, k, rewrites):
+    """Данные для подбора порога: у каждого вопроса — топ-k косинусов с
+    отметкой «есть факт». Наборы — точный и разговорный, и, если был прогон,
+    они же после rewrite (запросы из прогона). Кривые считает браузер."""
+    sets = {"exact": [x["q"] for x in QUESTIONS], "talk": TALK}
+    for name in ("exact", "talk"):
+        got = [rewrites.get(f"{name}:{i}") for i in range(len(QUESTIONS))]
+        if all(got):
+            sets[name + "_rw"] = got
+    flat = [(name, i, q) for name, qs in sets.items() for i, q in enumerate(qs)]
+    qvecs = embed([query_input(q) for _, _, q in flat])
+    chunks, vecs = loaded()["index"][strategy]
+    out = {name: [] for name in sets}
+    for (name, i, q), qv in zip(flat, qvecs):
+        scores = vecs @ qv
+        top = np.argsort(-scores)[:k]
+        out[name].append({"i": i, "q": q, "outside": bool(QUESTIONS[i].get("outside")),
+                          "hits": [[round(float(scores[j]), 4), relevant(QUESTIONS[i], chunks[j])]
+                                   for j in top]})
+    return out
+
+
+def question_set23():
+    """Набор дня 23: точная и разговорная формулировки рядом."""
+    return [{**x, "talk": talk} for x, talk in zip(question_set(), TALK)]
 
 
 if __name__ == "__main__":

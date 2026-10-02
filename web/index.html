@@ -748,13 +748,15 @@
 </section>
 
 <!-- Неделя 5 — RAG: своя вкладка, не чат, внутри — подвкладка на каждый день
-     (#week5/21, #week5/22). День 21 — индекс документов (rag.js), день 22 —
-     первый RAG-запрос (ask.js). Стили обоих — rag.css, данные — /api/rag/*. -->
+     (#week5/21, #week5/22, #week5/23). День 21 — индекс документов (rag.js),
+     день 22 — первый RAG-запрос (ask.js), день 23 — реранкинг и фильтр
+     (rerank.js). Стили — rag.css, данные — /api/rag/*. -->
 <section class="pane rag" id="week5" hidden>
 
 <nav class="rag-days" id="ragDays">
   <button class="rag-daytab" data-day="21">День 21 · индекс документов</button>
   <button class="rag-daytab" data-day="22">День 22 · первый RAG-запрос</button>
+  <button class="rag-daytab" data-day="23">День 23 · реранкинг и фильтр</button>
 </nav>
 
 <div class="rag-day" data-day="21" hidden>
@@ -877,6 +879,94 @@
   </div>
   <table class="rag-table rag-metrics ask-summary" id="evalSummary"></table>
   <div class="rag-scroll"><table class="rag-table ask-table" id="evalTable"></table></div>
+</section>
+
+</div>
+
+<div class="rag-day" data-day="23" hidden>
+
+<h1>Реранкинг и фильтр: второй этап после поиска</h1>
+<p class="sub">Поиск отдаёт топ-K₁ кандидатов, второй этап оставляет из них прошедших порог — не больше
+  K₂. Порог — по косинусу или по оценке LLM-реранкера, а до поиска модель может переписать вопрос.
+  Слева тот же вопрос идёт как в дне 22: топ-5 без фильтра.</p>
+
+<section class="rag-card" id="rrCard">
+  <div class="rag-bar">
+    <div class="ask-modes" id="rrModes" role="group" aria-label="Режим справа">
+      <button data-mode="filter">Фильтр по cos</button>
+      <button data-mode="rewrite">Rewrite + фильтр</button>
+      <button data-mode="rerank">Rewrite + реранкер</button>
+    </div>
+    <select id="rrModel" aria-label="Модель"></select>
+    <select id="rrStrategy" aria-label="Стратегия чанков"></select>
+  </div>
+  <div class="rag-bar rr-knobs">
+    <label class="rag-check">до фильтра, K₁ <select id="rrK1"></select></label>
+    <label class="rag-check">после, K₂ ≤ <select id="rrK2"></select></label>
+    <label class="rag-check rr-range" data-stage="cos">порог cos
+      <input type="range" id="rrTau" min="0.2" max="0.75" step="0.01"><output id="rrTauOut"></output></label>
+    <label class="rag-check rr-range" data-stage="llm">порог оценки
+      <input type="range" id="rrMin" min="0" max="10" step="1"><output id="rrMinOut"></output></label>
+  </div>
+  <div class="rag-bar">
+    <input id="rrQ" placeholder="Вопрос по гайдам — или клик по контрольному вопросу ниже">
+    <button class="main" id="rrGo">Спросить</button>
+  </div>
+  <ol class="ask-flow rr-flow" id="rrFlow">
+    <li data-step="q"><b>1 · Вопрос</b><span>—</span></li>
+    <li data-step="rewrite"><b>2 · Rewrite</b><span>—</span></li>
+    <li data-step="search"><b>3 · Поиск, топ-K₁</b><span>—</span></li>
+    <li data-step="rerank"><b>4 · Реранкер</b><span>—</span></li>
+    <li data-step="filter"><b>5 · Фильтр, топ-K₂</b><span>—</span></li>
+    <li data-step="llm"><b>6 · Запрос к LLM</b><span>—</span></li>
+  </ol>
+  <div class="rr-funnel" id="rrFunnel" hidden>
+    <div class="rr-funnel-head"><b id="rrFunnelTitle"></b><span class="hint" id="rrFunnelNote"></span></div>
+    <div class="rr-rows" id="rrRows"></div>
+    <div class="rag-legend"><span>✓ — в чанке есть факт из ожидания (только у контрольных вопросов)</span>
+      <span><i class="rr-tick"></i>порог</span><span>↑↓ — сдвиг места после реранкера</span></div>
+  </div>
+  <div class="ask-cols" id="rrCols">
+    <div class="ask-col" data-col="base">
+      <h3>Базовый — как день 22, топ-5 без фильтра</h3>
+      <div class="ask-answer"></div>
+      <div class="ask-grade"></div>
+      <div class="ask-meta"></div>
+      <ol class="ask-sources"></ol>
+    </div>
+    <div class="ask-col" data-col="best">
+      <h3 id="rrBestTitle"></h3>
+      <div class="ask-answer"></div>
+      <div class="ask-grade"></div>
+      <div class="ask-meta"></div>
+      <details class="ask-prompt"><summary>Что ушло в модель</summary><pre></pre></details>
+    </div>
+  </div>
+</section>
+
+<section class="rag-card" id="rrStripCard">
+  <h2>Как выбран порог косинуса</h2>
+  <p class="rag-note">Точка — вопрос из базы, она стоит на лучшем чанке с фактом среди первых K₂; ✕ — вопрос
+    вне базы, он стоит на лучшем кандидате вообще. Всё, что левее линии порога, фильтр отрезает. Порог
+    хорош, если точки справа, а ✕ — слева. Ряды «после rewrite» берут запросы из последнего прогона.
+    Линию двигает ползунок «порог cos» выше.</p>
+  <div class="rr-strip" id="rrStrip"></div>
+</section>
+
+<section class="rag-card" id="rrEvalCard">
+  <h2>Четыре режима на 10 точных и 10 разговорных вопросах</h2>
+  <p class="rag-note">Разговорные вопросы — те же десять, но сленгом: «что писать в финплане?», «почём
+    юнити про?». Факты, источники и сверка — как в дне 22. Прогон идёт с ручками сверху: K₁, K₂ и оба
+    порога. Клик по строке показывает наверху базовый ответ и ответ режима, выбранного переключателем.</p>
+  <div class="rag-bar">
+    <button class="main" id="rrEvalGo">Прогнать 20 вопросов в 4 режимах</button>
+    <span class="hint" id="rrEvalNote"></span>
+  </div>
+  <div class="rr-sums">
+    <div><h3>Точные</h3><table class="rag-table rag-metrics" id="rrSumExact"></table></div>
+    <div><h3>Разговорные</h3><table class="rag-table rag-metrics" id="rrSumTalk"></table></div>
+  </div>
+  <div class="rag-scroll"><table class="rag-table ask-table rr-table" id="rrTable"></table></div>
 </section>
 
 </div>
@@ -2128,5 +2218,6 @@ $("#modal").addEventListener("click", event => {
 <script src="/mcp.js"></script>
 <script src="/rag.js"></script>
 <script src="/ask.js"></script>
+<script src="/rerank.js"></script>
 </body>
 </html>

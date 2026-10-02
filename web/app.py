@@ -1688,6 +1688,208 @@ def rag_eval(body: RagEvalIn):
     return StreamingResponse(run(), media_type="application/x-ndjson")
 
 
+# ── День 23: реранкинг и фильтр ─────────────────────────────────────
+# Порог, оценки и контрольный набор — в rag.py, здесь — запросы к модели:
+# переписать вопрос, оценить кандидатов и ответить в каждом режиме.
+
+class RerankIn(BaseModel):
+    model: str = CHAT_DEFAULT
+    strategy: str = "struct"
+    k1: int = rag.CANDIDATES
+    k2: int = rag.KEEP
+    threshold: float = rag.THRESHOLD
+    min_score: float = rag.MIN_SCORE
+
+
+class RerankAskIn(RerankIn):
+    q: str
+    mode: str = "rerank"  # правая колонка: filter | rewrite | rerank, левая — всегда base
+
+
+NO_EXTRA = {"in": 0, "out": 0, "seconds": 0, "cost": 0}
+EMPTY_ANSWER = "В документах этого нет."
+
+
+def rerank_setup(body):
+    model, strategy, _ = rag_setup(body.model, body.strategy, 1)
+    return model, {"strategy": strategy, "k1": max(1, min(body.k1, 20)), "k2": max(1, min(body.k2, 10)),
+                   "threshold": round(max(0.0, min(body.threshold, 1.0)), 3),
+                   "min_score": max(0.0, min(body.min_score, 10.0))}
+
+
+async def rag_once(client, model, target, messages):
+    """Короткий запрос целиком (rewrite, оценки реранкера) — событие done колонки."""
+    async for event in rag_column(client, model, target, messages):
+        if event["t"] == "done":
+            return event
+
+
+async def rerank_run(client, q, modes, model, cfg):
+    """Вопрос через режимы дня 23. Поиск исходного вопроса, rewrite и оценки
+    реранкера общие на все режимы, ответы режимов идут параллельно. Пустой
+    контекст — отказ без запроса к модели."""
+    question, k1 = rag.question23(q), cfg["k1"]
+
+    async def found(target, query, k):
+        started = time.monotonic()
+        hits = await asyncio.to_thread(rag.retrieve, query, cfg["strategy"], k)
+        for h in hits:
+            h["relevant"] = rag.relevant(question, h)
+        return hits, {"t": "search", "target": target, "query": query,
+                      "ms": round((time.monotonic() - started) * 1000), "hits": hits}
+
+    raw, event = await found("raw", q, max(k1, rag.TOP))
+    yield event
+    pool, spent = {False: raw}, {"rewrite": NO_EXTRA, "rerank": NO_EXTRA}
+    if any(rag.MODES23[m]["rewrite"] for m in modes):
+        done = await rag_once(client, model, "rewrite", rag.rewrite_messages(q))
+        query = rag.parse_rewrite(done["answer"]) or q
+        spent["rewrite"] = done["metrics"]
+        yield {"t": "rewrite", "query": query, "error": done["error"], "metrics": done["metrics"]}
+        pool[True], event = await found("rewritten", query, k1)
+        yield event
+    scores = None
+    if "rerank" in modes:
+        done = await rag_once(client, model, "rerank", rag.rerank_messages(q, pool[True]))
+        scores = rag.parse_scores(done["answer"], len(pool[True]))
+        spent["rerank"] = done["metrics"]
+        for h, s in zip(pool[True], scores or []):
+            h["rerank"] = s
+        yield {"t": "rerank", "scores": scores, "metrics": done["metrics"],
+               "error": done["error"] or ("" if scores else "оценки не разобраны — фильтр по косинусу")}
+
+    lists, queue, workers = {}, asyncio.Queue(), []
+    for m in modes:
+        spec = rag.MODES23[m]
+        stage = "cos" if spec["stage"] == "llm" and scores is None else spec["stage"]
+        hits = pool[spec["rewrite"]]
+        lists[m] = (rag.second_stage(hits[:rag.TOP], None, 0, 0, rag.TOP) if stage is None else
+                    rag.second_stage(hits[:k1], stage, cfg["threshold"], cfg["min_score"], cfg["k2"]))
+        yield {"t": "filter", "target": m, "stage": stage, "candidates": lists[m]}
+        kept = [h for h in lists[m] if h["kept"]]
+        if kept:
+            prompt = rag.messages(q, kept)
+            yield {"t": "prompt", "target": m, "system": prompt[0]["content"], "user": prompt[1]["content"]}
+            workers.append(asyncio.create_task(drain(rag_column(client, model, m, prompt), queue)))
+        else:
+            await queue.put({"t": "done", "target": m, "answer": EMPTY_ANSWER, "error": "", "empty": True,
+                             "metrics": dict(NO_EXTRA)})
+    waiting = set(modes)
+    while waiting:
+        event = await queue.get()
+        if event is None:
+            continue
+        if event["t"] == "done":
+            m = event["target"]
+            waiting.discard(m)
+            kept = [h for h in lists[m] if h["kept"]]
+            parts = ([spent["rewrite"]] if rag.MODES23[m]["rewrite"] else []) + (
+                [spent["rerank"]] if m == "rerank" else [])
+            event["extra"] = {f: round(sum(p[f] for p in parts), 6) for f in NO_EXTRA}
+            event["context"] = rag.context_grade(question, lists[m])
+            event["cited"] = sorted({int(n) for n in rag.CITE.findall(event["answer"]) if 0 < int(n) <= len(kept)})
+            if question:
+                event["grade"] = rag.grade(question, event["answer"], kept)
+        yield event
+    await asyncio.gather(*workers)
+
+
+@app.get("/rerank.js")
+def rerank_script():
+    return FileResponse(HERE / "rerank.js")
+
+
+@app.get("/api/rag/rerank/setup")
+def rerank_config():
+    """Контрольный набор дня 23, режимы, ручки по умолчанию и последний прогон."""
+    last = rag.last_run23()
+    if last:
+        last["summary"] = rag.summary23(last["results"])
+    return {"questions": rag.question_set23(), "last": last, "default": CHAT_DEFAULT,
+            "modes": {m: spec["title"] for m, spec in rag.MODES23.items()},
+            "defaults": {"k1": rag.CANDIDATES, "k2": rag.KEEP, "threshold": rag.THRESHOLD,
+                         "min_score": rag.MIN_SCORE, "top": rag.TOP},
+            "strategies": rag.STRATEGIES,
+            "models": [{"id": m["id"], "title": m["title"]} for m in CHAT_MODELS
+                       if PROVIDERS[m["provider"]]["key"]]}
+
+
+@app.post("/api/rag/rerank/ask")
+def rerank_ask(body: RerankAskIn):
+    if not body.q.strip():
+        raise HTTPException(status_code=400, detail="пустой вопрос")
+    model, cfg = rerank_setup(body)
+    mode = body.mode if body.mode in ("filter", "rewrite", "rerank") else "rerank"
+
+    async def run():
+        yield line({"t": "start", "mode": mode, "model": model["id"], **cfg})
+        async with httpx.AsyncClient(timeout=90, default_encoding="utf-8", proxy=PROXY) as client:
+            try:
+                async for event in rerank_run(client, body.q.strip(), ["base", mode], model, cfg):
+                    yield line(event)
+            except httpx.HTTPError as e:
+                yield line({"t": "error", "target": "search", "message": f"Ollama не ответила: {e}"})
+        yield line({"t": "end"})
+
+    return StreamingResponse(run(), media_type="application/x-ndjson")
+
+
+@app.post("/api/rag/rerank/eval")
+def rerank_eval(body: RerankIn):
+    """20 вопросов (10 точных и 10 разговорных) в четырёх режимах, по три
+    вопроса разом. Прогон сохраняется, его rewrite нужен и кривым порога."""
+    model, cfg = rerank_setup(body)
+    jobs = [(name, i, q) for name, qs in (("exact", [x["q"] for x in rag.QUESTIONS]), ("talk", rag.TALK))
+            for i, q in enumerate(qs)]
+
+    async def run():
+        yield line({"t": "start", "total": len(jobs), "model": model["id"], **cfg})
+        results = [None] * len(jobs)
+        gate, queue = asyncio.Semaphore(3), asyncio.Queue()
+
+        async def one(n, name, i, q):
+            async with gate:
+                record = {"set": name, "i": i, "rewritten": "", "lists": {}, "modes": {}}
+                try:
+                    async for event in rerank_run(client, q, list(rag.MODES23), model, cfg):
+                        if event["t"] == "rewrite":
+                            record["rewritten"] = event["query"]
+                        elif event["t"] == "filter":
+                            record["lists"][event["target"]] = [{k: v for k, v in h.items() if k != "text"}
+                                                                for h in event["candidates"]]
+                        elif event["t"] == "done":
+                            record["modes"][event["target"]] = {f: event.get(f) for f in (
+                                "answer", "error", "empty", "metrics", "extra", "grade", "cited", "context")}
+                except httpx.HTTPError as e:
+                    record["error"] = f"Ollama не ответила: {e}"
+                results[n] = record
+                await queue.put({"t": "result", **record})
+
+        async with httpx.AsyncClient(timeout=90, default_encoding="utf-8", proxy=PROXY) as client:
+            workers = [asyncio.create_task(one(n, *job)) for n, job in enumerate(jobs)]
+            for _ in workers:
+                yield line(await queue.get())
+            await asyncio.gather(*workers)
+        done = [r for r in results if r and len(r["modes"]) == len(rag.MODES23)]
+        saved = len(done) == len(jobs)
+        if saved:
+            rag.save_run23(model["id"], cfg, results)
+        yield line({"t": "done", "summary": rag.summary23(done), "saved": saved})
+
+    return StreamingResponse(run(), media_type="application/x-ndjson")
+
+
+@app.get("/api/rag/rerank/sweep")
+def rerank_sweep(strategy: str = "struct"):
+    """Косинусы топ-K₁ контрольных вопросов для кривых порога; rewrite — из прогона."""
+    last = rag.last_run23() or {"results": []}
+    rewrites = {f"{r['set']}:{r['i']}": r["rewritten"] for r in last["results"] if r and r.get("rewritten")}
+    try:
+        return rag.sweep(strategy if strategy in rag.STRATEGIES else "struct", rag.CANDIDATES, rewrites)
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=503, detail=f"Ollama не ответила: {e}")
+
+
 @app.get("/chat.js")
 def chat_script():
     return FileResponse(HERE / "chat.js")
