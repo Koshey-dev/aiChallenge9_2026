@@ -549,3 +549,64 @@
 @media (max-width: 900px) {
   .tu-pair { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* День 30. Приватный сервис: схема из пяти звеньев, плитки машины, чат,
+   журнал запросов со всех устройств, проверки и диаграмма залпа. Плитки —
+   ct-tile, полоса контекста — lc-bar дня 26. Классы sv-. */
+.sv-arch { list-style: none; margin: 0 0 12px; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+.sv-arch li { border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; position: relative; display: grid; gap: 2px; min-width: 0; }
+.sv-arch li:not(:last-child)::after { content: "→"; position: absolute; right: -10px; top: 50%; transform: translate(50%, -50%);
+                                      color: var(--dim); }
+.sv-arch b { font-size: 14px; }
+.sv-arch span { font-size: 12.5px; }
+.sv-arch i { font-style: normal; font-size: 11.5px; color: var(--accent); }
+.sv-tiles { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+.sv-tiles .ct-tile b { font-size: 19px; }
+#svNote:empty { display: none; }
+.sv-log { border: 1px solid var(--line); border-radius: 10px; padding: 10px; height: 300px; overflow-y: auto;
+          display: grid; gap: 8px; align-content: start; margin-bottom: 8px; }
+.sv-msg { max-width: 85%; padding: 8px 12px; border-radius: 10px; overflow-wrap: anywhere; }
+.sv-msg.user { justify-self: end; background: #23314a; white-space: pre-wrap; }
+.sv-msg.bot { justify-self: start; border: 1px solid var(--line); }
+.sv-msg.err { border-color: var(--bad); color: var(--bad); }
+.sv-msg p { margin: 0 0 6px; }
+.sv-meta { font-size: 12px; color: var(--dim); margin-top: 4px; }
+.sv-wait { color: var(--warn); }
+.sv-ctx { display: flex; gap: 12px; align-items: center; font-size: 13px; color: var(--dim); margin-bottom: 8px; }
+.sv-ctx .lc-bar { flex: 1; max-width: 420px; margin: 0; }
+#svText { flex: 1; min-width: 220px; resize: vertical; }
+.sv-journal td { white-space: nowrap; }
+.sv-journal td:last-child { white-space: normal; min-width: 200px; }
+.sv-journal tr.sv-new td { background: #16241c; }
+.sv-code { font-weight: 650; }
+.sv-code.ok { color: var(--accent); }
+.sv-code.part { color: var(--warn); }
+.sv-code.bad { color: var(--bad); }
+.sv-checks { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-bottom: 14px; }
+.sv-check { border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; min-width: 0; }
+.sv-check h3 { margin: 0 0 4px; font-size: 15px; }
+.sv-check .hint { margin: 0 0 8px; }
+.sv-out { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 4px; font-size: 13px; }
+.sv-out li { overflow-wrap: anywhere; }
+.sv-out li.ok { color: var(--accent); }
+.sv-out li.part { color: var(--warn); }
+.sv-out li.bad { color: var(--bad); }
+.sv-out li b { color: var(--text); }
+.sv-wide { margin-bottom: 14px; }
+.sv-gantt { display: grid; gap: 6px; }
+.sv-lane { display: grid; grid-template-columns: 80px minmax(0, 1fr) minmax(0, 330px); gap: 10px; align-items: center; font-size: 13px; }
+.sv-lane span { color: var(--dim); }
+.sv-lane em { font-style: normal; color: var(--dim); font-size: 12.5px; }
+.sv-track { position: relative; height: 14px; background: #14161e; border-radius: 4px; overflow: hidden; }
+.sv-track i { position: absolute; top: 0; height: 100%; }
+.sv-track i.wait { background: #4d5163; }
+.sv-track i.read { background: #4f8a68; }
+.sv-track i.gen { background: var(--accent); }
+.sv-track i.no { background: var(--bad); }
+
+@media (max-width: 900px) {
+  .sv-arch, .sv-checks { grid-template-columns: minmax(0, 1fr); }
+  .sv-arch li:not(:last-child)::after { content: "↓"; right: 50%; top: auto; bottom: -10px; transform: translate(50%, 50%); }
+  .sv-lane { grid-template-columns: 64px minmax(0, 1fr); }
+  .sv-lane em { grid-column: 1 / -1; }
+}

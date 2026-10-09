@@ -2,3 +2,4 @@
 __pycache__/
 *.db
 web/files/
+web/qwen2.5-tokenizer.json

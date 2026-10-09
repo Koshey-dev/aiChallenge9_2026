@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Приватный AI-сервис</title>
+<!-- День 30: чат приватного сервиса для любого устройства. Отдаёт его шлюз
+     (gateway.py) по адресу /llm/, вход — по ключу API, ключ хранится только
+     в этом браузере. Запросы — в /llm/v1/chat/completions потоком. -->
+<style>
+  :root { --bg: #101118; --card: #181a24; --line: #262936; --text: #e8e9ef; --dim: #8b8fa3;
+          --accent: #7dd3a0; --warn: #e8b573; --bad: #e88b8b; color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.5 system-ui, sans-serif;
+         display: flex; flex-direction: column; min-height: 100vh; min-height: 100dvh; }
+  header { padding: 14px 16px 10px; border-bottom: 1px solid var(--line); }
+  h1 { margin: 0; font-size: 18px; }
+  .sub { color: var(--dim); font-size: 13px; }
+  .key { display: flex; gap: 8px; padding: 10px 16px; border-bottom: 1px solid var(--line); }
+  .key[hidden] { display: none; }
+  input, textarea, button { font: inherit; color: var(--text); background: var(--card); border: 1px solid var(--line);
+                            border-radius: 10px; padding: 9px 12px; }
+  input, textarea { flex: 1; min-width: 0; }
+  button { cursor: pointer; }
+  button.main { background: var(--accent); color: #0b0c12; border-color: var(--accent); font-weight: 600; }
+  button:disabled { opacity: .5; cursor: default; }
+  main { flex: 1; overflow-y: auto; padding: 12px 16px; display: grid; gap: 10px; align-content: start; }
+  .msg { max-width: 92%; padding: 9px 12px; border-radius: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .msg.user { justify-self: end; background: #23314a; }
+  .msg.bot { justify-self: start; background: var(--card); border: 1px solid var(--line); }
+  .msg .meta { display: block; margin-top: 6px; color: var(--dim); font-size: 12px; }
+  .msg.err { border-color: var(--bad); color: var(--bad); }
+  .wait { color: var(--warn); }
+  .empty { color: var(--dim); text-align: center; margin-top: 30px; font-size: 14px; }
+  footer { border-top: 1px solid var(--line); padding: 10px 16px 14px; display: grid; gap: 8px; }
+  .row { display: flex; gap: 8px; align-items: flex-end; }
+  textarea { resize: none; height: 46px; }
+  .ctx { display: flex; gap: 10px; align-items: center; color: var(--dim); font-size: 12px; }
+  .bar { flex: 1; height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; }
+  .bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .3s; }
+  .bar i.full { background: var(--warn); }
+  .tools { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; }
+  .tools button { padding: 4px 10px; font-size: 13px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Приватный AI-сервис</h1>
+  <div class="sub" id="who">локальная модель на сервере команды · вход по ключу</div>
+</header>
+<form class="key" id="keyForm">
+  <input id="key" type="password" autocomplete="off" placeholder="Ключ API" aria-label="Ключ API">
+  <button class="main">Войти</button>
+</form>
+<main id="log"><p class="empty">Ответы пишет модель на сервере. История — только в этом браузере.</p></main>
+<footer>
+  <div class="ctx"><span id="ctxText">контекст: —</span><div class="bar"><i id="ctxBar"></i></div></div>
+  <div class="row">
+    <textarea id="text" placeholder="Сообщение" aria-label="Сообщение"></textarea>
+    <button class="main" id="send">➤</button>
+  </div>
+  <div class="tools"><button id="reset">Новый чат</button><button id="logout">Сменить ключ</button></div>
+</footer>
+<script>
+  const SYSTEM = "Ты — приватный ассистент команды, которая делает игры. Модель работает на её сервере. "
+    + "Отвечай по-русски, коротко и по делу.";
+  const $ = id => document.getElementById(id);
+  const store = { get: k => { try { return localStorage.getItem(k); } catch { return null; } },
+                  set: (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch {} } };
+  let key = store.get("llmKey"), history = [], busy = false;
+
+  function showKey() { $("keyForm").hidden = !!key; $("send").disabled = !key || busy; }
+  $("keyForm").addEventListener("submit", e => {
+    e.preventDefault();
+    key = $("key").value.trim() || null;
+    store.set("llmKey", key);
+    $("key").value = "";
+    showKey();
+  });
+  $("logout").addEventListener("click", () => { key = null; store.set("llmKey", null); showKey(); });
+  $("reset").addEventListener("click", () => {
+    history = [];
+    $("log").innerHTML = `<p class="empty">Новый чат.</p>`;
+    context(null);
+  });
+
+  function bubble(cls, text) {
+    $("log").querySelector(".empty")?.remove();
+    const div = document.createElement("div");
+    div.className = "msg " + cls;
+    div.textContent = text;
+    $("log").append(div);
+    div.scrollIntoView({ block: "end" });
+    return div;
+  }
+
+  function context(usage) {
+    const used = usage ? usage.prompt_tokens + usage.completion_tokens : 0;
+    $("ctxText").textContent = usage ? `контекст: ${used} из 2048 токенов` : "контекст: —";
+    $("ctxBar").style.width = `${Math.min(100, used / 2048 * 100)}%`;
+    $("ctxBar").classList.toggle("full", used > 1500);
+  }
+
+  async function send() {
+    const text = $("text").value.trim();
+    if (!text || !key || busy) return;
+    busy = true;
+    showKey();
+    $("text").value = "";
+    bubble("user", text);
+    history.push({ role: "user", content: text });
+    const bot = bubble("bot", "");
+    const meta = document.createElement("span");
+    meta.className = "meta wait";
+    meta.textContent = "отправляю…";
+    let answer = "", usage = null;
+    try {
+      const r = await fetch("/llm/v1/chat/completions", {
+        method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + key },
+        body: JSON.stringify({ model: "local", stream: true, messages: [{ role: "system", content: SYSTEM }, ...history] }) });
+      if (!r.ok) {
+        const detail = (await r.json().catch(() => ({}))).detail || "HTTP " + r.status;
+        throw new Error(`${r.status}: ${detail}`);
+      }
+      const reader = r.body.getReader(), dec = new TextDecoder();
+      let buf = "";
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        let cut;
+        while ((cut = buf.indexOf("\n\n")) >= 0) {
+          const ev = buf.slice(0, cut);
+          buf = buf.slice(cut + 2);
+          if (ev.startsWith(": queue")) {
+            meta.textContent = `в очереди: ${ev.split(" ").pop()}`;
+          } else if (ev.startsWith("data: ") && ev !== "data: [DONE]") {
+            const c = JSON.parse(ev.slice(6));
+            if (c.error) throw new Error(c.error.message);
+            if (c.usage) usage = c.usage;
+            const piece = c.choices?.[0]?.delta?.content;
+            if (piece) {
+              answer += piece;
+              bot.firstChild ? (bot.firstChild.nodeValue = answer) : bot.prepend(document.createTextNode(answer));
+              meta.textContent = "пишет…";
+            }
+          }
+        }
+        bot.append(meta);
+      }
+      history.push({ role: "assistant", content: answer });
+      meta.classList.remove("wait");
+      if (usage) {
+        meta.textContent = `очередь ${usage.queue_seconds} с · первый токен ${usage.ttft_seconds} с · `
+          + `${usage.tokens_per_second} ток/с · ${usage.prompt_tokens} → ${usage.completion_tokens} ток.`;
+        context(usage);
+      }
+    } catch (e) {
+      history.pop();
+      bot.classList.add("err");
+      bot.textContent = e.message;
+      if (e.message.startsWith("401")) { key = null; store.set("llmKey", null); }
+    }
+    busy = false;
+    showKey();
+  }
+  $("send").addEventListener("click", send);
+  $("text").addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } });
+  showKey();
+</script>
+</body>
+</html>

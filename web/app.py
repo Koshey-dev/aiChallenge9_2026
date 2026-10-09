@@ -2506,6 +2506,47 @@ def tune_eval(body: TuneEvalIn):
     return StreamingResponse((line(e) for e in local.tune_eval(ids)), media_type="application/x-ndjson")
 
 
+# ── День 30: приватный сервис на локальной LLM ──────────────────────
+# Сам сервис — отдельный процесс gateway.py за Caddy по пути /llm. Вкладка —
+# его клиент: браузер ходит в публичный адрес сервиса по сети с ключами из
+# .env стенда, а стенд со своей стороны проверяет, какие порты сервера видны.
+
+SERVICE_URL = os.environ.get("LLM_SERVICE_URL") or "https://91.188.212.179.nip.io/llm"
+SERVICE_KEYS = ("stand", "test", "load")
+SERVICE_PORTS = {443: "Caddy, HTTPS", 11434: "Ollama", 8100: "шлюз напрямую"}
+
+
+@app.get("/service.js")
+def service_script():
+    return FileResponse(HERE / "service.js")
+
+
+@app.get("/api/service")
+def service_overview():
+    keys = {name: os.environ.get(f"LLM_KEY_{name.upper()}") for name in SERVICE_KEYS}
+    return {"url": SERVICE_URL, "keys": keys, "ready": all(keys.values())}
+
+
+@app.get("/api/service/ports")
+async def service_ports():
+    """Какие порты сервера видны с машины стенда: снаружи должен отвечать только 443."""
+    host = httpx.URL(SERVICE_URL).host
+
+    async def knock(port, what):
+        start = time.monotonic()
+        try:
+            _, writer = await asyncio.wait_for(asyncio.open_connection(host, port), 3)
+            writer.close()
+            state = "открыт"
+        except asyncio.TimeoutError:
+            state = "закрыт — таймаут"
+        except OSError:
+            state = "закрыт — отказ"
+        return {"port": port, "what": what, "state": state, "ms": round((time.monotonic() - start) * 1000)}
+
+    return {"host": host, "ports": await asyncio.gather(*(knock(p, w) for p, w in SERVICE_PORTS.items()))}
+
+
 @app.get("/chat.js")
 def chat_script():
     return FileResponse(HERE / "chat.js")

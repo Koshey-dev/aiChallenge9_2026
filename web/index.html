@@ -1081,11 +1081,12 @@
 </section>
 
 <!-- Неделя 6 — локальные модели: вкладка с подвкладками по дням, как у недели 5
-     (#week6/26 … #week6/29). День 26 — запуск локальной LLM (local.js),
+     (#week6/26 … #week6/30). День 26 — запуск локальной LLM (local.js),
      день 27 — чат-приложение на ней (assist.js), день 28 — RAG целиком на этой
-     машине (localrag.js), день 29 — оптимизация модели под этот RAG (tune.js).
-     Стили — rag.css, данные — /api/local/*, /api/assist/*, /api/localrag/*
-     и /api/tune/*. -->
+     машине (localrag.js), день 29 — оптимизация модели под этот RAG (tune.js),
+     день 30 — приватный сервис на VPS (service.js, сам сервис — gateway.py).
+     Стили — rag.css, данные — /api/local/*, /api/assist/*, /api/localrag/*,
+     /api/tune/* и /api/service/*. -->
 <section class="pane rag" id="week6" hidden>
 
 <nav class="rag-days" id="w6Days">
@@ -1093,6 +1094,7 @@
   <button class="rag-daytab" data-day="27">День 27 · локальный ассистент</button>
   <button class="rag-daytab" data-day="28">День 28 · локальный RAG</button>
   <button class="rag-daytab" data-day="29">День 29 · оптимизация</button>
+  <button class="rag-daytab" data-day="30">День 30 · приватный сервис</button>
 </nav>
 
 <div class="rag-day" data-day="26" hidden>
@@ -1297,6 +1299,89 @@
   <h2>Квант: качество, скорость, память</h2>
   <p class="rag-note">Одни и те же промпт и параметры, меняется только число бит на вес. Верных — по обоим наборам вместе.</p>
   <div class="rag-scroll"><table class="rag-table tu-quant" id="tuQuant"></table></div>
+</section>
+
+</div>
+
+<div class="rag-day" data-day="30" hidden>
+
+<h1>Приватный AI-сервис на локальной модели</h1>
+<p class="sub">qwen2.5:1.5b в Ollama на VPS за шлюзом: HTTP API в формате OpenAI, вход по ключу, лимит запросов на ключ,
+  предел контекста и очередь на одно ядро. Эта вкладка — один из клиентов сервиса: браузер ходит в его публичный адрес
+  по сети, как телефон, curl или OpenAI SDK.</p>
+<p class="lc-snap" id="svNote"></p>
+
+<section class="rag-card" id="svServiceCard">
+  <h2>Сервис</h2>
+  <ol class="sv-arch">
+    <li><b>Клиенты</b><span>браузер, телефон, curl, OpenAI SDK</span><i>ключ API в заголовке</i></li>
+    <li><b>Caddy · HTTPS</b><span>путь /llm — без пароля стенда</span><i>сертификат Let's Encrypt</i></li>
+    <li><b>Шлюз gateway.py</b><span>ключ → лимит в минуту → контекст → очередь</span><i>127.0.0.1:8100</i></li>
+    <li><b>Ollama</b><span>qwen2.5:1.5b · окно 2048</span><i>127.0.0.1:11434 — снаружи не видна</i></li>
+    <li><b>VPS</b><span>1 ядро · 1,9 ГБ памяти</span><i>без видеокарты</i></li>
+  </ol>
+  <p class="rag-note">Адрес API: <code id="svUrl"></code> · страница чата для любого устройства:
+    <a id="svPage" target="_blank" rel="noopener"></a></p>
+  <div class="ct-tiles sv-tiles" id="svTiles"></div>
+</section>
+
+<section class="rag-card" id="svChatCard">
+  <h2>Чат через сервис</h2>
+  <div class="sv-log" id="svLog"><p class="hint">История — только в этом браузере, сервису уходит целиком с каждым сообщением.</p></div>
+  <div class="ctx-row sv-ctx"><span id="svCtxText">контекст: —</span><div class="lc-bar"><i class="m" id="svCtxBar"></i></div></div>
+  <div class="rag-bar">
+    <textarea id="svText" rows="2" placeholder="Сообщение — Enter отправляет"></textarea>
+    <button class="main" id="svSend">Отправить</button>
+    <button id="svReset">Новый чат</button>
+  </div>
+</section>
+
+<section class="rag-card" id="svJournalCard">
+  <h2>Журнал сервиса: кто и что спрашивал</h2>
+  <p class="rag-note">Последние запросы ко всему сервису — с этой вкладки, с телефона, из командной строки. Устройство — по
+    User-Agent, сеть — адрес без двух последних частей. Обновляется каждые 3 секунды.</p>
+  <div class="rag-scroll"><table class="rag-table sv-journal" id="svJournal"></table></div>
+</section>
+
+<section class="rag-card" id="svChecksCard">
+  <h2>Проверки</h2>
+  <div class="sv-checks">
+    <div class="sv-check">
+      <h3>Доступ по сети</h3>
+      <p class="hint">Из браузера — запрос с ключом, без ключа и с чужим; со стенда — какие порты сервера видны снаружи.</p>
+      <button id="svNet">Проверить</button>
+      <ul class="sv-out" id="svNetOut"></ul>
+    </div>
+    <div class="sv-check">
+      <h3>Лимит ключа</h3>
+      <p class="hint">Семь запросов подряд с ключом test: ему разрешено 5 в минуту.</p>
+      <button id="svRate">Семь подряд</button>
+      <ul class="sv-out" id="svRateOut"></ul>
+    </div>
+    <div class="sv-check">
+      <h3>Предел контекста</h3>
+      <p class="hint">Сообщение длиннее окна модели и max_tokens больше предела ответа.</p>
+      <button id="svCtx">Проверить</button>
+      <ul class="sv-out" id="svCtxOut"></ul>
+    </div>
+  </div>
+  <div class="sv-check sv-wide">
+    <h3>Стабильность: залп из шести запросов разом</h3>
+    <p class="hint">Ядро одно — модель отвечает по одному. Серый — ожидание в очереди, светлый — чтение промпта,
+      зелёный — генерация, красный — отказ.</p>
+    <div class="rag-bar"><button id="svBurst">Залп</button><span class="hint" id="svBurstNote"></span></div>
+    <div class="sv-gantt" id="svGantt"></div>
+  </div>
+  <details class="ask-prompt sv-howto"><summary>Как подключиться: curl и OpenAI SDK</summary>
+    <pre class="tu-pre">curl <span class="sv-base"></span>/v1/chat/completions \
+  -H "Authorization: Bearer $LLM_KEY" -H "Content-Type: application/json" \
+  -d '{"messages": [{"role": "user", "content": "Привет!"}], "max_tokens": 64}'
+
+from openai import OpenAI
+client = OpenAI(base_url="<span class="sv-base"></span>/v1", api_key=LLM_KEY)
+reply = client.chat.completions.create(model="qwen2.5:1.5b",
+    messages=[{"role": "user", "content": "Привет!"}], max_tokens=64)
+print(reply.choices[0].message.content)</pre></details>
 </section>
 
 </div>
@@ -2554,5 +2639,6 @@ $("#modal").addEventListener("click", event => {
 <script src="/assist.js"></script>
 <script src="/localrag.js"></script>
 <script src="/tune.js"></script>
+<script src="/service.js"></script>
 </body>
 </html>

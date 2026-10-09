@@ -1,0 +1,16 @@
+# День 30: шлюз приватного LLM-сервиса. Ставится в /etc/systemd/system/,
+# наружу его выпускает Caddy по пути /llm (см. README, «Как развёрнут стенд»).
+[Unit]
+Description=AI Challenge private LLM gateway
+After=network.target ollama.service
+
+[Service]
+User=user
+Group=user
+WorkingDirectory=/opt/aichallenge/web
+ExecStart=/opt/aichallenge/.venv/bin/uvicorn gateway:app --host 127.0.0.1 --port 8100
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
