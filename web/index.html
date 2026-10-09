@@ -1081,16 +1081,18 @@
 </section>
 
 <!-- Неделя 6 — локальные модели: вкладка с подвкладками по дням, как у недели 5
-     (#week6/26, #week6/27, #week6/28). День 26 — запуск локальной LLM (local.js),
+     (#week6/26 … #week6/29). День 26 — запуск локальной LLM (local.js),
      день 27 — чат-приложение на ней (assist.js), день 28 — RAG целиком на этой
-     машине (localrag.js). Стили — rag.css, данные — /api/local/*, /api/assist/*
-     и /api/localrag/*. -->
+     машине (localrag.js), день 29 — оптимизация модели под этот RAG (tune.js).
+     Стили — rag.css, данные — /api/local/*, /api/assist/*, /api/localrag/*
+     и /api/tune/*. -->
 <section class="pane rag" id="week6" hidden>
 
 <nav class="rag-days" id="w6Days">
   <button class="rag-daytab" data-day="26">День 26 · локальная LLM</button>
   <button class="rag-daytab" data-day="27">День 27 · локальный ассистент</button>
   <button class="rag-daytab" data-day="28">День 28 · локальный RAG</button>
+  <button class="rag-daytab" data-day="29">День 29 · оптимизация</button>
 </nav>
 
 <div class="rag-day" data-day="26" hidden>
@@ -1230,6 +1232,71 @@
   <div class="ct-tiles lr-head" id="lrHead"></div>
   <div class="rag-scroll"><table class="rag-table rag-metrics ask-summary lr-summary" id="lrSummary"></table></div>
   <div class="rag-scroll"><table class="rag-table ask-table lr-table" id="lrTable"></table></div>
+</section>
+
+</div>
+
+<div class="rag-day" data-day="29" hidden>
+
+<h1>Оптимизация локальной модели под RAG</h1>
+<p class="sub">Задача дня 28: ответ по пяти фрагментам индекса со ссылками [n]. Ступень за ступенью меняется одно —
+  параметры, промпт, квант, место модели в памяти, — и каждая ступень проходит контрольный набор. Итог собран в
+  модель Ollama: квант, параметры, правила и примеры ответа лежат в ней самой.</p>
+<p class="lc-snap" id="tuSnap" hidden></p>
+
+<section class="rag-card" id="tuPairCard">
+  <h2>До и после</h2>
+  <div class="tu-pair">
+    <div class="tu-config" id="tuBefore"></div>
+    <div class="tu-config" id="tuAfter"></div>
+  </div>
+  <div class="ct-tiles tu-result" id="tuResult"></div>
+</section>
+
+<section class="rag-card" id="tuAskCard">
+  <h2>Один вопрос: до и после</h2>
+  <p class="rag-note">Поиск один, фрагменты общие. Модели отвечают по очереди: видеокарта одна, и если модель не в
+    памяти, её загрузка видна в метриках. Вопрос можно взять из набора — точными словами дня 22 или разговорными дня 23.</p>
+  <div class="rag-bar">
+    <input id="tuQ" list="tuList" placeholder="Вопрос по гайдам — или из контрольного набора">
+    <datalist id="tuList"></datalist>
+    <button class="main" id="tuGo">Спросить обе</button>
+  </div>
+  <div class="ask-cols" id="tuCols">
+    <div class="ask-col" data-col="before">
+      <h3>До · <span class="tu-who"></span></h3>
+      <div class="ask-answer"></div>
+      <div class="ask-grade"></div>
+      <div class="ask-meta"></div>
+    </div>
+    <div class="ask-col" data-col="after">
+      <h3>После · <span class="tu-who"></span></h3>
+      <div class="ask-answer"></div>
+      <div class="ask-grade"></div>
+      <div class="ask-meta"></div>
+    </div>
+  </div>
+  <ol class="ask-sources" id="tuSources"></ol>
+</section>
+
+<section class="rag-card" id="tuLadderCard">
+  <h2>Лестница: что дала каждая настройка</h2>
+  <p class="rag-note">Ступени пути проходят набор дня 22 тремя кругами — по нему подбирали промпт — и те же вопросы
+    разговорными словами дня 23 одним кругом: их при подборе не смотрели. Пробы в сторону — по кругу. Перед ступенью всё
+    выгружается из памяти, поиск идёт на каждый вопрос, как в живом RAG. Скорость и память сообщает сама Ollama.
+    Клик по строке — ответы ступени.</p>
+  <div class="rag-bar">
+    <button class="main" id="tuEval">Прогнать всё</button>
+    <span class="hint" id="tuEvalNote"></span>
+  </div>
+  <div class="rag-scroll"><table class="rag-table tu-table" id="tuTable"></table></div>
+  <div class="tu-detail" id="tuDetail" hidden></div>
+</section>
+
+<section class="rag-card" id="tuQuantCard">
+  <h2>Квант: качество, скорость, память</h2>
+  <p class="rag-note">Одни и те же промпт и параметры, меняется только число бит на вес. Верных — по обоим наборам вместе.</p>
+  <div class="rag-scroll"><table class="rag-table tu-quant" id="tuQuant"></table></div>
 </section>
 
 </div>
@@ -2486,5 +2553,6 @@ $("#modal").addEventListener("click", event => {
 <script src="/local.js"></script>
 <script src="/assist.js"></script>
 <script src="/localrag.js"></script>
+<script src="/tune.js"></script>
 </body>
 </html>

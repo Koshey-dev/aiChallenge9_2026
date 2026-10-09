@@ -25,7 +25,8 @@
   }
 
   // Подвкладки недели 6 — как у недели 5: адрес #week6/<день>, по умолчанию последний.
-  // День 27 живёт в assist.js (window.assistShow), день 28 — в localrag.js (window.localRagShow).
+  // День 27 живёт в assist.js (window.assistShow), день 28 — в localrag.js (window.localRagShow),
+  // день 29 — в tune.js (window.tuneShow).
   const DAYS = [...document.querySelectorAll("#w6Days .rag-daytab")].map(b => b.dataset.day);
   function showDay(day) {
     day = DAYS.includes(day) ? day : DAYS.at(-1);
@@ -35,6 +36,7 @@
     history.replaceState(null, "", "#week6/" + day);
     if (day === "27") window.assistShow?.();
     else if (day === "28") window.localRagShow?.();
+    else if (day === "29") window.tuneShow?.();
     else if (!state.ready) {
       state.ready = true;
       init().catch(e => ($("#lcServerNote").textContent = "Стенд не ответил: " + e.message));

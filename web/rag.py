@@ -377,10 +377,12 @@ def query_input(q):
 
 # ── Эмбеддинги ───────────────────────────────────────────────────────────
 
-def embed(texts, client=None):
+def embed(texts, client=None, options=None):
     """Векторы текстов. `client` — свой httpx-клиент: с дня 28 локальный RAG
-    ходит в Ollama через охранника из local.py."""
-    r = (client or httpx).post(f"{OLLAMA}/api/embed", json={"model": MODEL, "input": texts}, timeout=600)
+    ходит в Ollama через охранника из local.py. `options` — параметры загрузки
+    эмбеддера: день 29 держит его на процессоре (`num_gpu: 0`)."""
+    body = {"model": MODEL, "input": texts, **({"options": options} if options else {})}
+    r = (client or httpx).post(f"{OLLAMA}/api/embed", json=body, timeout=600)
     r.raise_for_status()
     vecs = np.array(r.json()["embeddings"], dtype=np.float32)
     return vecs / np.linalg.norm(vecs, axis=1, keepdims=True)
@@ -629,10 +631,10 @@ def points():
                 for c in chunks] for s, (chunks, _) in state["index"].items()}
 
 
-def search(q, k=TOP, client=None):
+def search(q, k=TOP, client=None, options=None):
     """Топ-k каждой стратегии по косинусу и место запроса на карте."""
     state = loaded()
-    qv = embed([query_input(q)], client)[0]
+    qv = embed([query_input(q)], client, options)[0]
     out = {}
     for s, (chunks, vecs) in state["index"].items():
         scores = vecs @ qv
@@ -728,9 +730,9 @@ CREATE TABLE IF NOT EXISTS rag_runs (
 """
 
 
-def retrieve(q, strategy="struct", k=TOP, client=None):
+def retrieve(q, strategy="struct", k=TOP, client=None, options=None):
     """Топ-k одной стратегии — это и есть контекст RAG-запроса."""
-    return search(q, k, client)[strategy]["hits"]
+    return search(q, k, client, options)[strategy]["hits"]
 
 
 def rag_prompt(q, hits):

@@ -502,3 +502,50 @@
   .lr-net { grid-template-columns: minmax(0, 1fr); }
   .lr-flow li.cloud::before { content: none; }
 }
+
+/* День 29. Оптимизация: карточки «до» и «после» с параметрами и Modelfile,
+   лестница ступеней с полосами видеопамяти, ответы ступени, таблица квантов.
+   Полоса памяти — lc-bar дня 26, плитки — lr-pair дня 28. Классы tu-. */
+#tuQ { flex: 1; min-width: 240px; }
+.tu-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-bottom: 14px; }
+.tu-config { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; min-width: 0; }
+.tu-config h3 { margin: 0 0 6px; font-size: 16px; }
+.tu-model { font-size: 14px; color: var(--dim); margin-bottom: 8px; overflow-wrap: anywhere; }
+.tu-model b { color: var(--text); font-weight: 600; }
+.tu-params { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 3px 14px; margin: 0 0 10px; font-size: 13.5px; }
+.tu-params dt { color: var(--dim); }
+.tu-params dd { margin: 0; }
+.tu-pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 280px; overflow-y: auto; margin: 6px 0 0;
+          font: 12px/1.45 ui-monospace, Consolas, monospace; color: var(--dim); }
+.tu-pre b { color: var(--accent); }
+.tu-create { margin: 10px 0 0; }
+.tu-result { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+.tu-bar { margin: 4px 0 2px; max-width: 260px; }
+.tu-cpu { color: var(--warn); }
+.tu-table td { vertical-align: top; }
+.tu-table td:nth-child(1) { min-width: 220px; }
+.tu-table td:nth-child(2), .tu-table td:nth-child(3) { min-width: 150px; }
+.tu-table td:nth-child(5), .tu-table td:nth-child(6) { min-width: 190px; }
+.tu-table td > b { font-size: 18px; }
+.tu-table tr.on td { background: #161a22; }
+.tu-probe td { color: var(--dim); }
+.tu-probe td:first-child { border-left: 2px dashed #4d5163; }
+.tu-tag { font-size: 11px; border: 1px dashed #4d5163; border-radius: 6px; padding: 0 5px; color: var(--dim); }
+.tu-running td { background: #1d1a14; }
+.tu-up { color: var(--accent); }
+.tu-down { color: var(--bad); }
+.tu-run { padding: 3px 9px; font-size: 13px; }
+.tu-detail { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 10px; }
+.tu-detail h3 { margin: 0 0 8px; font-size: 15px; }
+.tu-detail[hidden] { display: none; }
+.tu-mark { background: none; border: 1px solid transparent; border-radius: 6px; padding: 0 4px; font-size: 17px; cursor: pointer; }
+.tu-mark.on { border-color: var(--accent); }
+.tu-answer { border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; margin-top: 10px; display: grid; gap: 6px; }
+.ask-col.tu-wait .ask-meta { color: var(--warn); }
+.tu-meter { height: 8px; background: var(--line); border-radius: 4px; overflow: hidden; margin: 4px 0; min-width: 140px; }
+.tu-meter i { display: block; height: 100%; background: var(--accent); }
+.tu-meter.bad i { background: var(--bad); }
+
+@media (max-width: 900px) {
+  .tu-pair { grid-template-columns: minmax(0, 1fr); }
+}

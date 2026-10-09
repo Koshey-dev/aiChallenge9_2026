@@ -2450,6 +2450,62 @@ def local_rag_eval():
     return StreamingResponse(run(), media_type="application/x-ndjson")
 
 
+# ── День 29: оптимизация локальной модели ───────────────────────────
+# Лестница конфигураций и модель Ollama aichallenge-rag — в local.py; здесь
+# только маршруты. Всё идёт через клиента-охранника, облака в этом дне нет.
+
+class TuneAskIn(BaseModel):
+    q: str
+    steps: list[str] = ["before", "after"]
+
+
+class TuneEvalIn(BaseModel):
+    steps: list[str] = [s["id"] for s in local.STEPS]
+
+
+def tune_steps(ids):
+    if not ids or any(i not in local.STEP for i in ids):
+        raise HTTPException(status_code=400, detail="ступени: " + ", ".join(local.STEP))
+    return list(dict.fromkeys(ids))
+
+
+@app.get("/tune.js")
+def tune_script():
+    return FileResponse(HERE / "tune.js")
+
+
+@app.get("/api/tune")
+def tune_overview():
+    return local.tune_overview()
+
+
+@app.post("/api/tune/create")
+def tune_create():
+    local_live()
+    try:
+        with local.client() as c:
+            return local.create_tuned(c)
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=503, detail=f"Ollama не ответила: {e}")
+
+
+@app.post("/api/tune/ask")
+def tune_ask(body: TuneAskIn):
+    if not body.q.strip():
+        raise HTTPException(status_code=400, detail="пустой вопрос")
+    ids = tune_steps(body.steps)
+    local_live()
+    return StreamingResponse((line(e) for e in local.tune_ask(body.q.strip(), ids)),
+                             media_type="application/x-ndjson")
+
+
+@app.post("/api/tune/eval")
+def tune_eval(body: TuneEvalIn):
+    ids = tune_steps(body.steps)
+    local_live()
+    return StreamingResponse((line(e) for e in local.tune_eval(ids)), media_type="application/x-ndjson")
+
+
 @app.get("/chat.js")
 def chat_script():
     return FileResponse(HERE / "chat.js")

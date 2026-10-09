@@ -26,6 +26,12 @@ Ollama), ответ — этой моделью. Здесь сверка отв�
 против облака»; запросы к моделям делает app.py, локальная ветка — через
 клиентов-охранников. Последний прогон едет в `local.json`.
 
+День 29 — та же задача, оптимизация модели под неё: лестница конфигураций
+(параметры, промпт, квант, место в памяти) на наборе дня 22 и его разговорных
+формулировках дня 23, ответы через родной `/api/chat` с метриками самой Ollama.
+Итог — модель Ollama `aichallenge-rag`, которую стенд собирает через
+`/api/create`. Прогоны ступеней едут в `local.json`.
+
 Запуск из консоли: `py web/local.py` — прогнать лестницу и напечатать итог.
 """
 
@@ -382,7 +388,9 @@ def keep(part, value, **more):
 
 
 def overview():
-    return {"status": status(), "snapshot": snapshot(), "prompt": PROMPT,
+    # Прогоны дня 29 — сотни килобайт, дню 26 они не нужны: у них свой маршрут.
+    shot = {k: v for k, v in snapshot().items() if k != "tune"}
+    return {"status": status(), "snapshot": shot, "prompt": PROMPT,
             "ladder": [{f: item[f] for f in ("level", "what", "q")} for item in LADDER]}
 
 
@@ -623,16 +631,18 @@ def alien(text):
                    if ch.isalpha() and not unicodedata.name(ch, "").startswith(("CYRILLIC", "LATIN"))})
 
 
-def check(q, answer, hits, metrics):
+def check(q, answer, hits, metrics, question=None, limit=rag.ANSWER_TOKENS):
     """Сверка дня 22 (факты, отказ, ссылка на нужный документ) у контрольного
     вопроса и сбои, которые видны у любого: ссылка на фрагмент, которого не
     было, чужие буквы, обрыв по лимиту, пустой ответ. Пустым считается и
-    ответ из одних ссылок — 3B-модель отвечает «[2]» вместо текста."""
+    ответ из одних ссылок — 3B-модель отвечает «[2]» вместо текста. День 29
+    передаёт вопрос набора сам (разговорные слова с ним не совпадают) и свой
+    предел ответа."""
     refs = {int(n) for n in rag.CITE.findall(answer)}
     out = {"bad_refs": sorted(n for n in refs if not 0 < n <= len(hits)), "alien": alien(answer),
-           "cut": (metrics.get("out") or 0) >= rag.ANSWER_TOKENS,
+           "cut": (metrics.get("out") or 0) >= limit,
            "empty": not re.sub(r"\[\d+\]|[\W_]", "", answer)}
-    question = rag.question_of(q)
+    question = question or rag.question_of(q)
     if question:
         out.update(rag.grade(question, answer, hits))
     return out
@@ -695,6 +705,342 @@ def rag_overview():
     return {"status": st, "live": st["live"], "model": MODEL, "embedder": rag.MODEL, "top": rag.TOP,
             "repeats": REPEATS, "questions": rag.question_set(), "snapshot": snapshot().get("rag"),
             "chunks": len(rag.loaded()["index"]["struct"][0]), "guard": LOCAL_HOSTS}
+
+
+# ── День 29: оптимизация под задачу ──────────────────────────────────
+# Задача та же, что в дне 28: ответ по пяти фрагментам индекса недели 5 со
+# ссылками [n]. Лестница конфигураций: на каждой ступени меняется одно —
+# параметры, промпт, квант, место модели в памяти. Ступени пути проходят набор
+# дня 22 тремя кругами (по нему подбирали промпт) и те же вопросы разговорными
+# словами дня 23 одним кругом (при подборе их не смотрели); пробы в сторону —
+# по кругу на набор. Поиск — на каждый вопрос, как в живом RAG. Запросы —
+# родным /api/chat: загрузку, чтение промпта и генерацию сообщает сама Ollama,
+# память — /api/ps и nvidia-smi. Итог — модель Ollama TUNED: квант, параметры,
+# правила и примеры ответа лежат в ней, стенд шлёт только фрагменты и вопрос.
+
+TUNED = "aichallenge-rag"
+QUANT = "qwen2.5:3b-instruct-"
+SETS = ("d22", "talk")
+
+TUNE_RULES = (
+    "Ты отвечаешь команде разработчиков игр по фрагментам их документов. Правила ответа:\n"
+    "1. Пиши по-русски, коротко: одно-три предложения или список.\n"
+    "2. Бери факты только из фрагментов. Суммы, проценты, названия методов, плагинов и площадок "
+    "переписывай так, как они написаны во фрагменте.\n"
+    "3. После каждого факта ставь номер его фрагмента в квадратных скобках: [1].\n"
+    "4. Номер не заменяет ответ: сначала факт словами, потом номер.\n"
+    "5. Если спрашивают «какие», «что входит», «где», «на каких» — перечисли все подходящие "
+    "пункты из фрагментов списком: каждый пункт с новой строки после «- », номер фрагмента — в конце пункта.\n"
+    "6. Если во фрагментах ответа нет, ответь одной фразой: «В документах этого нет».")
+# Примеры — о том, чего в базе нет: 3B-модель переносит слова примера в ответ,
+# если тема близка к вопросу.
+TUNE_SHOT = [
+    {"role": "user", "content": "Фрагменты документов:\n\n[1] «Чек-лист релиза» › Сборка\n"
+     "Перед релизом соберите билд в режиме Release и отключите отладочные логи.\n\n"
+     "[2] «Чек-лист релиза» › Площадки\nГотовый билд загружают в Google Play Console и "
+     "App Store Connect, для веба — на itch.io.\n\nВопрос: Куда загрузить билд перед релизом?"},
+    {"role": "assistant", "content": "- Google Play Console [2]\n- App Store Connect [2]\n- для веба — itch.io [2]"},
+    {"role": "user", "content": "Фрагменты документов:\n\n[1] «Чек-лист релиза» › Сборка\n"
+     "Перед релизом соберите билд в режиме Release и отключите отладочные логи.\n\n"
+     "Вопрос: Сколько стоит аккаунт разработчика в Steam?"},
+    {"role": "assistant", "content": "В документах этого нет."},
+]
+# Напоминание — последним: правила 3B-модель к концу длинного промпта теряет.
+# Отказ сюда не вписан: с ним в хвосте она отказывалась почти на всём.
+TUNE_END = "\n\nОтветь по фрагментам: сначала факт словами, потом номер фрагмента."
+
+# Окно 4096 не уменьшали: худший промпт по индексу — пять самых длинных
+# фрагментов — 3472 токена, а 1024 токена окна стоят всего 37 МБ видеопамяти.
+BEFORE = {"temperature": 0.2, "num_predict": 500, "num_ctx": 4096}
+PARAMS = {"temperature": 0, "seed": 42, "num_predict": 384, "num_ctx": 4096}
+# Ollama считает память с запасом: на карте 4 ГБ она держит треть q8_0 на
+# процессоре, и генерация падает до 18 ток/с. num_gpu 99 — все слои в
+# видеокарту. Эмбеддеру рядом места нет: каждый вопрос выгонял бы модель ради
+# него и грузил обратно, поэтому эмбеддер считает на процессоре.
+ON_GPU = {"num_gpu": 99}
+EMBED_CPU = {"num_gpu": 0}
+
+STEPS = [
+    {"id": "before", "title": "До · день 28", "model": MODEL, "prompt": "d22", "options": BEFORE,
+     "change": "q4_K_M, temperature 0,2, предел ответа 500 токенов, промпт дня 22"},
+    {"id": "params", "title": "Параметры", "model": MODEL, "prompt": "d22", "options": PARAMS,
+     "change": "temperature 0 и seed 42, предел 384 — с запасом над самым длинным ответом"},
+    {"id": "window", "title": "Окно 2048", "model": MODEL, "prompt": "d22", "probe": True,
+     "options": {**PARAMS, "num_ctx": 2048}, "change": "окно короче длинного промпта"},
+    {"id": "prompt", "title": "Промпт под задачу", "model": MODEL, "prompt": "tune", "options": PARAMS,
+     "change": "свои правила, два примера ответа, вопрос до и после фрагментов, напоминание в конце"},
+    {"id": "q3", "title": "Квант q3_K_M", "model": QUANT + "q3_K_M", "prompt": "tune", "probe": True,
+     "options": PARAMS, "change": "3 бита на вес вместо 4"},
+    {"id": "q5", "title": "Квант q5_K_M", "model": QUANT + "q5_K_M", "prompt": "tune", "probe": True,
+     "options": PARAMS, "change": "5 бит на вес"},
+    {"id": "q8", "title": "Квант q8_0", "model": QUANT + "q8_0", "prompt": "tune", "options": PARAMS,
+     "change": "8 бит на вес; слои раскладывает Ollama"},
+    {"id": "pingpong", "title": "q8_0 целиком в видеокарте", "model": QUANT + "q8_0", "prompt": "tune",
+     "probe": True, "options": {**PARAMS, **ON_GPU}, "change": "num_gpu 99, эмбеддер тоже в видеокарте"},
+    {"id": "after", "title": "После · " + TUNED, "model": TUNED, "prompt": "tuned", "options": {},
+     "embed": EMBED_CPU, "change": "num_gpu 99, эмбеддер на процессоре; всё — внутри модели Ollama"},
+]
+STEP = {s["id"]: s for s in STEPS}
+
+
+def tune_prompt(q, hits):
+    """Промпт дня 29: вопрос до и после фрагментов, без страниц, напоминание в конце."""
+    blocks = [f"[{n}] «{h['title']}» › {h['section']}\n{h['text']}" for n, h in enumerate(hits, 1)]
+    return (f"Вопрос: {q}\n\nФрагменты документов:\n\n" + "\n\n".join(blocks)
+            + f"\n\nВопрос: {q}" + TUNE_END)
+
+
+def tune_messages(step, q, hits):
+    if step["prompt"] == "d22":
+        return rag.messages(q, hits)
+    user = {"role": "user", "content": tune_prompt(q, hits)}
+    if step["prompt"] == "tuned":
+        return [user]  # правила и примеры — в самой модели TUNED
+    return [{"role": "system", "content": TUNE_RULES}, *TUNE_SHOT, user]
+
+
+def limit_of(step):
+    return step["options"].get("num_predict") or PARAMS["num_predict"]
+
+
+def modelfile():
+    """Modelfile модели TUNED — то, что стенд отдаёт в /api/create."""
+    quote = lambda text: f'"""{text}"""'
+    return "\n".join([f"FROM {QUANT}q8_0", *(f"PARAMETER {k} {v}" for k, v in {**PARAMS, **ON_GPU}.items()),
+                      f"SYSTEM {quote(TUNE_RULES)}", *(f"MESSAGE {m['role']} {quote(m['content'])}" for m in TUNE_SHOT)])
+
+
+def tuned_info(c):
+    """Есть ли TUNED в Ollama и что в ней по её же словам."""
+    tags = {m["name"]: m for m in c.get(f"{OLLAMA}/api/tags").json()["models"]}
+    m = tags.get(TUNED + ":latest")
+    if not m:
+        return {"exists": False}
+    show = c.post(f"{OLLAMA}/api/show", json={"model": TUNED}).json()
+    return {"exists": True, "disk": m["size"], "digest": m["digest"][:12], "parameters": show.get("parameters", ""),
+            "messages": len(show.get("messages") or []), "quant": show["details"].get("quantization_level")}
+
+
+def create_tuned(c):
+    """Собрать TUNED из q8_0: параметры, правила и примеры — в модели. Повторная
+    сборка с тем же содержимым ничего не меняет, слои q8_0 не копируются."""
+    start = time.perf_counter()
+    c.post(f"{OLLAMA}/api/create", json={"model": TUNED, "from": QUANT + "q8_0", "system": TUNE_RULES,
+                                         "messages": TUNE_SHOT, "parameters": {**PARAMS, **ON_GPU},
+                                         "stream": False}).raise_for_status()
+    return {"seconds": round(time.perf_counter() - start, 2), **tuned_info(c)}
+
+
+def memory(c):
+    """Что сейчас в памяти и где: по /api/ps — сколько каждой модели в видеокарте."""
+    return {"models": [{"name": m["name"], "size": m["size"], "vram": m["size_vram"],
+                        "context": m.get("context_length")} for m in c.get(f"{OLLAMA}/api/ps").json()["models"]],
+            "gpu": gpu()}
+
+
+def tune_warm(c, step):
+    """Всё из памяти вон — с моделью уходит и кеш промптов Ollama, — затем
+    эмбеддер и модель с параметрами загрузки ступени: загрузка не попадёт в
+    первый вопрос."""
+    for m in c.get(f"{OLLAMA}/api/ps").json()["models"]:
+        c.post(f"{OLLAMA}/api/generate", json={"model": m["name"], "keep_alive": 0}).raise_for_status()
+    start = time.perf_counter()
+    rag.embed(["прогрев"], c, step.get("embed"))
+    middle = time.perf_counter()
+    load = {k: v for k, v in step["options"].items() if k in ("num_ctx", "num_gpu")}
+    c.post(f"{OLLAMA}/api/generate", json={"model": step["model"], **({"options": load} if load else {})}
+           ).raise_for_status()
+    return {"embed": round(middle - start, 2), "model": round(time.perf_counter() - middle, 2)}
+
+
+def tune_answer(c, step, q, hits):
+    """Ответ ступени потоком: события delta и done с метриками самой Ollama —
+    загрузка, чтение промпта и генерация, токены в секунду."""
+    body = {"model": step["model"], "messages": tune_messages(step, q, hits),
+            **({"options": step["options"]} if step["options"] else {})}
+    start, first, parts, last = time.perf_counter(), None, [], {}
+    with c.stream("POST", f"{OLLAMA}/api/chat", json=body) as r:
+        r.raise_for_status()
+        for raw in r.iter_lines():
+            if not raw.strip():
+                continue
+            chunk = json.loads(raw)
+            if "error" in chunk:
+                raise RuntimeError(chunk["error"])
+            text = chunk.get("message", {}).get("content", "")
+            if text:
+                first = first or time.perf_counter()
+                parts.append(text)
+                yield {"t": "delta", "text": text}
+            if chunk.get("done"):
+                last = chunk
+    rate = lambda n, ns: round(n / (ns / 1e9), 1) if n and ns else None
+    yield {"t": "done", "answer": "".join(parts),
+           "metrics": metrics(start, first, load=round(last.get("load_duration", 0) / 1e9, 2),
+                              out=last.get("eval_count"), tps=rate(last.get("eval_count"), last.get("eval_duration")),
+                              read=rate(last.get("prompt_eval_count"), last.get("prompt_eval_duration")),
+                              **{"in": last.get("prompt_eval_count")})}
+
+
+def tune_question(q):
+    """Контрольный вопрос по любым его словам: точным дня 22 или разговорным дня 23."""
+    q = q.strip()
+    return next((x for x, talk in zip(rag.QUESTIONS, rag.TALK) if q in (x["q"].strip(), talk)), None)
+
+
+def net_count(seen):
+    local = sum(1 for n in seen if not n.get("blocked") and n["host"].split(":")[0] in LOCAL_HOSTS)
+    blocked = sum(1 for n in seen if n.get("blocked"))
+    return {"local": local, "blocked": blocked, "out": len(seen) - local - blocked}
+
+
+def hit_view(h):
+    return {f: h[f] for f in ("id", "doc", "title", "section", "page_from", "page_to", "score", "text")}
+
+
+def tune_ask(q, ids):
+    """Один вопрос: поиск один раз, затем ступени по очереди — видеокарта одна,
+    и переход к другой модели виден как загрузка."""
+    seen = []
+    question = tune_question(q)
+    with client(seen) as c:
+        try:
+            if TUNED in [STEP[i]["model"] for i in ids] and not tuned_info(c)["exists"]:
+                create_tuned(c)
+            hits = rag.retrieve(q, "struct", rag.TOP, c, EMBED_CPU)
+        except httpx.HTTPError as e:
+            yield {"t": "error", "id": "search", "message": f"Ollama не ответила: {e}"}
+            return
+        embed_ms = next((n.get("ms") for n in reversed(seen) if n["path"] == "/api/embed"), None)
+        yield {"t": "search", "embed_ms": embed_ms, "hits": [hit_view(h) for h in hits]}
+        for i in ids:
+            step = STEP[i]
+            yield {"t": "start", "id": i}
+            try:
+                for event in tune_answer(c, step, q, hits):
+                    if event["t"] == "done":
+                        event.update(grade=check(q, event["answer"], hits, event["metrics"], question, limit_of(step)),
+                                     memory=memory(c))
+                    yield {**event, "id": i}
+            except (httpx.HTTPError, RuntimeError) as e:
+                yield {"t": "error", "id": i, "message": f"Ollama не ответила: {e}"}
+    yield {"t": "net", **net_count(seen)}
+
+
+def tune_step(step, seen):
+    """Одна ступень лестницы. Круги идут по всему набору, а не по вопросу
+    подряд: обработанный промпт Ollama держит в кеше. Время первого токена и
+    чтения промпта — по первому кругу."""
+    rounds = {"d22": 1 if step.get("probe") else REPEATS, "talk": 1}
+    started, results = time.perf_counter(), []
+    with client(seen) as c:
+        try:
+            created = create_tuned(c) if step["model"] == TUNED else None
+            warm = tune_warm(c, step)
+        except httpx.HTTPError as e:
+            missing = isinstance(e, httpx.HTTPStatusError) and e.response.status_code == 404
+            yield {"t": "error", "id": step["id"], "message": f"модели {step['model']} нет — ollama pull {step['model']}"
+                   if missing else f"Ollama не ответила: {e}"}
+            return
+        yield {"t": "warm", "id": step["id"], **warm}
+        for kind in SETS:
+            for r in range(rounds[kind]):
+                for i, x in enumerate(rag.QUESTIONS):
+                    q = x["q"] if kind == "d22" else rag.TALK[i]
+                    record = {"set": kind, "i": i, "r": r}
+                    try:
+                        t = time.perf_counter()
+                        hits = rag.retrieve(q, "struct", rag.TOP, c, step.get("embed"))
+                        record.update(search_ms=round((time.perf_counter() - t) * 1000),
+                                      embed_ms=next((n.get("ms") for n in reversed(seen) if n["path"] == "/api/embed"), None))
+                        done = [e for e in tune_answer(c, step, q, hits) if e["t"] == "done"][0]
+                        record.update(answer=done["answer"], metrics=done["metrics"],
+                                      grade=check(q, done["answer"], hits, done["metrics"], x, limit_of(step)))
+                    except (httpx.HTTPError, RuntimeError) as e:
+                        record["error"] = f"Ollama не ответила: {e}"
+                    results.append(record)
+                    yield {"t": "result", "id": step["id"], **record}
+        # Память — после последнего ответа: так видно, кто с кем ужился в видеокарте.
+        loaded = memory(c)
+        tags = {m["name"]: m["size"] for m in c.get(f"{OLLAMA}/api/tags").json()["models"]}
+        disk = tags.get(step["model"]) or tags.get(step["model"] + ":latest")
+    record = {"at": now(), "model": step["model"], "options": step["options"] or {**PARAMS, **ON_GPU},
+              "embed": step.get("embed"), "warm": warm, "memory": loaded, "disk": disk, "created": created,
+              "seconds": round(time.perf_counter() - started), "net": net_count(seen),
+              "results": results, "summary": summary29(results)}
+    saved = not any(r.get("error") for r in results)
+    if saved:
+        data = snapshot().get("tune") or {}
+        keep("tune", {"at": now(), "steps": {**data.get("steps", {}), step["id"]: record}})
+    yield {"t": "step", "id": step["id"], "saved": saved, **{k: v for k, v in record.items() if k != "results"}}
+
+
+def tune_eval(ids):
+    seen = []
+    yield {"t": "start", "steps": ids}
+    for i in ids:
+        yield from tune_step(STEP[i], seen)
+    yield {"t": "end", "net": net_count(seen)}
+
+
+def summary29(results):
+    """Итог ступени по каждому набору: качество, стабильность, скорость."""
+    out = {}
+    for kind in SETS:
+        rows = [r for r in results if r["set"] == kind]
+        good = [r for r in rows if not r.get("error")]
+        grades = [r["grade"] for r in good]
+        outside = [r for r in good if rag.QUESTIONS[r["i"]].get("outside")]
+        inside = [r["grade"] for r in good if not rag.QUESTIONS[r["i"]].get("outside")]
+        first = [r["metrics"] for r in good if r["r"] == 0]
+        times = [r["metrics"] for r in good]
+        groups = {}
+        for r in good:
+            groups.setdefault(r["i"], []).append(r)
+        repeated = [g for g in groups.values() if len(g) > 1]
+        out[kind] = {
+            "total": len(rows), "errors": len(rows) - len(good),
+            **{v: sum(g["verdict"] == v for g in grades) for v in ("ok", "part", "bad")},
+            "facts": sum(g["facts"] for g in inside), "of": sum(g["of"] for g in inside),
+            "outside": sum(r["grade"]["refused"] for r in outside),
+            "outside_of": sum(1 for r in rows if rag.QUESTIONS[r["i"]].get("outside")),
+            "cited_ok": sum(g["cited_ok"] for g in inside), "inside": len(inside),
+            **{flag: sum(bool(g[flag]) for g in grades) for flag in ("bad_refs", "alien", "cut", "empty")},
+            "repeated": len(repeated),
+            "stable": sum(len({r["grade"]["verdict"] for r in g}) == 1 for g in repeated),
+            "same": sum(len({r["answer"].strip() for r in g}) == 1 for g in repeated),
+            "ttft": median(m["ttft"] for m in first), "seconds": median(m["seconds"] for m in first),
+            "worst": max((m["seconds"] for m in times), default=None),
+            "tps": median(m["tps"] for m in times), "read": median(m["read"] for m in first),
+            "load": median(m["load"] for m in times), "reloads": sum((m["load"] or 0) > 0.5 for m in times),
+            "embed_ms": median(r.get("embed_ms") for r in good),
+            "tokens_in": round(statistics.mean(m["in"] for m in first)) if first else None,
+            "tokens_out": round(statistics.mean(m["out"] for m in times)) if times else None}
+    return out
+
+
+def tune_overview():
+    st = status()
+    sample = [{"title": "Документ", "section": "Раздел", "page_from": None, "page_to": None,
+               "text": "Текст фрагмента."}] * 2
+    out = {"status": st, "live": st["live"], "tuned": TUNED, "repeats": REPEATS, "embedder": rag.MODEL,
+           "steps": [{k: s.get(k) for k in ("id", "title", "change", "model", "prompt", "options", "probe", "embed")}
+                     for s in STEPS],
+           "questions": [{"q": x["q"], "talk": talk, "expect": x["expect"], "outside": bool(x.get("outside"))}
+                         for x, talk in zip(rag.QUESTIONS, rag.TALK)],
+           "prompts": {"d22": [{"role": "system", "content": rag.ROLE + rag.RAG_RULES},
+                               {"role": "user", "content": rag.rag_prompt("<вопрос>", sample)}],
+                       "tune": [{"role": "system", "content": TUNE_RULES}, *TUNE_SHOT,
+                                {"role": "user", "content": tune_prompt("<вопрос>", sample)}]},
+           "tuned_options": {**PARAMS, **ON_GPU}, "modelfile": modelfile(), "snapshot": snapshot().get("tune")}
+    if st["live"]:
+        try:
+            with client() as c:
+                out["disk"] = {m["name"]: m["size"] for m in c.get(f"{OLLAMA}/api/tags").json()["models"]}
+                out["created"] = tuned_info(c)
+        except httpx.HTTPError:
+            pass
+    return out
 
 
 if __name__ == "__main__":
