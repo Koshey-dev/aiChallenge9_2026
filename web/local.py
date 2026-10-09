@@ -16,6 +16,11 @@
 Последний прогон дверей и лестницы лежит в `local.json` рядом с модулем и
 едет в git: на VPS этой модели нет, и вкладка там показывает снимок с ПК.
 
+День 27 — приложение на той же модели: чат-ассистент с историей (таблица
+`local_chats` в agent.db), ответ потоком через `/v1`. Все запросы приложения
+идут через свой клиент, транспорт которого пускает только на эту машину и
+пишет каждый запрос в журнал сети. Последний чат тоже едет в `local.json`.
+
 Запуск из консоли: `py web/local.py` — прогнать лестницу и напечатать итог.
 """
 
@@ -27,12 +32,17 @@ import shutil
 import subprocess
 import sys
 import threading
+import sqlite3
 import time
+import uuid
+from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 
 import httpx
 from dotenv import load_dotenv
+
+import store
 
 load_dotenv()
 HERE = Path(__file__).parent
@@ -327,7 +337,7 @@ def ladder():
         results.append(record)
     saved = all(r and "grade" in r for r in results)
     if saved:
-        keep("ladder", {"at": now(), "results": results})
+        keep("ladder", {"at": now(), "results": results}, status=status())
     yield {"t": "end", "saved": saved}
 
 
@@ -339,7 +349,7 @@ def door(name, prompt):
             command = event["command"]
         if event["t"] == "done":
             keep("doors", {name: {"at": now(), "prompt": prompt, "command": command,
-                                  **{f: event[f] for f in ("answer", "metrics", "raw")}}})
+                                  **{f: event[f] for f in ("answer", "metrics", "raw")}}}, status=status())
         yield event
 
 
@@ -352,10 +362,12 @@ def snapshot():
         return {}
 
 
-def keep(part, value):
+def keep(part, value, **more):
+    """Записать часть снимка. Состояние машины (status) передают прогоны дня 26:
+    плашка снимка датирует им прогон, и чат дня 27 его не трогает."""
     data = snapshot()
     data[part] = {**data.get(part, {}), **value} if part == "doors" else value
-    data["status"] = status()
+    data.update(more)
     tmp = SNAPSHOT.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
     tmp.replace(SNAPSHOT)
@@ -364,6 +376,183 @@ def keep(part, value):
 def overview():
     return {"status": status(), "snapshot": snapshot(), "prompt": PROMPT,
             "ladder": [{f: item[f] for f in ("level", "what", "q")} for item in LADDER]}
+
+
+# ── День 27: локальный ассистент ─────────────────────────────────────
+# Чат поверх той же модели. Ответ идёт через OpenAI-совместимый /v1 — тот же
+# протокол, что у облачных провайдеров стенда: для приложения сменился только
+# адрес. Контекст модели в Ollama — 4096 токенов, поэтому в запрос уходит
+# роль и последние WINDOW реплик, а в базе лежит весь чат.
+
+ROLE = ("Ты — локальный ассистент: работаешь на компьютере пользователя, без интернета. "
+        "Отвечай по-русски, по делу и коротко, если не просят подробнее. "
+        "Если чего-то не знаешь — скажи прямо, не придумывай.")
+WINDOW = 12
+LOCAL_HOSTS = ("127.0.0.1", "localhost", "::1")
+CLOUD_KEYS = ("DEEPSEEK_API_KEY", "GEMINI_API_KEY", "GROQ_API_KEY")
+NET = []  # журнал сети приложения за жизнь процесса, последние 200 запросов
+
+
+class Blocked(httpx.TransportError):
+    """Запрос к чужой машине: охранник не выпустил его из транспорта."""
+
+
+class LocalOnly(httpx.HTTPTransport):
+    """Транспорт приложения: пускает только на эту машину, каждый запрос — в журнал."""
+
+    def handle_request(self, request):
+        url = request.url
+        port = url.port or (443 if url.scheme == "https" else 80)
+        entry = {"at": time.strftime("%H:%M:%S"), "method": request.method,
+                 "host": f"{url.host}:{port}", "path": url.path, "sent": len(request.content)}
+        NET.append(entry)
+        del NET[:-200]
+        request.extensions["net"] = entry
+        if url.host not in LOCAL_HOSTS:
+            entry["blocked"] = True
+            raise Blocked(f"{url.host} — не эта машина: приложение ходит только на {', '.join(LOCAL_HOSTS)}")
+        start = time.perf_counter()
+        response = super().handle_request(request)
+        entry.update(status=response.status_code, ms=round((time.perf_counter() - start) * 1000))
+        return response
+
+
+def client():
+    return httpx.Client(transport=LocalOnly(), timeout=300)
+
+
+def chat_models():
+    """Чат-модели, которые стоят в Ollama, — без эмбеддеров."""
+    with client() as c:
+        tags = c.get(f"{OLLAMA}/api/tags").json()["models"]
+    return [m["name"] for m in tags if "embed" not in m["name"]]
+
+
+CHATS = """
+CREATE TABLE IF NOT EXISTS local_chats (
+    id       TEXT PRIMARY KEY,
+    title    TEXT NOT NULL,
+    model    TEXT NOT NULL,
+    created  TEXT NOT NULL,
+    updated  TEXT NOT NULL,
+    messages TEXT NOT NULL
+)
+"""
+
+
+def chats_db():
+    db = sqlite3.connect(store.FILE, timeout=5)
+    db.execute(CHATS)
+    return db
+
+
+def new_chat(model):
+    chat = {"id": uuid.uuid4().hex[:10], "title": "Новый чат", "model": model,
+            "created": now(), "updated": now(), "messages": []}
+    save_chat(chat)
+    return chat
+
+
+def save_chat(chat):
+    with closing(chats_db()) as db, db:
+        db.execute("INSERT OR REPLACE INTO local_chats VALUES (?, ?, ?, ?, ?, ?)",
+                   (chat["id"], chat["title"], chat["model"], chat["created"], chat["updated"],
+                    json.dumps(chat["messages"], ensure_ascii=False)))
+
+
+def load_chat(chat_id):
+    with closing(chats_db()) as db:
+        row = db.execute("SELECT id, title, model, created, updated, messages FROM local_chats "
+                         "WHERE id = ?", (chat_id,)).fetchone()
+    if not row:
+        return None
+    return {**dict(zip(("id", "title", "model", "created", "updated"), row[:5])),
+            "messages": json.loads(row[5])}
+
+
+def list_chats():
+    with closing(chats_db()) as db:
+        rows = db.execute("SELECT id, title, model, updated, messages FROM local_chats "
+                          "ORDER BY updated DESC LIMIT 30").fetchall()
+    return [{"id": r[0], "title": r[1], "model": r[2], "updated": r[3], "count": len(json.loads(r[4]))}
+            for r in rows]
+
+
+def send(chat, text):
+    """Реплика и ответ потоком. Ответ сохраняется и тогда, когда его оборвали
+    («Стоп» закрывает соединение): в чате остаётся начало с пометкой."""
+    chat["messages"].append({"role": "user", "content": text, "at": now()})
+    if chat["title"] == "Новый чат":
+        chat["title"] = text[:48]
+    window = chat["messages"][-WINDOW:]
+    body = {"model": chat["model"], "stream": True, "stream_options": {"include_usage": True},
+            "messages": [{"role": "system", "content": ROLE},
+                         *({"role": m["role"], "content": m["content"]} for m in window)]}
+    yield {"t": "start", "window": len(window), "of": len(chat["messages"])}
+    message = {"role": "assistant", "model": chat["model"], "window": len(window)}
+    parts, usage, net, got = [], {}, None, 0
+    start, first, end = time.perf_counter(), None, None
+    stopped = True
+    try:
+        with client() as c, c.stream("POST", f"{OLLAMA}/v1/chat/completions", json=body) as r:
+            net = r.request.extensions["net"]
+            yield {"t": "net", "net": net}
+            r.raise_for_status()
+            for raw in r.iter_lines():
+                got += len(raw.encode()) + 1
+                if not raw.startswith("data: ") or raw == "data: [DONE]":
+                    continue
+                chunk = json.loads(raw[6:])
+                usage = chunk.get("usage") or usage
+                for choice in chunk.get("choices", []):
+                    piece = choice.get("delta", {}).get("content") or ""
+                    if piece:
+                        first = first or time.perf_counter()
+                        end = time.perf_counter()
+                        parts.append(piece)
+                        yield {"t": "delta", "text": piece}
+        stopped = False
+    except (httpx.HTTPError, ValueError) as e:
+        stopped = False
+        message["error"] = f"{type(e).__name__}: {e}"
+    finally:
+        out = usage.get("completion_tokens")
+        tps = (out - 1) / (end - first) if out and first and end > first else None
+        if net:
+            net["got"] = got
+        message.update(content="".join(parts), at=now(), net=net,
+                       metrics={"ttft": round(first - start, 2) if first else None,
+                                "seconds": round(time.perf_counter() - start, 2),
+                                "in": usage.get("prompt_tokens"), "out": out, "tps": tps and round(tps, 1)})
+        if stopped:
+            message["stopped"] = True
+        chat["messages"].append(message)
+        chat["updated"] = now()
+        save_chat(chat)
+        keep("assist", {"chat": chat})
+    yield {"t": "done", "message": message}
+
+
+def probe():
+    """Проверка охранника: клиент приложения пробует сходить к облачному провайдеру."""
+    try:
+        with client() as c:
+            r = c.post("https://api.deepseek.com/chat/completions", json={"model": "deepseek-chat"})
+    except Blocked as e:
+        return {"blocked": True, "message": str(e), "net": NET[-1]}
+    return {"blocked": False, "status": r.status_code, "net": NET[-1]}
+
+
+def assist_overview():
+    st = status()
+    try:
+        models = chat_models() if st["live"] else []
+    except httpx.HTTPError:
+        models = []
+    return {"status": st, "live": st["live"], "models": models, "default": MODEL, "window": WINDOW,
+            "chats": list_chats() if st["live"] else [], "snapshot": snapshot().get("assist"),
+            "guard": LOCAL_HOSTS, "cloud_keys": sum(bool(os.environ.get(k)) for k in CLOUD_KEYS),
+            "net": NET[-40:]}
 
 
 if __name__ == "__main__":

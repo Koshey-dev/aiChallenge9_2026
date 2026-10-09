@@ -1081,12 +1081,14 @@
 </section>
 
 <!-- Неделя 6 — локальные модели: вкладка с подвкладками по дням, как у недели 5
-     (#week6/26). День 26 — запуск локальной LLM (local.js). Стили — rag.css,
-     данные — /api/local/*. -->
+     (#week6/26, #week6/27). День 26 — запуск локальной LLM (local.js), день 27 —
+     чат-приложение на ней (assist.js). Стили — rag.css, данные — /api/local/*
+     и /api/assist/*. -->
 <section class="pane rag" id="week6" hidden>
 
 <nav class="rag-days" id="w6Days">
   <button class="rag-daytab" data-day="26">День 26 · локальная LLM</button>
+  <button class="rag-daytab" data-day="27">День 27 · локальный ассистент</button>
 </nav>
 
 <div class="rag-day" data-day="26" hidden>
@@ -1131,6 +1133,43 @@
   <div class="ct-tiles" id="lcSum"></div>
   <div class="lc-steps" id="lcSteps"></div>
 </section>
+
+</div>
+
+<div class="rag-day" data-day="27" hidden>
+
+<h1>Локальный ассистент: чат на модели с этого ПК</h1>
+<p class="sub">Приложение отправляет реплики в локальную модель через OpenAI-совместимый API Ollama и показывает
+  ответ потоком. Облачных моделей нет: клиент приложения пускает только на эту машину, а каждый его запрос
+  виден в журнале сети справа.</p>
+<p class="lc-snap" id="laSnap" hidden></p>
+
+<div class="tk-app la-app">
+  <aside class="tk-side">
+    <button class="main" id="laNew">Новый чат</button>
+    <select id="laModel" aria-label="Модель"></select>
+    <h3>Чаты</h3>
+    <ol class="tk-chats" id="laChats"></ol>
+  </aside>
+  <section class="tk-main">
+    <div class="tk-head"><b id="laTitle">Новый чат</b><span class="hint" id="laWindow"></span></div>
+    <div class="tk-thread" id="laThread"></div>
+    <div class="tk-compose">
+      <textarea id="laText" rows="2" placeholder="Сообщение — Enter отправляет, Shift+Enter — новая строка"></textarea>
+      <button class="main" id="laSend">Отправить</button>
+    </div>
+  </section>
+  <aside class="tk-memory la-net">
+    <h3>Без облака</h3>
+    <div class="la-model" id="laModelState"></div>
+    <div class="ct-tiles" id="laTiles"></div>
+    <p class="la-guard" id="laGuard"></p>
+    <button id="laProbe">Попробовать выйти наружу</button>
+    <p class="la-guard" id="laProbeNote"></p>
+    <h3>Журнал сети приложения</h3>
+    <ol class="la-log" id="laLog"></ol>
+  </aside>
+</div>
 
 </div>
 
@@ -2384,5 +2423,6 @@ $("#modal").addEventListener("click", event => {
 <script src="/cite.js"></script>
 <script src="/talk.js"></script>
 <script src="/local.js"></script>
+<script src="/assist.js"></script>
 </body>
 </html>

@@ -25,6 +25,7 @@
   }
 
   // Подвкладки недели 6 — как у недели 5: адрес #week6/<день>, по умолчанию последний.
+  // День 27 живёт в assist.js (window.assistShow).
   const DAYS = [...document.querySelectorAll("#w6Days .rag-daytab")].map(b => b.dataset.day);
   function showDay(day) {
     day = DAYS.includes(day) ? day : DAYS.at(-1);
@@ -32,16 +33,16 @@
     document.querySelectorAll("#w6Days .rag-daytab")
       .forEach(b => b.classList.toggle("on", b.dataset.day === day));
     history.replaceState(null, "", "#week6/" + day);
+    if (day === "27") window.assistShow?.();
+    else if (!state.ready) {
+      state.ready = true;
+      init().catch(e => ($("#lcServerNote").textContent = "Стенд не ответил: " + e.message));
+    }
   }
   document.querySelectorAll("#w6Days .rag-daytab")
     .forEach(b => b.addEventListener("click", () => showDay(b.dataset.day)));
 
-  window.localShow = () => {
-    showDay(location.hash.split("/")[1]);
-    if (state.ready) return;
-    state.ready = true;
-    init().catch(e => ($("#lcServerNote").textContent = "Стенд не ответил: " + e.message));
-  };
+  window.localShow = () => showDay(location.hash.split("/")[1]);
 
   async function init() {
     state.view = await getJSON("/api/local");

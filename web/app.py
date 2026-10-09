@@ -8,6 +8,7 @@ import time
 import uuid
 from pathlib import Path
 
+import anyio
 import httpx
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
@@ -2226,6 +2227,77 @@ def local_ask(body: LocalAskIn):
 def local_ladder():
     local_live()
     return StreamingResponse((line(e) for e in local.ladder()), media_type="application/x-ndjson")
+
+
+# ── День 27: локальный ассистент ────────────────────────────────────
+# Чат-приложение на той же модели. Клиент приложения ходит только на эту
+# машину (local.LocalOnly); без модели — снимок последнего чата из local.json.
+
+class AssistNewIn(BaseModel):
+    model: str = local.MODEL
+
+
+class AssistSendIn(BaseModel):
+    chat: str
+    text: str
+
+
+@app.get("/assist.js")
+def assist_script():
+    return FileResponse(HERE / "assist.js")
+
+
+@app.get("/api/assist")
+def assist_overview():
+    return local.assist_overview()
+
+
+@app.get("/api/assist/chat/{chat_id}")
+def assist_chat(chat_id: str):
+    chat = local.load_chat(chat_id)
+    if not chat:
+        raise HTTPException(status_code=404, detail="нет такого чата")
+    return chat
+
+
+@app.post("/api/assist/new")
+def assist_new(body: AssistNewIn):
+    local_live()
+    if body.model not in local.chat_models():
+        raise HTTPException(status_code=400, detail=f"модели {body.model} в Ollama нет")
+    return local.new_chat(body.model)
+
+
+@app.post("/api/assist/send")
+def assist_send(body: AssistSendIn, request: Request):
+    local_live()
+    chat = local.load_chat(body.chat)
+    if not chat:
+        raise HTTPException(status_code=404, detail="нет такого чата")
+    if not body.text.strip():
+        raise HTTPException(status_code=400, detail="пустое сообщение")
+    events = local.send(chat, body.text.strip())
+
+    # Ушедшего клиента («Стоп», закрытая вкладка) Starlette просто бросает, и
+    # генератор висел бы на yield с открытым соединением к Ollama, пока его не
+    # соберёт сборщик мусора. Поэтому обрыв ловим сами и закрываем генератор:
+    # он закроет соединение — модель бросит генерацию — и сохранит начало ответа.
+    async def run():
+        try:
+            while (event := await anyio.to_thread.run_sync(next, events, None)) is not None:
+                if await request.is_disconnected():
+                    break
+                yield line(event)
+        finally:
+            with anyio.CancelScope(shield=True):
+                await anyio.to_thread.run_sync(events.close)
+
+    return StreamingResponse(run(), media_type="application/x-ndjson")
+
+
+@app.post("/api/assist/probe")
+def assist_probe():
+    return local.probe()
 
 
 @app.get("/chat.js")
