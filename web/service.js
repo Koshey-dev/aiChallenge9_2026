@@ -71,7 +71,7 @@
 
   function drawJournal(rows) {
     const id = e => e.id || `${e.at}${e.key}${e.status}${e.device}`;
-    $("#svJournal").innerHTML = `<tr><th>Время</th><th>Устройство</th><th>Сеть</th><th>Ключ</th><th>Статус</th>
+    $("#svJournal").innerHTML = `<tr><th>Время сервера</th><th>Устройство</th><th>Сеть</th><th>Ключ</th><th>Статус</th>
       <th class="num">Очередь</th><th class="num">Первый токен</th><th class="num">Всего</th><th class="num">Токены</th><th>Заметка</th></tr>`
       + rows.map(e => `<tr class="${state.seen.size && !state.seen.has(id(e)) ? "sv-new" : ""}">
         <td>${esc(e.at)}</td><td><b>${esc(e.device)}</b></td><td class="hint">${esc(e.ip)}</td><td>${esc(e.key ?? "—")}</td>
