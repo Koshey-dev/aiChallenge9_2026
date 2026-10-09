@@ -21,6 +21,11 @@
 идут через свой клиент, транспорт которого пускает только на эту машину и
 пишет каждый запрос в журнал сети. Последний чат тоже едет в `local.json`.
 
+День 28 — RAG целиком на этой машине: индекс недели 5 (эмбеддинги в той же
+Ollama), ответ — этой моделью. Здесь сверка ответа и итог прогона «локально
+против облака»; запросы к моделям делает app.py, локальная ветка — через
+клиентов-охранников. Последний прогон едет в `local.json`.
+
 Запуск из консоли: `py web/local.py` — прогнать лестницу и напечатать итог.
 """
 
@@ -29,11 +34,13 @@ import json
 import os
 import re
 import shutil
+import statistics
 import subprocess
 import sys
 import threading
 import sqlite3
 import time
+import unicodedata
 import uuid
 from contextlib import closing
 from datetime import datetime
@@ -42,6 +49,7 @@ from pathlib import Path
 import httpx
 from dotenv import load_dotenv
 
+import rag
 import store
 
 load_dotenv()
@@ -397,28 +405,56 @@ class Blocked(httpx.TransportError):
     """Запрос к чужой машине: охранник не выпустил его из транспорта."""
 
 
+def watch(request, log):
+    """Запрос — в журнал; к чужой машине — отбить, пока он не ушёл."""
+    url = request.url
+    port = url.port or (443 if url.scheme == "https" else 80)
+    entry = {"at": time.strftime("%H:%M:%S"), "method": request.method,
+             "host": f"{url.host}:{port}", "path": url.path, "sent": len(request.content)}
+    log.append(entry)
+    if log is NET:
+        del NET[:-200]
+    request.extensions["net"] = entry
+    if url.host not in LOCAL_HOSTS:
+        entry["blocked"] = True
+        raise Blocked(f"{url.host} — не эта машина: приложение ходит только на {', '.join(LOCAL_HOSTS)}")
+    return entry
+
+
 class LocalOnly(httpx.HTTPTransport):
     """Транспорт приложения: пускает только на эту машину, каждый запрос — в журнал."""
 
+    def __init__(self, log=NET):
+        super().__init__()
+        self.log = log
+
     def handle_request(self, request):
-        url = request.url
-        port = url.port or (443 if url.scheme == "https" else 80)
-        entry = {"at": time.strftime("%H:%M:%S"), "method": request.method,
-                 "host": f"{url.host}:{port}", "path": url.path, "sent": len(request.content)}
-        NET.append(entry)
-        del NET[:-200]
-        request.extensions["net"] = entry
-        if url.host not in LOCAL_HOSTS:
-            entry["blocked"] = True
-            raise Blocked(f"{url.host} — не эта машина: приложение ходит только на {', '.join(LOCAL_HOSTS)}")
-        start = time.perf_counter()
+        entry, start = watch(request, self.log), time.perf_counter()
         response = super().handle_request(request)
         entry.update(status=response.status_code, ms=round((time.perf_counter() - start) * 1000))
         return response
 
 
-def client():
-    return httpx.Client(transport=LocalOnly(), timeout=300)
+class LocalOnlyAsync(httpx.AsyncHTTPTransport):
+    """То же для асинхронного клиента — им стенд ходит к моделям потоком."""
+
+    def __init__(self, log=NET):
+        super().__init__()
+        self.log = log
+
+    async def handle_async_request(self, request):
+        entry, start = watch(request, self.log), time.perf_counter()
+        response = await super().handle_async_request(request)
+        entry.update(status=response.status_code, ms=round((time.perf_counter() - start) * 1000))
+        return response
+
+
+def client(log=NET):
+    return httpx.Client(transport=LocalOnly(log), timeout=300)
+
+
+def async_client(log=NET):
+    return httpx.AsyncClient(transport=LocalOnlyAsync(log), timeout=300, default_encoding="utf-8")
 
 
 def chat_models():
@@ -553,6 +589,112 @@ def assist_overview():
             "chats": list_chats() if st["live"] else [], "snapshot": snapshot().get("assist"),
             "guard": LOCAL_HOSTS, "cloud_keys": sum(bool(os.environ.get(k)) for k in CLOUD_KEYS),
             "net": NET[-40:]}
+
+
+# ── День 28: локальный RAG ───────────────────────────────────────────
+# Поиск — индекс недели 5: эмбеддинг вопроса считает embeddinggemma в этой же
+# Ollama, косинус — numpy. Ответ — эта модель, промпт и правила дня 22. Облачная
+# модель отвечает на тех же фрагментах — для сравнения. Каждый контрольный
+# вопрос задаётся REPEATS раз: так видно, держит ли модель ответ. Повторы идут
+# кругами по всему набору, а не подряд. Ollama держит в памяти кеш уже
+# обработанных промптов (в её логе — «cache state: 9 prompts, 530 MiB»), и
+# повтор берёт промпт оттуда: первый токен через 0,07 с вместо 0,6. Поэтому
+# время считается отдельно для первого круга (промпты новые) и для повторов.
+
+REPEATS = 3
+
+
+def warm(c):
+    """Эмбеддер и модель — в память до замеров: загрузка не должна попасть во
+    время первого вопроса. Модель сначала выгружается — это сбрасывает кеш
+    промпта Ollama: иначе вопрос, который уже задавали до прогона, пришёл бы
+    из кеша, и замер «новый вопрос» соврал бы."""
+    c.post(f"{OLLAMA}/api/generate", json={"model": MODEL, "keep_alive": 0}).raise_for_status()
+    start = time.perf_counter()
+    rag.embed(["прогрев"], c)
+    middle = time.perf_counter()
+    c.post(f"{OLLAMA}/api/generate", json={"model": MODEL}).raise_for_status()
+    return {"embed": round(middle - start, 2), "model": round(time.perf_counter() - middle, 2)}
+
+
+def alien(text):
+    """Буквы не из кириллицы и латиницы: у 3B-модели проскакивают китайские и грузинские."""
+    return sorted({ch for ch in text
+                   if ch.isalpha() and not unicodedata.name(ch, "").startswith(("CYRILLIC", "LATIN"))})
+
+
+def check(q, answer, hits, metrics):
+    """Сверка дня 22 (факты, отказ, ссылка на нужный документ) у контрольного
+    вопроса и сбои, которые видны у любого: ссылка на фрагмент, которого не
+    было, чужие буквы, обрыв по лимиту, пустой ответ. Пустым считается и
+    ответ из одних ссылок — 3B-модель отвечает «[2]» вместо текста."""
+    refs = {int(n) for n in rag.CITE.findall(answer)}
+    out = {"bad_refs": sorted(n for n in refs if not 0 < n <= len(hits)), "alien": alien(answer),
+           "cut": (metrics.get("out") or 0) >= rag.ANSWER_TOKENS,
+           "empty": not re.sub(r"\[\d+\]|[\W_]", "", answer)}
+    question = rag.question_of(q)
+    if question:
+        out.update(rag.grade(question, answer, hits))
+    return out
+
+
+def median(values):
+    values = [v for v in values if v is not None]
+    return round(statistics.median(values), 2) if values else None
+
+
+def summary28(results):
+    """Итог прогона по колонкам: качество, скорость, стабильность. Время —
+    отдельно для первого круга и для повторов, где промпт уже в кеше Ollama."""
+    runs = {}
+    for r in results:
+        runs.setdefault(r["i"], []).append(r)
+    out = {"questions": len(runs), "repeats": max((len(v) for v in runs.values()), default=0)}
+    for side in ("local", "cloud"):
+        rows = [(rag.QUESTIONS[r["i"]], r[side]) for r in results if r.get(side)]
+        good = [(x, a) for x, a in rows if not a.get("error")]
+        grades = [a["grade"] for _, a in good]
+        inside = [a["grade"] for x, a in good if not x.get("outside")]
+        times = [a["metrics"] for _, a in good]
+        new, again = ([r[side]["metrics"] for r in results if r.get(side) and not r[side].get("error")
+                       and (r["r"] == 0) == first] for first in (True, False))
+        stable = same = 0
+        spread = []
+        for group in runs.values():
+            answers = [r.get(side) or {"error": "нет"} for r in group]
+            if any(a.get("error") for a in answers):
+                continue
+            stable += len({a["grade"]["verdict"] for a in answers}) == 1
+            same += len({a["answer"].strip() for a in answers}) == 1
+            seconds = [a["metrics"]["seconds"] for a in answers]
+            spread.append(max(seconds) - min(seconds))
+        out[side] = {
+            "total": len(rows), "errors": len(rows) - len(good),
+            **{v: sum(g["verdict"] == v for g in grades) for v in ("ok", "part", "bad")},
+            "facts": sum(g["facts"] for g in inside), "of": sum(g["of"] for g in inside),
+            "outside": sum(a["grade"]["refused"] for x, a in good if x.get("outside")),
+            "outside_of": sum(1 for x, _ in rows if x.get("outside")),
+            "cited_ok": sum(g["cited_ok"] for g in inside), "inside": len(inside),
+            **{flag: sum(bool(g[flag]) for g in grades) for flag in ("bad_refs", "alien", "cut", "empty")},
+            "ttft": median(m["ttft"] for m in new), "ttft_again": median(m["ttft"] for m in again),
+            "seconds": median(m["seconds"] for m in new), "seconds_again": median(m["seconds"] for m in again),
+            "worst": max((m["seconds"] for m in times), default=None), "tps": median(m["tps"] for m in times),
+            "tokens_in": round(statistics.mean(m["in"] for m in times)) if times else None,
+            "tokens_out": round(statistics.mean(m["out"] for m in times)) if times else None,
+            "cost": round(sum(m["cost"] for m in times), 5),
+            "stable": stable, "same": same, "spread": round(statistics.mean(spread), 2) if spread else None}
+    out["search"] = {"ms": median(r.get("search_ms") for r in results),
+                     "embed_ms": median(r.get("embed_ms") for r in results),
+                     "same": sum(len({tuple(h["id"] for h in r.get("hits", [])) for r in group}) == 1
+                                 for group in runs.values())}
+    return out
+
+
+def rag_overview():
+    st = status()
+    return {"status": st, "live": st["live"], "model": MODEL, "embedder": rag.MODEL, "top": rag.TOP,
+            "repeats": REPEATS, "questions": rag.question_set(), "snapshot": snapshot().get("rag"),
+            "chunks": len(rag.loaded()["index"]["struct"][0]), "guard": LOCAL_HOSTS}
 
 
 if __name__ == "__main__":

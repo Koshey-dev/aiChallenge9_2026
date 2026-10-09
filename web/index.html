@@ -1081,14 +1081,16 @@
 </section>
 
 <!-- Неделя 6 — локальные модели: вкладка с подвкладками по дням, как у недели 5
-     (#week6/26, #week6/27). День 26 — запуск локальной LLM (local.js), день 27 —
-     чат-приложение на ней (assist.js). Стили — rag.css, данные — /api/local/*
-     и /api/assist/*. -->
+     (#week6/26, #week6/27, #week6/28). День 26 — запуск локальной LLM (local.js),
+     день 27 — чат-приложение на ней (assist.js), день 28 — RAG целиком на этой
+     машине (localrag.js). Стили — rag.css, данные — /api/local/*, /api/assist/*
+     и /api/localrag/*. -->
 <section class="pane rag" id="week6" hidden>
 
 <nav class="rag-days" id="w6Days">
   <button class="rag-daytab" data-day="26">День 26 · локальная LLM</button>
   <button class="rag-daytab" data-day="27">День 27 · локальный ассистент</button>
+  <button class="rag-daytab" data-day="28">День 28 · локальный RAG</button>
 </nav>
 
 <div class="rag-day" data-day="26" hidden>
@@ -1170,6 +1172,65 @@
     <ol class="la-log" id="laLog"></ol>
   </aside>
 </div>
+
+</div>
+
+<div class="rag-day" data-day="28" hidden>
+
+<h1>Локальный RAG: поиск и ответ на этой машине</h1>
+<p class="sub">Индекс недели 5 и модель дня 26: эмбеддинг вопроса, поиск фрагментов и ответ — всё на 127.0.0.1.
+  Облачная модель — только для сравнения: тот же поиск, те же фрагменты, тот же промпт.</p>
+<p class="lc-snap" id="lrSnap" hidden></p>
+
+<section class="rag-card" id="lrAskCard">
+  <div class="rag-bar">
+    <input id="lrQ" placeholder="Вопрос по гайдам — или клик по контрольному вопросу ниже">
+    <label class="rag-check"><input type="checkbox" id="lrCloud" checked> сравнить с облаком</label>
+    <button class="main" id="lrGo">Спросить</button>
+    <div class="ask-modes" id="lrRuns" role="group" aria-label="Повтор прогона" hidden></div>
+  </div>
+  <ol class="ask-flow lr-flow" id="lrFlow">
+    <li data-step="embed"><b>1 · Эмбеддинг вопроса</b><span>—</span><i></i></li>
+    <li data-step="search"><b>2 · Поиск в индексе</b><span>—</span><i></i></li>
+    <li data-step="local"><b>3 · Ответ модели</b><span>—</span><i></i></li>
+    <li data-step="cloud" class="cloud"><b>Для сравнения · облако</b><span>—</span><i></i></li>
+  </ol>
+  <div class="lr-net">
+    <div class="ct-tiles" id="lrTiles"></div>
+    <details class="ask-prompt"><summary>Журнал сети локальной ветки</summary><ol class="la-log" id="lrLog"></ol></details>
+  </div>
+  <div class="ask-cols" id="lrCols">
+    <div class="ask-col" data-col="local">
+      <h3>Локально · <span class="lr-who"></span></h3>
+      <div class="ask-answer"></div>
+      <div class="ask-grade"></div>
+      <div class="ask-meta"></div>
+    </div>
+    <div class="ask-col" data-col="cloud">
+      <h3>Облако · <span class="lr-who"></span></h3>
+      <div class="ask-answer"></div>
+      <div class="ask-grade"></div>
+      <div class="ask-meta"></div>
+    </div>
+  </div>
+  <ol class="ask-sources" id="lrSources"></ol>
+</section>
+
+<section class="rag-card" id="lrEvalCard">
+  <h2 id="lrEvalTitle">Сравнение на контрольном наборе</h2>
+  <p class="rag-note">Десять вопросов дня 22 (девять из базы, один мимо неё), три круга по всему набору. Поиск один
+    на вопрос, обе модели отвечают на одних и тех же фрагментах. Время — отдельно для первого круга и для повторов:
+    обработанный промпт Ollama держит в кеше, и повтор начинается почти сразу. Качество сверяет код, без судьи-LLM: факты из
+    ожидания, отказ вне базы, ссылка [n] на нужный документ, ссылки на несуществующие фрагменты и чужие буквы.
+    Клик по строке показывает ответы наверху.</p>
+  <div class="rag-bar">
+    <button class="main" id="lrEval">Прогнать</button>
+    <span class="hint" id="lrEvalNote"></span>
+  </div>
+  <div class="ct-tiles lr-head" id="lrHead"></div>
+  <div class="rag-scroll"><table class="rag-table rag-metrics ask-summary lr-summary" id="lrSummary"></table></div>
+  <div class="rag-scroll"><table class="rag-table ask-table lr-table" id="lrTable"></table></div>
+</section>
 
 </div>
 
@@ -2424,5 +2485,6 @@ $("#modal").addEventListener("click", event => {
 <script src="/talk.js"></script>
 <script src="/local.js"></script>
 <script src="/assist.js"></script>
+<script src="/localrag.js"></script>
 </body>
 </html>

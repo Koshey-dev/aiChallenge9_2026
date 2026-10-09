@@ -257,5 +257,4080 @@
     }
    ]
   }
+ },
+ "rag": {
+  "at": "2026-10-09 13:43:53",
+  "model": "qwen2.5:3b",
+  "cloud": "deepseek-flash",
+  "repeats": 3,
+  "warm": {
+   "embed": 0.33,
+   "model": 3.46
+  },
+  "seconds": 55,
+  "net": [
+   {
+    "at": "13:42:59",
+    "method": "POST",
+    "host": "127.0.0.1:11434",
+    "path": "/api/generate",
+    "sent": 37,
+    "status": 200,
+    "ms": 5
+   },
+   {
+    "at": "13:42:59",
+    "method": "POST",
+    "host": "127.0.0.1:11434",
+    "path": "/api/embed",
+    "sent": 67,
+    "status": 200,
+    "ms": 332
+   },
+   {
+    "at": "13:42:59",
+    "method": "POST",
+    "host": "127.0.0.1:11434",
+    "path": "/api/generate",
+    "sent": 22,
+    "status": 200,
+    "ms": 3459
+   },
+   {
+    "at": "13:43:03",
+    "method": "POST",
+    "host": "127.0.0.1:11434",
+    "path": "/api/embed",
+    "sent": 191,
+    "status": 200,
+    "ms": 106
+   },
+   {
+    "at": "13:43:03",
+    "method": "POST",
+    "host": "127.0.0.1:11434",
+    "path": "/v1/chat/completions",
+    "sent": 8957,
+    "status": 200,
+    "ms": 901
+   },
+   {
+    "at": "13:43:05",
+    "method": "POST",
+    "host": "127.0.0.1:11434",
+    "path": "/api/embed",
+    "sent": 226,
+    "status": 200,
+    "ms": 55
+   },
+   {
+    "at": "13:43:05",
+    "method": "POST",
+    "host": "127.0.0.1:11434",
+    "path": "/v1/chat/completions",
+    "sent": 6382,
+    "status": 200,
+    "ms": 774
+   },
+   {
+    "at": "13:43:07",
+    "method": "POST",
+    "host": "127.0.0.1:11434",
+    "path": "/api/embed",
+    "sent": 212,
+    "status": 200,
+    "ms": 47
+   },
+   {
+    "at": "13:43:07",
+    "method": "POST",
+    "host": "127.0.0.1:11434",
+    "path": "/v1/chat/completions",
+    "sent": 9180,
+    "status": 200,
+    "ms": 695
+   },
+   {
+    "at": "13:43:09",
+    "method": "POST",
+    "host": "127.0.0.1:11434",
+    "path": "/api/embed",
+    "sent": 215,
+    "status": 200,
+    "ms": 96
+   },
+   {
+    "at": "13:43:09",
+    "method": "POST",
+    "host": "127.0.0.1:11434",
+    "path": "/v1/chat/completions",
+    "sent": 10134,
+    "status": 200,
+    "ms": 720
+   },
+   {
+    "at": "13:43:10",
+    "method": "POST",
+    "host": "127.0.0.1:11434",
+    "path": "/api/embed",
+    "sent": 241,
+    "status": 200,
+    "ms": 79
+   },
+   {
+    "at": "13:43:10",
+    "method": "POST",
+    "host": "127.0.0.1:11434",
+    "path": "/v1/chat/completions",
+    "sent": 10789,
+    "status": 200,
+    "ms": 874
+   },
+   {
+    "at": "13:43:13",
+    "method": "POST",
+    "host": "127.0.0.1:11434",
+    "path": "/api/embed",
+    "sent": 144,
+    "status": 200,
+    "ms": 58
+   },
+   {
+    "at": "13:43:13",
+    "method": "POST",
+    "host": "127.0.0.1:11434",
+    "path": "/v1/chat/completions",
+    "sent": 5165,
+    "status": 200,
+    "ms": 414
+   },
+   {
+    "at": "13:43:15",
+    "method": "POST",
+    "host": "127.0.0.1:11434",
+    "path": "/api/embed",
+    "sent": 203,
+    "status": 200,
+    "ms": 61
+   },
+   {
+    "at": "13:43:15",
+    "method": "POST",
+    "host": "127.0.0.1:11434",
+    "path": "/v1/chat/completions",
+    "sent": 6886,
+    "status": 200,
+    "ms": 522
+   },
+   {
+    "at": "13:43:17",
+    "method": "POST",
+    "host": "127.0.0.1:11434",
+    "path": "/api/embed",
+    "sent": 108,
+    "status": 200,
+    "ms": 50
+   },
+   {
+    "at": "13:43:17",
+    "method": "POST",
+    "host": "127.0.0.1:11434",
+    "path": "/v1/chat/completions",
+    "sent": 9208,
+    "status": 200,
+    "ms": 620
+   },
+   {
+    "at": "13:43:19",
+    "method": "POST",
+    "host": "127.0.0.1:11434",
+    "path": "/api/embed",
+    "sent": 177,
+    "status": 200,
+    "ms": 56
+   },
+   {
+    "at": "13:43:19",
+    "method": "POST",
+    "host": "127.0.0.1:11434",
+    "path": "/v1/chat/completions",
+    "sent": 6997,
+    "status": 200,
+    "ms": 526
+   },
+   {
+    "at": "13:43:21",
+    "method": "POST",
+    "host": "127.0.0.1:11434",
+    "path": "/api/embed",
+    "sent": 152,
+    "status": 200,
+    "ms": 62
+   },
+   {
+    "at": "13:43:21",
+    "method": "POST",
+    "host": "127.0.0.1:11434",
+    "path": "/v1/chat/completions",
+    "sent": 6429,
+    "status": 200,
+    "ms": 422
+   },
+   {
+    "at": "13:43:22",
+    "method": "POST",
+    "host": "127.0.0.1:11434",
+    "path": "/api/embed",
+    "sent": 191,
+    "status": 200,
+    "ms": 54
+   },
+   {
+    "at": "13:43:22",
+    "method": "POST",
+    "host": "127.0.0.1:11434",
+    "path": "/v1/chat/completions",
+    "sent": 8957,
+    "status": 200,
+    "ms": 137
+   },
+   {
+    "at": "13:43:23",
+    "method": "POST",
+    "host": "127.0.0.1:11434",
+    "path": "/api/embed",
+    "sent": 226,
+    "status": 200,
+    "ms": 57
+   },
+   {
+    "at": "13:43:23",
+    "method": "POST",
+    "host": "127.0.0.1:11434",
+    "path": "/v1/chat/completions",
+    "sent": 6382,
+    "status": 200,
+    "ms": 129
+   },
+   {
+    "at": "13:43:25",
+    "method": "POST",
+    "host": "127.0.0.1:11434",
+    "path": "/api/embed",
+    "sent": 212,
+    "status": 200,
+    "ms": 41
+   },
+   {
+    "at": "13:43:25",
+    "method": "POST",
+    "host": "127.0.0.1:11434",
+    "path": "/v1/chat/completions",
+    "sent": 9180,
+    "status": 200,
+    "ms": 148
+   },
+   {
+    "at": "13:43:26",
+    "method": "POST",
+    "host": "127.0.0.1:11434",
+    "path": "/api/embed",
+    "sent": 215,
+    "status": 200,
+    "ms": 46
+   },
+   {
+    "at": "13:43:26",
+    "method": "POST",
+    "host": "127.0.0.1:11434",
+    "path": "/v1/chat/completions",
+    "sent": 10134,
+    "status": 200,
+    "ms": 113
+   },
+   {
+    "at": "13:43:27",
+    "method": "POST",
+    "host": "127.0.0.1:11434",
+    "path": "/api/embed",
+    "sent": 241,
+    "status": 200,
+    "ms": 54
+   },
+   {
+    "at": "13:43:28",
+    "method": "POST",
+    "host": "127.0.0.1:11434",
+    "path": "/v1/chat/completions",
+    "sent": 10789,
+    "status": 200,
+    "ms": 144
+   },
+   {
+    "at": "13:43:29",
+    "method": "POST",
+    "host": "127.0.0.1:11434",
+    "path": "/api/embed",
+    "sent": 144,
+    "status": 200,
+    "ms": 53
+   },
+   {
+    "at": "13:43:29",
+    "method": "POST",
+    "host": "127.0.0.1:11434",
+    "path": "/v1/chat/completions",
+    "sent": 5165,
+    "status": 200,
+    "ms": 116
+   },
+   {
+    "at": "13:43:31",
+    "method": "POST",
+    "host": "127.0.0.1:11434",
+    "path": "/api/embed",
+    "sent": 203,
+    "status": 200,
+    "ms": 42
+   },
+   {
+    "at": "13:43:31",
+    "method": "POST",
+    "host": "127.0.0.1:11434",
+    "path": "/v1/chat/completions",
+    "sent": 6886,
+    "status": 200,
+    "ms": 84
+   },
+   {
+    "at": "13:43:32",
+    "method": "POST",
+    "host": "127.0.0.1:11434",
+    "path": "/api/embed",
+    "sent": 108,
+    "status": 200,
+    "ms": 91
+   },
+   {
+    "at": "13:43:32",
+    "method": "POST",
+    "host": "127.0.0.1:11434",
+    "path": "/v1/chat/completions",
+    "sent": 9208,
+    "status": 200,
+    "ms": 148
+   },
+   {
+    "at": "13:43:34",
+    "method": "POST",
+    "host": "127.0.0.1:11434",
+    "path": "/api/embed",
+    "sent": 177,
+    "status": 200,
+    "ms": 57
+   },
+   {
+    "at": "13:43:34",
+    "method": "POST",
+    "host": "127.0.0.1:11434",
+    "path": "/v1/chat/completions",
+    "sent": 6997,
+    "status": 200,
+    "ms": 133
+   },
+   {
+    "at": "13:43:36",
+    "method": "POST",
+    "host": "127.0.0.1:11434",
+    "path": "/api/embed",
+    "sent": 152,
+    "status": 200,
+    "ms": 68
+   },
+   {
+    "at": "13:43:36",
+    "method": "POST",
+    "host": "127.0.0.1:11434",
+    "path": "/v1/chat/completions",
+    "sent": 6429,
+    "status": 200,
+    "ms": 112
+   },
+   {
+    "at": "13:43:38",
+    "method": "POST",
+    "host": "127.0.0.1:11434",
+    "path": "/api/embed",
+    "sent": 191,
+    "status": 200,
+    "ms": 50
+   },
+   {
+    "at": "13:43:38",
+    "method": "POST",
+    "host": "127.0.0.1:11434",
+    "path": "/v1/chat/completions",
+    "sent": 8957,
+    "status": 200,
+    "ms": 155
+   },
+   {
+    "at": "13:43:39",
+    "method": "POST",
+    "host": "127.0.0.1:11434",
+    "path": "/api/embed",
+    "sent": 226,
+    "status": 200,
+    "ms": 53
+   },
+   {
+    "at": "13:43:39",
+    "method": "POST",
+    "host": "127.0.0.1:11434",
+    "path": "/v1/chat/completions",
+    "sent": 6382,
+    "status": 200,
+    "ms": 116
+   },
+   {
+    "at": "13:43:40",
+    "method": "POST",
+    "host": "127.0.0.1:11434",
+    "path": "/api/embed",
+    "sent": 212,
+    "status": 200,
+    "ms": 57
+   },
+   {
+    "at": "13:43:40",
+    "method": "POST",
+    "host": "127.0.0.1:11434",
+    "path": "/v1/chat/completions",
+    "sent": 9180,
+    "status": 200,
+    "ms": 156
+   },
+   {
+    "at": "13:43:41",
+    "method": "POST",
+    "host": "127.0.0.1:11434",
+    "path": "/api/embed",
+    "sent": 215,
+    "status": 200,
+    "ms": 61
+   },
+   {
+    "at": "13:43:41",
+    "method": "POST",
+    "host": "127.0.0.1:11434",
+    "path": "/v1/chat/completions",
+    "sent": 10134,
+    "status": 200,
+    "ms": 141
+   },
+   {
+    "at": "13:43:43",
+    "method": "POST",
+    "host": "127.0.0.1:11434",
+    "path": "/api/embed",
+    "sent": 241,
+    "status": 200,
+    "ms": 52
+   },
+   {
+    "at": "13:43:43",
+    "method": "POST",
+    "host": "127.0.0.1:11434",
+    "path": "/v1/chat/completions",
+    "sent": 10789,
+    "status": 200,
+    "ms": 158
+   },
+   {
+    "at": "13:43:44",
+    "method": "POST",
+    "host": "127.0.0.1:11434",
+    "path": "/api/embed",
+    "sent": 144,
+    "status": 200,
+    "ms": 68
+   },
+   {
+    "at": "13:43:44",
+    "method": "POST",
+    "host": "127.0.0.1:11434",
+    "path": "/v1/chat/completions",
+    "sent": 5165,
+    "status": 200,
+    "ms": 137
+   },
+   {
+    "at": "13:43:46",
+    "method": "POST",
+    "host": "127.0.0.1:11434",
+    "path": "/api/embed",
+    "sent": 203,
+    "status": 200,
+    "ms": 53
+   },
+   {
+    "at": "13:43:46",
+    "method": "POST",
+    "host": "127.0.0.1:11434",
+    "path": "/v1/chat/completions",
+    "sent": 6886,
+    "status": 200,
+    "ms": 110
+   },
+   {
+    "at": "13:43:48",
+    "method": "POST",
+    "host": "127.0.0.1:11434",
+    "path": "/api/embed",
+    "sent": 108,
+    "status": 200,
+    "ms": 43
+   },
+   {
+    "at": "13:43:48",
+    "method": "POST",
+    "host": "127.0.0.1:11434",
+    "path": "/v1/chat/completions",
+    "sent": 9208,
+    "status": 200,
+    "ms": 98
+   },
+   {
+    "at": "13:43:50",
+    "method": "POST",
+    "host": "127.0.0.1:11434",
+    "path": "/api/embed",
+    "sent": 177,
+    "status": 200,
+    "ms": 56
+   },
+   {
+    "at": "13:43:50",
+    "method": "POST",
+    "host": "127.0.0.1:11434",
+    "path": "/v1/chat/completions",
+    "sent": 6997,
+    "status": 200,
+    "ms": 110
+   },
+   {
+    "at": "13:43:51",
+    "method": "POST",
+    "host": "127.0.0.1:11434",
+    "path": "/api/embed",
+    "sent": 152,
+    "status": 200,
+    "ms": 206
+   },
+   {
+    "at": "13:43:51",
+    "method": "POST",
+    "host": "127.0.0.1:11434",
+    "path": "/v1/chat/completions",
+    "sent": 6429,
+    "status": 200,
+    "ms": 331
+   }
+  ],
+  "results": [
+   {
+    "i": 0,
+    "r": 0,
+    "search_ms": 544,
+    "embed_ms": 106,
+    "hits": [
+     {
+      "id": "struct:2024-gayd-istochniki-mobi:0008",
+      "doc": "2024-gayd-istochniki-mobi",
+      "title": "2024 Гайд источники мобильного трафика",
+      "section": "Snapchat Ads",
+      "page_from": 10,
+      "page_to": 10,
+      "score": 0.6019
+     },
+     {
+      "id": "struct:15-reklamnyh-ploschadok:0003",
+      "doc": "15-reklamnyh-ploschadok",
+      "title": "15 рекламных площадок",
+      "section": "4.SNAPCHAT → 5. ASA (APP STORE ADS)",
+      "page_from": 5,
+      "page_to": 6,
+      "score": 0.4601
+     },
+     {
+      "id": "struct:2024-gayd-istochniki-mobi:0033",
+      "doc": "2024-gayd-istochniki-mobi",
+      "title": "2024 Гайд источники мобильного трафика",
+      "section": "Количество установок с глубокой оптимизаций",
+      "page_from": 31,
+      "page_to": 31,
+      "score": 0.441
+     },
+     {
+      "id": "struct:2024-gayd-istochniki-mobi:0010",
+      "doc": "2024-gayd-istochniki-mobi",
+      "title": "2024 Гайд источники мобильного трафика",
+      "section": "Telegram",
+      "page_from": 12,
+      "page_to": 12,
+      "score": 0.4397
+     },
+     {
+      "id": "struct:2024-gayd-istochniki-mobi:0004",
+      "doc": "2024-gayd-istochniki-mobi",
+      "title": "2024 Гайд источники мобильного трафика",
+      "section": "Взаимодействие",
+      "page_from": 6,
+      "page_to": 6,
+      "score": 0.4234
+     }
+    ],
+    "local": {
+     "answer": "[1] Советуем от 1000 установок на тест.",
+     "error": "",
+     "metrics": {
+      "in": 1907,
+      "out": 18,
+      "seconds": 1.2,
+      "cost": 0.0,
+      "ttft": 0.9,
+      "tps": 66.6
+     },
+     "grade": {
+      "bad_refs": [],
+      "alien": [],
+      "cut": false,
+      "empty": false,
+      "facts": 1,
+      "of": 1,
+      "found": [
+       true
+      ],
+      "refused": false,
+      "cited": [
+       1
+      ],
+      "retrieved": true,
+      "cited_ok": true,
+      "verdict": "ok"
+     }
+    },
+    "cloud": {
+     "answer": "Советуют от 1000 установок на тест; бюджет не лимитируется [1].",
+     "error": "",
+     "metrics": {
+      "in": 1781,
+      "out": 24,
+      "seconds": 1.4,
+      "cost": 0.000563,
+      "ttft": 1.28,
+      "tps": 142.7
+     },
+     "grade": {
+      "bad_refs": [],
+      "alien": [],
+      "cut": false,
+      "empty": false,
+      "facts": 1,
+      "of": 1,
+      "found": [
+       true
+      ],
+      "refused": false,
+      "cited": [
+       1
+      ],
+      "retrieved": true,
+      "cited_ok": true,
+      "verdict": "ok"
+     }
+    }
+   },
+   {
+    "i": 1,
+    "r": 0,
+    "search_ms": 277,
+    "embed_ms": 55,
+    "hits": [
+     {
+      "id": "struct:gameanalytics-q1-2024-mob:0007",
+      "doc": "gameanalytics-q1-2024-mob",
+      "title": "gameanalytics-q1-2024-mobile-games-benchmarks",
+      "section": "Europe | Retention",
+      "page_from": 9,
+      "page_to": 9,
+      "score": 0.7146
+     },
+     {
+      "id": "struct:gameanalytics-q1-2024-mob:0020",
+      "doc": "gameanalytics-q1-2024-mob",
+      "title": "gameanalytics-q1-2024-mobile-games-benchmarks",
+      "section": "Europe | Session count",
+      "page_from": 21,
+      "page_to": 21,
+      "score": 0.6779
+     },
+     {
+      "id": "struct:gameanalytics-q1-2024-mob:0003",
+      "doc": "gameanalytics-q1-2024-mob",
+      "title": "gameanalytics-q1-2024-mobile-games-benchmarks",
+      "section": "Key takeaways",
+      "page_from": 5,
+      "page_to": 5,
+      "score": 0.6345
+     },
+     {
+      "id": "struct:gameanalytics-q1-2024-mob:0006",
+      "doc": "gameanalytics-q1-2024-mob",
+      "title": "gameanalytics-q1-2024-mobile-games-benchmarks",
+      "section": "North America | Retention",
+      "page_from": 8,
+      "page_to": 8,
+      "score": 0.6241
+     },
+     {
+      "id": "struct:gameanalytics-q1-2024-mob:0008",
+      "doc": "gameanalytics-q1-2024-mob",
+      "title": "gameanalytics-q1-2024-mobile-games-benchmarks",
+      "section": "Middle East | Retention",
+      "page_from": 10,
+      "page_to": 10,
+      "score": 0.6087
+     }
+    ],
+    "cloud": {
+     "answer": "Удержание первого дня у казуальных игр в Европе — 31,79% [1].",
+     "error": "",
+     "metrics": {
+      "in": 1752,
+      "out": 23,
+      "seconds": 1.2,
+      "cost": 0.000553,
+      "ttft": 1.06,
+      "tps": 216.1
+     },
+     "grade": {
+      "bad_refs": [],
+      "alien": [],
+      "cut": false,
+      "empty": false,
+      "facts": 1,
+      "of": 1,
+      "found": [
+       true
+      ],
+      "refused": false,
+      "cited": [
+       1
+      ],
+      "retrieved": true,
+      "cited_ok": true,
+      "verdict": "ok"
+     }
+    },
+    "local": {
+     "answer": "[1] Casual games в Европе по данным GameAnalytics за Q1 2024 удерживают 31.79% первого дня.",
+     "error": "",
+     "metrics": {
+      "in": 2001,
+      "out": 37,
+      "seconds": 1.3,
+      "cost": 0.0,
+      "ttft": 0.78,
+      "tps": 73.1
+     },
+     "grade": {
+      "bad_refs": [],
+      "alien": [],
+      "cut": false,
+      "empty": false,
+      "facts": 1,
+      "of": 1,
+      "found": [
+       true
+      ],
+      "refused": false,
+      "cited": [
+       1
+      ],
+      "retrieved": true,
+      "cited_ok": true,
+      "verdict": "ok"
+     }
+    }
+   },
+   {
+    "i": 2,
+    "r": 0,
+    "search_ms": 276,
+    "embed_ms": 47,
+    "hits": [
+     {
+      "id": "struct:2024-gayd-istochniki-mobi:0010",
+      "doc": "2024-gayd-istochniki-mobi",
+      "title": "2024 Гайд источники мобильного трафика",
+      "section": "Telegram",
+      "page_from": 12,
+      "page_to": 12,
+      "score": 0.6467
+     },
+     {
+      "id": "struct:2024-gayd-istochniki-mobi:0011",
+      "doc": "2024-gayd-istochniki-mobi",
+      "title": "2024 Гайд источники мобильного трафика",
+      "section": "Telegram",
+      "page_from": 12,
+      "page_to": 12,
+      "score": 0.4434
+     },
+     {
+      "id": "struct:15-reklamnyh-ploschadok:0011",
+      "doc": "15-reklamnyh-ploschadok",
+      "title": "15 рекламных площадок",
+      "section": "13.META ADS (РАНЕЕ FACEBOOK ADS)",
+      "page_from": 14,
+      "page_to": 14,
+      "score": 0.373
+     },
+     {
+      "id": "struct:2024-gayd-istochniki-mobi:0002",
+      "doc": "2024-gayd-istochniki-mobi",
+      "title": "2024 Гайд источники мобильного трафика",
+      "section": "Взаимодействие",
+      "page_from": 4,
+      "page_to": 4,
+      "score": 0.3545
+     },
+     {
+      "id": "struct:15-reklamnyh-ploschadok:0000",
+      "doc": "15-reklamnyh-ploschadok",
+      "title": "15 рекламных площадок",
+      "section": "ГДЕ БРАТЬ ТРАФИК: → 1. GOOGLE ADS",
+      "page_from": 1,
+      "page_to": 2,
+      "score": 0.3403
+     }
+    ],
+    "local": {
+     "answer": "€1500 без учёта комиссий и НДС. [1]",
+     "error": "",
+     "metrics": {
+      "in": 1790,
+      "out": 21,
+      "seconds": 1.0,
+      "cost": 0.0,
+      "ttft": 0.7,
+      "tps": 70.6
+     },
+     "grade": {
+      "bad_refs": [],
+      "alien": [],
+      "cut": false,
+      "empty": false,
+      "facts": 1,
+      "of": 1,
+      "found": [
+       true
+      ],
+      "refused": false,
+      "cited": [
+       1
+      ],
+      "retrieved": true,
+      "cited_ok": true,
+      "verdict": "ok"
+     }
+    },
+    "cloud": {
+     "answer": "Через посредника в среднем €1500 без учёта комиссий и НДС [1].",
+     "error": "",
+     "metrics": {
+      "in": 1679,
+      "out": 25,
+      "seconds": 1.6,
+      "cost": 0.000534,
+      "ttft": 1.44,
+      "tps": 162.9
+     },
+     "grade": {
+      "bad_refs": [],
+      "alien": [],
+      "cut": false,
+      "empty": false,
+      "facts": 1,
+      "of": 1,
+      "found": [
+       true
+      ],
+      "refused": false,
+      "cited": [
+       1
+      ],
+      "retrieved": true,
+      "cited_ok": true,
+      "verdict": "ok"
+     }
+    }
+   },
+   {
+    "i": 3,
+    "r": 0,
+    "search_ms": 568,
+    "embed_ms": 96,
+    "hits": [
+     {
+      "id": "struct:gayd-vstraivaem-chat-v-ig:0005",
+      "doc": "gayd-vstraivaem-chat-v-ig",
+      "title": "Гайд Встраиваем чат в игру",
+      "section": "Проверка онлайна игроков",
+      "page_from": 0,
+      "page_to": 0,
+      "score": 0.672
+     },
+     {
+      "id": "struct:gayd-vstraivaem-chat-v-ig:0004",
+      "doc": "gayd-vstraivaem-chat-v-ig",
+      "title": "Гайд Встраиваем чат в игру",
+      "section": "Взаимодействие в чате",
+      "page_from": 0,
+      "page_to": 0,
+      "score": 0.6435
+     },
+     {
+      "id": "struct:bystryy-sposob-dobavit-v:0000",
+      "doc": "bystryy-sposob-dobavit-v",
+      "title": "Быстрый способ добавить в игру чат",
+      "section": "Быстрый способ добавить в игру чат.",
+      "page_from": 0,
+      "page_to": 0,
+      "score": 0.4921
+     },
+     {
+      "id": "struct:gayd-vstraivaem-chat-v-ig:0007",
+      "doc": "gayd-vstraivaem-chat-v-ig",
+      "title": "Гайд Встраиваем чат в игру",
+      "section": "Добавление чата в игру на Construct 3.",
+      "page_from": 0,
+      "page_to": 0,
+      "score": 0.4874
+     },
+     {
+      "id": "struct:gayd-vstraivaem-chat-v-ig:0000",
+      "doc": "gayd-vstraivaem-chat-v-ig",
+      "title": "Гайд Встраиваем чат в игру",
+      "section": "Встраиваем чат в игру",
+      "page_from": 0,
+      "page_to": 0,
+      "score": 0.486
+     }
+    ],
+    "cloud": {
+     "answer": "Чтобы получить список только тех участников, кто сейчас онлайн, нужно передать `isOnline:true` в качестве дополнительного аргумента в метод `fetchMembers` [1].",
+     "error": "",
+     "metrics": {
+      "in": 1637,
+      "out": 37,
+      "seconds": 1.0,
+      "cost": 0.000535,
+      "ttft": 0.82,
+      "tps": 189.7
+     },
+     "grade": {
+      "bad_refs": [],
+      "alien": [],
+      "cut": false,
+      "empty": false,
+      "facts": 2,
+      "of": 2,
+      "found": [
+       true,
+       true
+      ],
+      "refused": false,
+      "cited": [
+       1
+      ],
+      "retrieved": true,
+      "cited_ok": true,
+      "verdict": "ok"
+     }
+    },
+    "local": {
+     "answer": "[2] В список сообщений можно получить только тех участников, кто сейчас онлайн, передавая дополнительное свойство isOnline:true в метод fetchMembers.",
+     "error": "",
+     "metrics": {
+      "in": 1704,
+      "out": 35,
+      "seconds": 1.2,
+      "cost": 0.0,
+      "ttft": 0.72,
+      "tps": 73.7
+     },
+     "grade": {
+      "bad_refs": [],
+      "alien": [],
+      "cut": false,
+      "empty": false,
+      "facts": 2,
+      "of": 2,
+      "found": [
+       true,
+       true
+      ],
+      "refused": false,
+      "cited": [
+       2
+      ],
+      "retrieved": true,
+      "cited_ok": true,
+      "verdict": "ok"
+     }
+    }
+   },
+   {
+    "i": 4,
+    "r": 0,
+    "search_ms": 366,
+    "embed_ms": 79,
+    "hits": [
+     {
+      "id": "struct:obrazets-dogovor-podryada:0002",
+      "doc": "obrazets-dogovor-podryada",
+      "title": "образец Договор подряда",
+      "section": "2. Права и обязанности сторон",
+      "page_from": 1,
+      "page_to": 1,
+      "score": 0.6114
+     },
+     {
+      "id": "struct:obrazets-dogovor-podryada:0003",
+      "doc": "obrazets-dogovor-podryada",
+      "title": "образец Договор подряда",
+      "section": "2. Права и обязанности сторон",
+      "page_from": 1,
+      "page_to": 2,
+      "score": 0.5375
+     },
+     {
+      "id": "struct:obrazets-dogovor-podryada:0010",
+      "doc": "obrazets-dogovor-podryada",
+      "title": "образец Договор подряда",
+      "section": "Акт выполненных работ → ЗАКАЗЧИК:",
+      "page_from": 7,
+      "page_to": 7,
+      "score": 0.5276
+     },
+     {
+      "id": "struct:obrazets-dogovor-podryada:0004",
+      "doc": "obrazets-dogovor-podryada",
+      "title": "образец Договор подряда",
+      "section": "3. Цена и сроки",
+      "page_from": 2,
+      "page_to": 2,
+      "score": 0.5233
+     },
+     {
+      "id": "struct:obrazets-dogovor-podryada:0008",
+      "doc": "obrazets-dogovor-podryada",
+      "title": "образец Договор подряда",
+      "section": "6. Заключительные положения → ЗАКАЗЧИК:",
+      "page_from": 2,
+      "page_to": 3,
+      "score": 0.5102
+     }
+    ],
+    "cloud": {
+     "answer": "Исполнитель обязан до передачи результатов согласовать с заказчиком окончательный вид и работу продукта [1].",
+     "error": "",
+     "metrics": {
+      "in": 1895,
+      "out": 26,
+      "seconds": 1.2,
+      "cost": 0.0006,
+      "ttft": 1.08,
+      "tps": 160.9
+     },
+     "grade": {
+      "bad_refs": [],
+      "alien": [],
+      "cut": false,
+      "empty": false,
+      "facts": 2,
+      "of": 2,
+      "found": [
+       true,
+       true
+      ],
+      "refused": false,
+      "cited": [
+       1
+      ],
+      "retrieved": true,
+      "cited_ok": true,
+      "verdict": "ok"
+     }
+    },
+    "local": {
+     "answer": "Исполнитель обязан согласовать с Заказчиком окончательный вид и работу продукта (подпункт 2.1.2) и передать созданный в рамках Заявки продукт в цифровой форме на электронный адрес Заказчика (подпункт 2.1.4).",
+     "error": "",
+     "metrics": {
+      "in": 2108,
+      "out": 77,
+      "seconds": 1.9,
+      "cost": 0.0,
+      "ttft": 0.88,
+      "tps": 72.1
+     },
+     "grade": {
+      "bad_refs": [],
+      "alien": [],
+      "cut": false,
+      "empty": false,
+      "facts": 2,
+      "of": 2,
+      "found": [
+       true,
+       true
+      ],
+      "refused": false,
+      "cited": [],
+      "retrieved": true,
+      "cited_ok": false,
+      "verdict": "ok"
+     }
+    }
+   },
+   {
+    "i": 5,
+    "r": 0,
+    "search_ms": 324,
+    "embed_ms": 58,
+    "hits": [
+     {
+      "id": "struct:sozdanie-biznes-plana-igr:0004",
+      "doc": "sozdanie-biznes-plana-igr",
+      "title": "Создание бизнес-плана игры (3)",
+      "section": "Основные пункты финансового плана:",
+      "page_from": 6,
+      "page_to": 6,
+      "score": 0.7105
+     },
+     {
+      "id": "struct:sozdanie-biznes-plana-igr:0003",
+      "doc": "sozdanie-biznes-plana-igr",
+      "title": "Создание бизнес-плана игры (3)",
+      "section": "3. Производственный план. Бюджетирование",
+      "page_from": 5,
+      "page_to": 5,
+      "score": 0.5953
+     },
+     {
+      "id": "struct:sozdanie-biznes-plana-igr:0002",
+      "doc": "sozdanie-biznes-plana-igr",
+      "title": "Создание бизнес-плана игры (3)",
+      "section": "2. Маркетинговый план",
+      "page_from": 4,
+      "page_to": 4,
+      "score": 0.5716
+     },
+     {
+      "id": "struct:sozdanie-biznes-plana-igr:0000",
+      "doc": "sozdanie-biznes-plana-igr",
+      "title": "Создание бизнес-плана игры (3)",
+      "section": "Создание бизнес-плана → Для чего создают бизнес-план?",
+      "page_from": 1,
+      "page_to": 2,
+      "score": 0.541
+     },
+     {
+      "id": "struct:sozdanie-biznes-plana-igr:0005",
+      "doc": "sozdanie-biznes-plana-igr",
+      "title": "Создание бизнес-плана игры (3)",
+      "section": "4. Оценка рисков",
+      "page_from": 7,
+      "page_to": 7,
+      "score": 0.4573
+     }
+    ],
+    "cloud": {
+     "answer": "В финансовый план игры входят: бюджет игры и все расходы на пути; основные источники финансирования (кто дал деньги и договорённости с ними); риски и способы устранения; расчёт даты окупаемости; расчёт даты возврата инвестиций; зарплата; аренда (если есть); лицензии; стоимость продвижения игры; общая (итоговая) стоимость игры [1].",
+     "error": "",
+     "metrics": {
+      "in": 905,
+      "out": 99,
+      "seconds": 1.1,
+      "cost": 0.00039,
+      "ttft": 0.7,
+      "tps": 260.2
+     },
+     "grade": {
+      "bad_refs": [],
+      "alien": [],
+      "cut": false,
+      "empty": false,
+      "facts": 5,
+      "of": 5,
+      "found": [
+       true,
+       true,
+       true,
+       true,
+       true
+      ],
+      "refused": false,
+      "cited": [
+       1
+      ],
+      "retrieved": true,
+      "cited_ok": true,
+      "verdict": "ok"
+     }
+    },
+    "local": {
+     "answer": "Бюджет игры и все расходы на пути (для оценки успешности в будущем), Основные источники финансирования (кто дал деньги и договоренности с ними), Риски и способы устранения, Расчет даты окупаемости, Расчет даты возврата инвестиций, Зарплата, Аренда (если есть), Лицензии, Стоимость продвижения игры, Общая (итоговая) стоимость игры [1]",
+     "error": "",
+     "metrics": {
+      "in": 987,
+      "out": 120,
+      "seconds": 2.1,
+      "cost": 0.0,
+      "ttft": 0.42,
+      "tps": 72.0
+     },
+     "grade": {
+      "bad_refs": [],
+      "alien": [],
+      "cut": false,
+      "empty": false,
+      "facts": 5,
+      "of": 5,
+      "found": [
+       true,
+       true,
+       true,
+       true,
+       true
+      ],
+      "refused": false,
+      "cited": [
+       1
+      ],
+      "retrieved": true,
+      "cited_ok": true,
+      "verdict": "ok"
+     }
+    }
+   },
+   {
+    "i": 6,
+    "r": 0,
+    "search_ms": 473,
+    "embed_ms": 61,
+    "hits": [
+     {
+      "id": "struct:assety-po-kategoriyam:0001",
+      "doc": "assety-po-kategoriyam",
+      "title": "Ассеты по категориям",
+      "section": "Список:",
+      "page_from": 1,
+      "page_to": 1,
+      "score": 0.51
+     },
+     {
+      "id": "struct:assety-po-kategoriyam:0002",
+      "doc": "assety-po-kategoriyam",
+      "title": "Ассеты по категориям",
+      "section": "Список: → Список:",
+      "page_from": 1,
+      "page_to": 1,
+      "score": 0.4734
+     },
+     {
+      "id": "struct:assety-po-kategoriyam:0025",
+      "doc": "assety-po-kategoriyam",
+      "title": "Ассеты по категориям",
+      "section": "UniTask",
+      "page_from": 6,
+      "page_to": 6,
+      "score": 0.4282
+     },
+     {
+      "id": "struct:assety-po-kategoriyam:0018",
+      "doc": "assety-po-kategoriyam",
+      "title": "Ассеты по категориям",
+      "section": "PluginYG",
+      "page_from": 5,
+      "page_to": 5,
+      "score": 0.4094
+     },
+     {
+      "id": "struct:assety-po-kategoriyam:0020",
+      "doc": "assety-po-kategoriyam",
+      "title": "Ассеты по категориям",
+      "section": "Localization от Unity",
+      "page_from": 5,
+      "page_to": 5,
+      "score": 0.4087
+     }
+    ],
+    "local": {
+     "answer": "[1] Selection History – добавляет окно с историей выделения объектов в движке.",
+     "error": "",
+     "metrics": {
+      "in": 1314,
+      "out": 24,
+      "seconds": 0.8,
+      "cost": 0.0,
+      "ttft": 0.52,
+      "tps": 74.8
+     },
+     "grade": {
+      "bad_refs": [],
+      "alien": [],
+      "cut": false,
+      "empty": false,
+      "facts": 1,
+      "of": 1,
+      "found": [
+       true
+      ],
+      "refused": false,
+      "cited": [
+       1
+      ],
+      "retrieved": true,
+      "cited_ok": true,
+      "verdict": "ok"
+     }
+    },
+    "cloud": {
+     "answer": "Плагин Selection History добавляет окно с историей выделения объектов в движке [1].",
+     "error": "",
+     "metrics": {
+      "in": 1242,
+      "out": 23,
+      "seconds": 1.2,
+      "cost": 0.0004,
+      "ttft": 1.09,
+      "tps": 240.7
+     },
+     "grade": {
+      "bad_refs": [],
+      "alien": [],
+      "cut": false,
+      "empty": false,
+      "facts": 1,
+      "of": 1,
+      "found": [
+       true
+      ],
+      "refused": false,
+      "cited": [
+       1
+      ],
+      "retrieved": true,
+      "cited_ok": true,
+      "verdict": "ok"
+     }
+    }
+   },
+   {
+    "i": 7,
+    "r": 0,
+    "search_ms": 323,
+    "embed_ms": 50,
+    "hits": [
+     {
+      "id": "struct:spisok-ploschadok-dlya-re:0004",
+      "doc": "spisok-ploschadok-dlya-re",
+      "title": "Список площадок для релиза ваших игр",
+      "section": "RuStore",
+      "page_from": 7,
+      "page_to": 7,
+      "score": 0.6578
+     },
+     {
+      "id": "struct:unity-conf-2024-bonus-den:0004",
+      "doc": "unity-conf-2024-bonus-den",
+      "title": "Unity Conf 2024 - Бонус день 2 40 площадок для релиза игр",
+      "section": "RuMarket",
+      "page_from": 3,
+      "page_to": 3,
+      "score": 0.4352
+     },
+     {
+      "id": "struct:spisok-ploschadok-dlya-re:0002",
+      "doc": "spisok-ploschadok-dlya-re",
+      "title": "Список площадок для релиза ваших игр",
+      "section": "RuMarket: российский Google Play",
+      "page_from": 4,
+      "page_to": 5,
+      "score": 0.4311
+     },
+     {
+      "id": "struct:unity-conf-2024-bonus-den:0002",
+      "doc": "unity-conf-2024-bonus-den",
+      "title": "Unity Conf 2024 - Бонус день 2 40 площадок для релиза игр",
+      "section": "Начало документа",
+      "page_from": 2,
+      "page_to": 2,
+      "score": 0.4194
+     },
+     {
+      "id": "struct:2024-gayd-istochniki-mobi:0013",
+      "doc": "2024-gayd-istochniki-mobi",
+      "title": "2024 Гайд источники мобильного трафика",
+      "section": "pstore",
+      "page_from": 14,
+      "page_to": 14,
+      "score": 0.3929
+     }
+    ],
+    "cloud": {
+     "answer": "RuStore — это аналог Google Play для Android, который позволяет скачать любое приложение в РФ без ограничений [1]. Это российская платформа для приложений, созданная в ответ на растущую потребность в независимых от западных компаний цифровых решениях; она активно поддерживается правительством и крупнейшими отечественными IT-компаниями, а все заявки от разработчиков проходят ручную модерацию [4].",
+     "error": "",
+     "metrics": {
+      "in": 1465,
+      "out": 108,
+      "seconds": 1.1,
+      "cost": 0.000569,
+      "ttft": 0.81,
+      "tps": 339.7
+     },
+     "grade": {
+      "bad_refs": [],
+      "alien": [],
+      "cut": false,
+      "empty": false,
+      "facts": 2,
+      "of": 2,
+      "found": [
+       true,
+       true
+      ],
+      "refused": false,
+      "cited": [
+       1,
+       4
+      ],
+      "retrieved": true,
+      "cited_ok": true,
+      "verdict": "ok"
+     }
+    },
+    "local": {
+     "answer": "RuStore — это аналог Google Play для Android, который позволяет скачать любое приложение в РФ без ограничений. Он создан в ответ на растущую потребность в независимых от западных компаний цифровых решениях и активно поддерживается правительством и крупнейшими отечественными IT-компаниями. Платформа обеспечивает ручную модерацию всех заявок от разработчиков, что позволяет поддерживать высокое качество и безопасность размещаемых приложений.",
+     "error": "",
+     "metrics": {
+      "in": 1603,
+      "out": 118,
+      "seconds": 2.3,
+      "cost": 0.0,
+      "ttft": 0.62,
+      "tps": 72.3
+     },
+     "grade": {
+      "bad_refs": [],
+      "alien": [],
+      "cut": false,
+      "empty": false,
+      "facts": 2,
+      "of": 2,
+      "found": [
+       true,
+       true
+      ],
+      "refused": false,
+      "cited": [],
+      "retrieved": true,
+      "cited_ok": false,
+      "verdict": "ok"
+     }
+    }
+   },
+   {
+    "i": 8,
+    "r": 0,
+    "search_ms": 402,
+    "embed_ms": 56,
+    "hits": [
+     {
+      "id": "struct:unity-conf-2024-bonus-den:0014",
+      "doc": "unity-conf-2024-bonus-den",
+      "title": "Unity Conf 2024 - Бонус день 2 40 площадок для релиза игр",
+      "section": "Браузерные платформы:",
+      "page_from": 8,
+      "page_to": 8,
+      "score": 0.658
+     },
+     {
+      "id": "struct:spisok-ploschadok-dlya-re:0010",
+      "doc": "spisok-ploschadok-dlya-re",
+      "title": "Список площадок для релиза ваших игр",
+      "section": "Веб площадки:",
+      "page_from": 14,
+      "page_to": 14,
+      "score": 0.6058
+     },
+     {
+      "id": "struct:spisok-ploschadok-dlya-re:0012",
+      "doc": "spisok-ploschadok-dlya-re",
+      "title": "Список площадок для релиза ваших игр",
+      "section": "Y8 Games",
+      "page_from": 16,
+      "page_to": 16,
+      "score": 0.6053
+     },
+     {
+      "id": "struct:unity-conf-2024-bonus-den:0011",
+      "doc": "unity-conf-2024-bonus-den",
+      "title": "Unity Conf 2024 - Бонус день 2 40 площадок для релиза игр",
+      "section": "Браузерные платформы:",
+      "page_from": 7,
+      "page_to": 7,
+      "score": 0.5886
+     },
+     {
+      "id": "struct:spisok-ploschadok-dlya-re:0013",
+      "doc": "spisok-ploschadok-dlya-re",
+      "title": "Список площадок для релиза ваших игр",
+      "section": "GamePix → VK Play",
+      "page_from": 17,
+      "page_to": 18,
+      "score": 0.5798
+     }
+    ],
+    "local": {
+     "answer": "Браузерные платформы:\n\n- Яндекс Игры\n- CrazyGames\n- Y8 Games\n- Одноклассники",
+     "error": "",
+     "metrics": {
+      "in": 1301,
+      "out": 33,
+      "seconds": 1.0,
+      "cost": 0.0,
+      "ttft": 0.53,
+      "tps": 73.1
+     },
+     "grade": {
+      "bad_refs": [],
+      "alien": [],
+      "cut": false,
+      "empty": false,
+      "facts": 3,
+      "of": 3,
+      "found": [
+       true,
+       true,
+       true
+      ],
+      "refused": false,
+      "cited": [],
+      "retrieved": true,
+      "cited_ok": false,
+      "verdict": "ok"
+     }
+    },
+    "cloud": {
+     "answer": "Браузерную игру можно выпустить на следующих площадках:\n\n- Itch.io [1][3]\n- GamePix [1][5]\n- Яндекс Игры [2][4]\n- CrazyGames [2][4]\n- Y8 Games [3]\n- Одноклассники [4][5]\n- Poki Games [5]\n- VK Play [5]",
+     "error": "",
+     "metrics": {
+      "in": 1187,
+      "out": 84,
+      "seconds": 1.2,
+      "cost": 0.000457,
+      "ttft": 0.89,
+      "tps": 297.8
+     },
+     "grade": {
+      "bad_refs": [],
+      "alien": [],
+      "cut": false,
+      "empty": false,
+      "facts": 3,
+      "of": 3,
+      "found": [
+       true,
+       true,
+       true
+      ],
+      "refused": false,
+      "cited": [
+       1,
+       2,
+       3,
+       4,
+       5
+      ],
+      "retrieved": true,
+      "cited_ok": true,
+      "verdict": "ok"
+     }
+    }
+   },
+   {
+    "i": 9,
+    "r": 0,
+    "search_ms": 313,
+    "embed_ms": 62,
+    "hits": [
+     {
+      "id": "struct:unity-conf-2024-bonus-den:0009",
+      "doc": "unity-conf-2024-bonus-den",
+      "title": "Unity Conf 2024 - Бонус день 2 40 площадок для релиза игр",
+      "section": "Консольные платформы:",
+      "page_from": 6,
+      "page_to": 6,
+      "score": 0.4119
+     },
+     {
+      "id": "struct:spisok-ploschadok-dlya-re:0015",
+      "doc": "spisok-ploschadok-dlya-re",
+      "title": "Список площадок для релиза ваших игр",
+      "section": "PlayStation",
+      "page_from": 21,
+      "page_to": 21,
+      "score": 0.4102
+     },
+     {
+      "id": "struct:assety-po-kategoriyam:0006",
+      "doc": "assety-po-kategoriyam",
+      "title": "Ассеты по категориям",
+      "section": "Pro builder",
+      "page_from": 2,
+      "page_to": 2,
+      "score": 0.3733
+     },
+     {
+      "id": "struct:15-reklamnyh-ploschadok:0008",
+      "doc": "15-reklamnyh-ploschadok",
+      "title": "15 рекламных площадок",
+      "section": "10. UNITY ADS",
+      "page_from": 11,
+      "page_to": 11,
+      "score": 0.3594
+     },
+     {
+      "id": "struct:assety-po-kategoriyam:0025",
+      "doc": "assety-po-kategoriyam",
+      "title": "Ассеты по категориям",
+      "section": "UniTask",
+      "page_from": 6,
+      "page_to": 6,
+      "score": 0.3497
+     }
+    ],
+    "local": {
+     "answer": "В документах этого нет",
+     "error": "",
+     "metrics": {
+      "in": 1139,
+      "out": 6,
+      "seconds": 0.5,
+      "cost": 0.0,
+      "ttft": 0.42,
+      "tps": 84.2
+     },
+     "grade": {
+      "bad_refs": [],
+      "alien": [],
+      "cut": false,
+      "empty": false,
+      "facts": 0,
+      "of": 0,
+      "found": [],
+      "refused": true,
+      "cited": [],
+      "retrieved": false,
+      "cited_ok": false,
+      "verdict": "ok"
+     }
+    },
+    "cloud": {
+     "answer": "В документах этого нет.",
+     "error": "",
+     "metrics": {
+      "in": 1075,
+      "out": 6,
+      "seconds": 0.8,
+      "cost": 0.00033,
+      "ttft": 0.7,
+      "tps": 66.8
+     },
+     "grade": {
+      "bad_refs": [],
+      "alien": [],
+      "cut": false,
+      "empty": false,
+      "facts": 0,
+      "of": 0,
+      "found": [],
+      "refused": true,
+      "cited": [],
+      "retrieved": false,
+      "cited_ok": false,
+      "verdict": "ok"
+     }
+    }
+   },
+   {
+    "i": 0,
+    "r": 1,
+    "search_ms": 346,
+    "embed_ms": 54,
+    "hits": [
+     {
+      "id": "struct:2024-gayd-istochniki-mobi:0008",
+      "doc": "2024-gayd-istochniki-mobi",
+      "title": "2024 Гайд источники мобильного трафика",
+      "section": "Snapchat Ads",
+      "page_from": 10,
+      "page_to": 10,
+      "score": 0.6019
+     },
+     {
+      "id": "struct:15-reklamnyh-ploschadok:0003",
+      "doc": "15-reklamnyh-ploschadok",
+      "title": "15 рекламных площадок",
+      "section": "4.SNAPCHAT → 5. ASA (APP STORE ADS)",
+      "page_from": 5,
+      "page_to": 6,
+      "score": 0.4601
+     },
+     {
+      "id": "struct:2024-gayd-istochniki-mobi:0033",
+      "doc": "2024-gayd-istochniki-mobi",
+      "title": "2024 Гайд источники мобильного трафика",
+      "section": "Количество установок с глубокой оптимизаций",
+      "page_from": 31,
+      "page_to": 31,
+      "score": 0.441
+     },
+     {
+      "id": "struct:2024-gayd-istochniki-mobi:0010",
+      "doc": "2024-gayd-istochniki-mobi",
+      "title": "2024 Гайд источники мобильного трафика",
+      "section": "Telegram",
+      "page_from": 12,
+      "page_to": 12,
+      "score": 0.4397
+     },
+     {
+      "id": "struct:2024-gayd-istochniki-mobi:0004",
+      "doc": "2024-gayd-istochniki-mobi",
+      "title": "2024 Гайд источники мобильного трафика",
+      "section": "Взаимодействие",
+      "page_from": 6,
+      "page_to": 6,
+      "score": 0.4234
+     }
+    ],
+    "local": {
+     "answer": "[1] Советуют закладывать бюджет от 1000 установок на тест в Snapchat Ads.",
+     "error": "",
+     "metrics": {
+      "in": 1907,
+      "out": 24,
+      "seconds": 0.5,
+      "cost": 0.0,
+      "ttft": 0.14,
+      "tps": 74.3
+     },
+     "grade": {
+      "bad_refs": [],
+      "alien": [],
+      "cut": false,
+      "empty": false,
+      "facts": 1,
+      "of": 1,
+      "found": [
+       true
+      ],
+      "refused": false,
+      "cited": [
+       1
+      ],
+      "retrieved": true,
+      "cited_ok": true,
+      "verdict": "ok"
+     }
+    },
+    "cloud": {
+     "answer": "Советуют от 1000 установок на тест; бюджет не лимитируется [1].",
+     "error": "",
+     "metrics": {
+      "in": 1781,
+      "out": 24,
+      "seconds": 0.9,
+      "cost": 0.000563,
+      "ttft": 0.79,
+      "tps": 170.9
+     },
+     "grade": {
+      "bad_refs": [],
+      "alien": [],
+      "cut": false,
+      "empty": false,
+      "facts": 1,
+      "of": 1,
+      "found": [
+       true
+      ],
+      "refused": false,
+      "cited": [
+       1
+      ],
+      "retrieved": true,
+      "cited_ok": true,
+      "verdict": "ok"
+     }
+    }
+   },
+   {
+    "i": 1,
+    "r": 1,
+    "search_ms": 448,
+    "embed_ms": 57,
+    "hits": [
+     {
+      "id": "struct:gameanalytics-q1-2024-mob:0007",
+      "doc": "gameanalytics-q1-2024-mob",
+      "title": "gameanalytics-q1-2024-mobile-games-benchmarks",
+      "section": "Europe | Retention",
+      "page_from": 9,
+      "page_to": 9,
+      "score": 0.7146
+     },
+     {
+      "id": "struct:gameanalytics-q1-2024-mob:0020",
+      "doc": "gameanalytics-q1-2024-mob",
+      "title": "gameanalytics-q1-2024-mobile-games-benchmarks",
+      "section": "Europe | Session count",
+      "page_from": 21,
+      "page_to": 21,
+      "score": 0.6779
+     },
+     {
+      "id": "struct:gameanalytics-q1-2024-mob:0003",
+      "doc": "gameanalytics-q1-2024-mob",
+      "title": "gameanalytics-q1-2024-mobile-games-benchmarks",
+      "section": "Key takeaways",
+      "page_from": 5,
+      "page_to": 5,
+      "score": 0.6345
+     },
+     {
+      "id": "struct:gameanalytics-q1-2024-mob:0006",
+      "doc": "gameanalytics-q1-2024-mob",
+      "title": "gameanalytics-q1-2024-mobile-games-benchmarks",
+      "section": "North America | Retention",
+      "page_from": 8,
+      "page_to": 8,
+      "score": 0.6241
+     },
+     {
+      "id": "struct:gameanalytics-q1-2024-mob:0008",
+      "doc": "gameanalytics-q1-2024-mob",
+      "title": "gameanalytics-q1-2024-mobile-games-benchmarks",
+      "section": "Middle East | Retention",
+      "page_from": 10,
+      "page_to": 10,
+      "score": 0.6087
+     }
+    ],
+    "local": {
+     "answer": "[1] Casual games в Европе по данным GameAnalytics за Q1 2024 удерживают 31.79% первого дня.",
+     "error": "",
+     "metrics": {
+      "in": 2001,
+      "out": 37,
+      "seconds": 0.6,
+      "cost": 0.0,
+      "ttft": 0.13,
+      "tps": 74.1
+     },
+     "grade": {
+      "bad_refs": [],
+      "alien": [],
+      "cut": false,
+      "empty": false,
+      "facts": 1,
+      "of": 1,
+      "found": [
+       true
+      ],
+      "refused": false,
+      "cited": [
+       1
+      ],
+      "retrieved": true,
+      "cited_ok": true,
+      "verdict": "ok"
+     }
+    },
+    "cloud": {
+     "answer": "Удержание первого дня у казуальных игр в Европе составляет 31.79% [1].",
+     "error": "",
+     "metrics": {
+      "in": 1752,
+      "out": 23,
+      "seconds": 1.1,
+      "cost": 0.000553,
+      "ttft": 1.04,
+      "tps": 396.0
+     },
+     "grade": {
+      "bad_refs": [],
+      "alien": [],
+      "cut": false,
+      "empty": false,
+      "facts": 1,
+      "of": 1,
+      "found": [
+       true
+      ],
+      "refused": false,
+      "cited": [
+       1
+      ],
+      "retrieved": true,
+      "cited_ok": true,
+      "verdict": "ok"
+     }
+    }
+   },
+   {
+    "i": 2,
+    "r": 1,
+    "search_ms": 276,
+    "embed_ms": 41,
+    "hits": [
+     {
+      "id": "struct:2024-gayd-istochniki-mobi:0010",
+      "doc": "2024-gayd-istochniki-mobi",
+      "title": "2024 Гайд источники мобильного трафика",
+      "section": "Telegram",
+      "page_from": 12,
+      "page_to": 12,
+      "score": 0.6467
+     },
+     {
+      "id": "struct:2024-gayd-istochniki-mobi:0011",
+      "doc": "2024-gayd-istochniki-mobi",
+      "title": "2024 Гайд источники мобильного трафика",
+      "section": "Telegram",
+      "page_from": 12,
+      "page_to": 12,
+      "score": 0.4434
+     },
+     {
+      "id": "struct:15-reklamnyh-ploschadok:0011",
+      "doc": "15-reklamnyh-ploschadok",
+      "title": "15 рекламных площадок",
+      "section": "13.META ADS (РАНЕЕ FACEBOOK ADS)",
+      "page_from": 14,
+      "page_to": 14,
+      "score": 0.373
+     },
+     {
+      "id": "struct:2024-gayd-istochniki-mobi:0002",
+      "doc": "2024-gayd-istochniki-mobi",
+      "title": "2024 Гайд источники мобильного трафика",
+      "section": "Взаимодействие",
+      "page_from": 4,
+      "page_to": 4,
+      "score": 0.3545
+     },
+     {
+      "id": "struct:15-reklamnyh-ploschadok:0000",
+      "doc": "15-reklamnyh-ploschadok",
+      "title": "15 рекламных площадок",
+      "section": "ГДЕ БРАТЬ ТРАФИК: → 1. GOOGLE ADS",
+      "page_from": 1,
+      "page_to": 2,
+      "score": 0.3403
+     }
+    ],
+    "local": {
+     "answer": "€1500 без учёта комиссий и НДС. [1]",
+     "error": "",
+     "metrics": {
+      "in": 1790,
+      "out": 21,
+      "seconds": 0.4,
+      "cost": 0.0,
+      "ttft": 0.15,
+      "tps": 74.6
+     },
+     "grade": {
+      "bad_refs": [],
+      "alien": [],
+      "cut": false,
+      "empty": false,
+      "facts": 1,
+      "of": 1,
+      "found": [
+       true
+      ],
+      "refused": false,
+      "cited": [
+       1
+      ],
+      "retrieved": true,
+      "cited_ok": true,
+      "verdict": "ok"
+     }
+    },
+    "cloud": {
+     "answer": "Через посредника в среднем €1500 без учёта комиссий и НДС [1].",
+     "error": "",
+     "metrics": {
+      "in": 1679,
+      "out": 25,
+      "seconds": 0.9,
+      "cost": 0.000534,
+      "ttft": 0.72,
+      "tps": 192.1
+     },
+     "grade": {
+      "bad_refs": [],
+      "alien": [],
+      "cut": false,
+      "empty": false,
+      "facts": 1,
+      "of": 1,
+      "found": [
+       true
+      ],
+      "refused": false,
+      "cited": [
+       1
+      ],
+      "retrieved": true,
+      "cited_ok": true,
+      "verdict": "ok"
+     }
+    }
+   },
+   {
+    "i": 3,
+    "r": 1,
+    "search_ms": 263,
+    "embed_ms": 46,
+    "hits": [
+     {
+      "id": "struct:gayd-vstraivaem-chat-v-ig:0005",
+      "doc": "gayd-vstraivaem-chat-v-ig",
+      "title": "Гайд Встраиваем чат в игру",
+      "section": "Проверка онлайна игроков",
+      "page_from": 0,
+      "page_to": 0,
+      "score": 0.672
+     },
+     {
+      "id": "struct:gayd-vstraivaem-chat-v-ig:0004",
+      "doc": "gayd-vstraivaem-chat-v-ig",
+      "title": "Гайд Встраиваем чат в игру",
+      "section": "Взаимодействие в чате",
+      "page_from": 0,
+      "page_to": 0,
+      "score": 0.6435
+     },
+     {
+      "id": "struct:bystryy-sposob-dobavit-v:0000",
+      "doc": "bystryy-sposob-dobavit-v",
+      "title": "Быстрый способ добавить в игру чат",
+      "section": "Быстрый способ добавить в игру чат.",
+      "page_from": 0,
+      "page_to": 0,
+      "score": 0.4921
+     },
+     {
+      "id": "struct:gayd-vstraivaem-chat-v-ig:0007",
+      "doc": "gayd-vstraivaem-chat-v-ig",
+      "title": "Гайд Встраиваем чат в игру",
+      "section": "Добавление чата в игру на Construct 3.",
+      "page_from": 0,
+      "page_to": 0,
+      "score": 0.4874
+     },
+     {
+      "id": "struct:gayd-vstraivaem-chat-v-ig:0000",
+      "doc": "gayd-vstraivaem-chat-v-ig",
+      "title": "Гайд Встраиваем чат в игру",
+      "section": "Встраиваем чат в игру",
+      "page_from": 0,
+      "page_to": 0,
+      "score": 0.486
+     }
+    ],
+    "local": {
+     "answer": "[2]",
+     "error": "",
+     "metrics": {
+      "in": 1704,
+      "out": 4,
+      "seconds": 0.2,
+      "cost": 0.0,
+      "ttft": 0.11,
+      "tps": 107.6
+     },
+     "grade": {
+      "bad_refs": [],
+      "alien": [],
+      "cut": false,
+      "empty": true,
+      "facts": 0,
+      "of": 2,
+      "found": [
+       false,
+       false
+      ],
+      "refused": false,
+      "cited": [
+       2
+      ],
+      "retrieved": true,
+      "cited_ok": true,
+      "verdict": "bad"
+     }
+    },
+    "cloud": {
+     "answer": "Чтобы получить только онлайн-участников, нужно передать `isOnline:true` дополнительным аргументом в метод `fetchMembers` — тогда вернутся только игроки онлайн [1].",
+     "error": "",
+     "metrics": {
+      "in": 1637,
+      "out": 43,
+      "seconds": 1.2,
+      "cost": 0.000543,
+      "ttft": 1.0,
+      "tps": 178.1
+     },
+     "grade": {
+      "bad_refs": [],
+      "alien": [],
+      "cut": false,
+      "empty": false,
+      "facts": 2,
+      "of": 2,
+      "found": [
+       true,
+       true
+      ],
+      "refused": false,
+      "cited": [
+       1
+      ],
+      "retrieved": true,
+      "cited_ok": true,
+      "verdict": "ok"
+     }
+    }
+   },
+   {
+    "i": 4,
+    "r": 1,
+    "search_ms": 357,
+    "embed_ms": 54,
+    "hits": [
+     {
+      "id": "struct:obrazets-dogovor-podryada:0002",
+      "doc": "obrazets-dogovor-podryada",
+      "title": "образец Договор подряда",
+      "section": "2. Права и обязанности сторон",
+      "page_from": 1,
+      "page_to": 1,
+      "score": 0.6114
+     },
+     {
+      "id": "struct:obrazets-dogovor-podryada:0003",
+      "doc": "obrazets-dogovor-podryada",
+      "title": "образец Договор подряда",
+      "section": "2. Права и обязанности сторон",
+      "page_from": 1,
+      "page_to": 2,
+      "score": 0.5375
+     },
+     {
+      "id": "struct:obrazets-dogovor-podryada:0010",
+      "doc": "obrazets-dogovor-podryada",
+      "title": "образец Договор подряда",
+      "section": "Акт выполненных работ → ЗАКАЗЧИК:",
+      "page_from": 7,
+      "page_to": 7,
+      "score": 0.5276
+     },
+     {
+      "id": "struct:obrazets-dogovor-podryada:0004",
+      "doc": "obrazets-dogovor-podryada",
+      "title": "образец Договор подряда",
+      "section": "3. Цена и сроки",
+      "page_from": 2,
+      "page_to": 2,
+      "score": 0.5233
+     },
+     {
+      "id": "struct:obrazets-dogovor-podryada:0008",
+      "doc": "obrazets-dogovor-podryada",
+      "title": "образец Договор подряда",
+      "section": "6. Заключительные положения → ЗАКАЗЧИК:",
+      "page_from": 2,
+      "page_to": 3,
+      "score": 0.5102
+     }
+    ],
+    "local": {
+     "answer": "Исполнитель обязан согласовать с Заказчиком окончательный вид и работу продукта до передачи Заказчику результатов Услуги.",
+     "error": "",
+     "metrics": {
+      "in": 2108,
+      "out": 40,
+      "seconds": 0.8,
+      "cost": 0.0,
+      "ttft": 0.14,
+      "tps": 65.3
+     },
+     "grade": {
+      "bad_refs": [],
+      "alien": [],
+      "cut": false,
+      "empty": false,
+      "facts": 2,
+      "of": 2,
+      "found": [
+       true,
+       true
+      ],
+      "refused": false,
+      "cited": [],
+      "retrieved": true,
+      "cited_ok": false,
+      "verdict": "ok"
+     }
+    },
+    "cloud": {
+     "answer": "Исполнитель обязан до передачи Заказчику результатов Услуги согласовать с ним окончательный вид и работу продукта [1].",
+     "error": "",
+     "metrics": {
+      "in": 1895,
+      "out": 30,
+      "seconds": 0.9,
+      "cost": 0.000605,
+      "ttft": 0.76,
+      "tps": 212.5
+     },
+     "grade": {
+      "bad_refs": [],
+      "alien": [],
+      "cut": false,
+      "empty": false,
+      "facts": 2,
+      "of": 2,
+      "found": [
+       true,
+       true
+      ],
+      "refused": false,
+      "cited": [
+       1
+      ],
+      "retrieved": true,
+      "cited_ok": true,
+      "verdict": "ok"
+     }
+    }
+   },
+   {
+    "i": 5,
+    "r": 1,
+    "search_ms": 290,
+    "embed_ms": 53,
+    "hits": [
+     {
+      "id": "struct:sozdanie-biznes-plana-igr:0004",
+      "doc": "sozdanie-biznes-plana-igr",
+      "title": "Создание бизнес-плана игры (3)",
+      "section": "Основные пункты финансового плана:",
+      "page_from": 6,
+      "page_to": 6,
+      "score": 0.7105
+     },
+     {
+      "id": "struct:sozdanie-biznes-plana-igr:0003",
+      "doc": "sozdanie-biznes-plana-igr",
+      "title": "Создание бизнес-плана игры (3)",
+      "section": "3. Производственный план. Бюджетирование",
+      "page_from": 5,
+      "page_to": 5,
+      "score": 0.5953
+     },
+     {
+      "id": "struct:sozdanie-biznes-plana-igr:0002",
+      "doc": "sozdanie-biznes-plana-igr",
+      "title": "Создание бизнес-плана игры (3)",
+      "section": "2. Маркетинговый план",
+      "page_from": 4,
+      "page_to": 4,
+      "score": 0.5716
+     },
+     {
+      "id": "struct:sozdanie-biznes-plana-igr:0000",
+      "doc": "sozdanie-biznes-plana-igr",
+      "title": "Создание бизнес-плана игры (3)",
+      "section": "Создание бизнес-плана → Для чего создают бизнес-план?",
+      "page_from": 1,
+      "page_to": 2,
+      "score": 0.541
+     },
+     {
+      "id": "struct:sozdanie-biznes-plana-igr:0005",
+      "doc": "sozdanie-biznes-plana-igr",
+      "title": "Создание бизнес-плана игры (3)",
+      "section": "4. Оценка рисков",
+      "page_from": 7,
+      "page_to": 7,
+      "score": 0.4573
+     }
+    ],
+    "cloud": {
+     "answer": "В финансовый план игры входят:\n\n- Бюджет игры и все расходы на пути (для оценки успешности в будущем) [1]\n- Основные источники финансирования (кто дал деньги и договоренности с ними) [1]\n- Риски и способы устранения [1]\n- Расчет даты окупаемости [1]\n- Расчет даты возврата инвестиций [1]\n- Зарплата [1]\n- Аренда (если есть) [1]\n- Лицензии [1]\n- Стоимость продвижения игры [1]\n- Общая (итоговая) стоимость игры [1]",
+     "error": "",
+     "metrics": {
+      "in": 905,
+      "out": 144,
+      "seconds": 1.0,
+      "cost": 0.000444,
+      "ttft": 0.58,
+      "tps": 339.3
+     },
+     "grade": {
+      "bad_refs": [],
+      "alien": [],
+      "cut": false,
+      "empty": false,
+      "facts": 5,
+      "of": 5,
+      "found": [
+       true,
+       true,
+       true,
+       true,
+       true
+      ],
+      "refused": false,
+      "cited": [
+       1
+      ],
+      "retrieved": true,
+      "cited_ok": true,
+      "verdict": "ok"
+     }
+    },
+    "local": {
+     "answer": "Бюджет игры и все расходы на пути (для оценки успешности в будущем), Основные источники финансирования (кто дал деньги и договоренности с ними), Риски и способы устранения, Расчет даты окупаемости, Расчет даты возврата инвестиций, Зарплата, Аренда (если есть), Лицензии, Стоимость продвижения игры, Общая (итоговая) стоимость игры [1]",
+     "error": "",
+     "metrics": {
+      "in": 987,
+      "out": 120,
+      "seconds": 1.8,
+      "cost": 0.0,
+      "ttft": 0.12,
+      "tps": 72.9
+     },
+     "grade": {
+      "bad_refs": [],
+      "alien": [],
+      "cut": false,
+      "empty": false,
+      "facts": 5,
+      "of": 5,
+      "found": [
+       true,
+       true,
+       true,
+       true,
+       true
+      ],
+      "refused": false,
+      "cited": [
+       1
+      ],
+      "retrieved": true,
+      "cited_ok": true,
+      "verdict": "ok"
+     }
+    }
+   },
+   {
+    "i": 6,
+    "r": 1,
+    "search_ms": 228,
+    "embed_ms": 42,
+    "hits": [
+     {
+      "id": "struct:assety-po-kategoriyam:0001",
+      "doc": "assety-po-kategoriyam",
+      "title": "Ассеты по категориям",
+      "section": "Список:",
+      "page_from": 1,
+      "page_to": 1,
+      "score": 0.51
+     },
+     {
+      "id": "struct:assety-po-kategoriyam:0002",
+      "doc": "assety-po-kategoriyam",
+      "title": "Ассеты по категориям",
+      "section": "Список: → Список:",
+      "page_from": 1,
+      "page_to": 1,
+      "score": 0.4734
+     },
+     {
+      "id": "struct:assety-po-kategoriyam:0025",
+      "doc": "assety-po-kategoriyam",
+      "title": "Ассеты по категориям",
+      "section": "UniTask",
+      "page_from": 6,
+      "page_to": 6,
+      "score": 0.4282
+     },
+     {
+      "id": "struct:assety-po-kategoriyam:0018",
+      "doc": "assety-po-kategoriyam",
+      "title": "Ассеты по категориям",
+      "section": "PluginYG",
+      "page_from": 5,
+      "page_to": 5,
+      "score": 0.4094
+     },
+     {
+      "id": "struct:assety-po-kategoriyam:0020",
+      "doc": "assety-po-kategoriyam",
+      "title": "Ассеты по категориям",
+      "section": "Localization от Unity",
+      "page_from": 5,
+      "page_to": 5,
+      "score": 0.4087
+     }
+    ],
+    "local": {
+     "answer": "[1] Selection History – добавляет окно с историей выделения объектов в движке.",
+     "error": "",
+     "metrics": {
+      "in": 1314,
+      "out": 24,
+      "seconds": 0.4,
+      "cost": 0.0,
+      "ttft": 0.08,
+      "tps": 73.5
+     },
+     "grade": {
+      "bad_refs": [],
+      "alien": [],
+      "cut": false,
+      "empty": false,
+      "facts": 1,
+      "of": 1,
+      "found": [
+       true
+      ],
+      "refused": false,
+      "cited": [
+       1
+      ],
+      "retrieved": true,
+      "cited_ok": true,
+      "verdict": "ok"
+     }
+    },
+    "cloud": {
+     "answer": "Плагин Selection History добавляет окно с историей выделения объектов в движке [1].",
+     "error": "",
+     "metrics": {
+      "in": 1242,
+      "out": 23,
+      "seconds": 1.1,
+      "cost": 0.0004,
+      "ttft": 0.98,
+      "tps": 176.2
+     },
+     "grade": {
+      "bad_refs": [],
+      "alien": [],
+      "cut": false,
+      "empty": false,
+      "facts": 1,
+      "of": 1,
+      "found": [
+       true
+      ],
+      "refused": false,
+      "cited": [
+       1
+      ],
+      "retrieved": true,
+      "cited_ok": true,
+      "verdict": "ok"
+     }
+    }
+   },
+   {
+    "i": 7,
+    "r": 1,
+    "search_ms": 425,
+    "embed_ms": 91,
+    "hits": [
+     {
+      "id": "struct:spisok-ploschadok-dlya-re:0004",
+      "doc": "spisok-ploschadok-dlya-re",
+      "title": "Список площадок для релиза ваших игр",
+      "section": "RuStore",
+      "page_from": 7,
+      "page_to": 7,
+      "score": 0.6578
+     },
+     {
+      "id": "struct:unity-conf-2024-bonus-den:0004",
+      "doc": "unity-conf-2024-bonus-den",
+      "title": "Unity Conf 2024 - Бонус день 2 40 площадок для релиза игр",
+      "section": "RuMarket",
+      "page_from": 3,
+      "page_to": 3,
+      "score": 0.4352
+     },
+     {
+      "id": "struct:spisok-ploschadok-dlya-re:0002",
+      "doc": "spisok-ploschadok-dlya-re",
+      "title": "Список площадок для релиза ваших игр",
+      "section": "RuMarket: российский Google Play",
+      "page_from": 4,
+      "page_to": 5,
+      "score": 0.4311
+     },
+     {
+      "id": "struct:unity-conf-2024-bonus-den:0002",
+      "doc": "unity-conf-2024-bonus-den",
+      "title": "Unity Conf 2024 - Бонус день 2 40 площадок для релиза игр",
+      "section": "Начало документа",
+      "page_from": 2,
+      "page_to": 2,
+      "score": 0.4194
+     },
+     {
+      "id": "struct:2024-gayd-istochniki-mobi:0013",
+      "doc": "2024-gayd-istochniki-mobi",
+      "title": "2024 Гайд источники мобильного трафика",
+      "section": "pstore",
+      "page_from": 14,
+      "page_to": 14,
+      "score": 0.3929
+     }
+    ],
+    "cloud": {
+     "answer": "RuStore — это аналог Google Play для Android, который позволяет скачать любое приложение в РФ без ограничений [1]. Это российская платформа для приложений, созданная в ответ на растущую потребность в независимых от западных компаний цифровых решениях; она активно поддерживается правительством и крупнейшими отечественными IT-компаниями, а все заявки от разработчиков проходят ручную модерацию [4].",
+     "error": "",
+     "metrics": {
+      "in": 1465,
+      "out": 108,
+      "seconds": 1.1,
+      "cost": 0.000569,
+      "ttft": 0.78,
+      "tps": 293.5
+     },
+     "grade": {
+      "bad_refs": [],
+      "alien": [],
+      "cut": false,
+      "empty": false,
+      "facts": 2,
+      "of": 2,
+      "found": [
+       true,
+       true
+      ],
+      "refused": false,
+      "cited": [
+       1,
+       4
+      ],
+      "retrieved": true,
+      "cited_ok": true,
+      "verdict": "ok"
+     }
+    },
+    "local": {
+     "answer": "RuStore — это аналог Google Play для Android, который позволяет скачать любое приложение в РФ без ограничений. Он создан в ответ на растущую потребность в независимых от западных компаний цифровых решениях. RuStore активно поддерживается правительством и крупнейшими отечественными IT-компаниями. Платформа обеспечивает ручную модерацию всех заявок от разработчиков, что позволяет поддерживать высокое качество и безопасность размещаемых приложений.",
+     "error": "",
+     "metrics": {
+      "in": 1603,
+      "out": 120,
+      "seconds": 1.8,
+      "cost": 0.0,
+      "ttft": 0.15,
+      "tps": 72.5
+     },
+     "grade": {
+      "bad_refs": [],
+      "alien": [],
+      "cut": false,
+      "empty": false,
+      "facts": 2,
+      "of": 2,
+      "found": [
+       true,
+       true
+      ],
+      "refused": false,
+      "cited": [],
+      "retrieved": true,
+      "cited_ok": false,
+      "verdict": "ok"
+     }
+    }
+   },
+   {
+    "i": 8,
+    "r": 1,
+    "search_ms": 299,
+    "embed_ms": 57,
+    "hits": [
+     {
+      "id": "struct:unity-conf-2024-bonus-den:0014",
+      "doc": "unity-conf-2024-bonus-den",
+      "title": "Unity Conf 2024 - Бонус день 2 40 площадок для релиза игр",
+      "section": "Браузерные платформы:",
+      "page_from": 8,
+      "page_to": 8,
+      "score": 0.658
+     },
+     {
+      "id": "struct:spisok-ploschadok-dlya-re:0010",
+      "doc": "spisok-ploschadok-dlya-re",
+      "title": "Список площадок для релиза ваших игр",
+      "section": "Веб площадки:",
+      "page_from": 14,
+      "page_to": 14,
+      "score": 0.6058
+     },
+     {
+      "id": "struct:spisok-ploschadok-dlya-re:0012",
+      "doc": "spisok-ploschadok-dlya-re",
+      "title": "Список площадок для релиза ваших игр",
+      "section": "Y8 Games",
+      "page_from": 16,
+      "page_to": 16,
+      "score": 0.6053
+     },
+     {
+      "id": "struct:unity-conf-2024-bonus-den:0011",
+      "doc": "unity-conf-2024-bonus-den",
+      "title": "Unity Conf 2024 - Бонус день 2 40 площадок для релиза игр",
+      "section": "Браузерные платформы:",
+      "page_from": 7,
+      "page_to": 7,
+      "score": 0.5886
+     },
+     {
+      "id": "struct:spisok-ploschadok-dlya-re:0013",
+      "doc": "spisok-ploschadok-dlya-re",
+      "title": "Список площадок для релиза ваших игр",
+      "section": "GamePix → VK Play",
+      "page_from": 17,
+      "page_to": 18,
+      "score": 0.5798
+     }
+    ],
+    "local": {
+     "answer": "На следующих площадках можно выпустить браузерную игру:\n\n[1], [4]\n\nЯндекс Игры, GamePix, CrazyGames, Одноклассники, VK Play.",
+     "error": "",
+     "metrics": {
+      "in": 1301,
+      "out": 47,
+      "seconds": 0.8,
+      "cost": 0.0,
+      "ttft": 0.13,
+      "tps": 73.1
+     },
+     "grade": {
+      "bad_refs": [],
+      "alien": [],
+      "cut": false,
+      "empty": false,
+      "facts": 3,
+      "of": 3,
+      "found": [
+       true,
+       true,
+       true
+      ],
+      "refused": false,
+      "cited": [
+       1,
+       4
+      ],
+      "retrieved": true,
+      "cited_ok": true,
+      "verdict": "ok"
+     }
+    },
+    "cloud": {
+     "answer": "Браузерную игру можно выпустить на следующих площадках:\n\n- Itch.io [1][3]\n- GamePix [1][5]\n- Яндекс Игры [2][4]\n- CrazyGames [2][4]\n- Y8 Games [3]\n- Одноклассники [4][5]\n- Poki Games [5]\n- VK Play [5]",
+     "error": "",
+     "metrics": {
+      "in": 1187,
+      "out": 84,
+      "seconds": 1.3,
+      "cost": 0.000457,
+      "ttft": 0.94,
+      "tps": 271.5
+     },
+     "grade": {
+      "bad_refs": [],
+      "alien": [],
+      "cut": false,
+      "empty": false,
+      "facts": 3,
+      "of": 3,
+      "found": [
+       true,
+       true,
+       true
+      ],
+      "refused": false,
+      "cited": [
+       1,
+       2,
+       3,
+       4,
+       5
+      ],
+      "retrieved": true,
+      "cited_ok": true,
+      "verdict": "ok"
+     }
+    }
+   },
+   {
+    "i": 9,
+    "r": 1,
+    "search_ms": 244,
+    "embed_ms": 68,
+    "hits": [
+     {
+      "id": "struct:unity-conf-2024-bonus-den:0009",
+      "doc": "unity-conf-2024-bonus-den",
+      "title": "Unity Conf 2024 - Бонус день 2 40 площадок для релиза игр",
+      "section": "Консольные платформы:",
+      "page_from": 6,
+      "page_to": 6,
+      "score": 0.4119
+     },
+     {
+      "id": "struct:spisok-ploschadok-dlya-re:0015",
+      "doc": "spisok-ploschadok-dlya-re",
+      "title": "Список площадок для релиза ваших игр",
+      "section": "PlayStation",
+      "page_from": 21,
+      "page_to": 21,
+      "score": 0.4102
+     },
+     {
+      "id": "struct:assety-po-kategoriyam:0006",
+      "doc": "assety-po-kategoriyam",
+      "title": "Ассеты по категориям",
+      "section": "Pro builder",
+      "page_from": 2,
+      "page_to": 2,
+      "score": 0.3733
+     },
+     {
+      "id": "struct:15-reklamnyh-ploschadok:0008",
+      "doc": "15-reklamnyh-ploschadok",
+      "title": "15 рекламных площадок",
+      "section": "10. UNITY ADS",
+      "page_from": 11,
+      "page_to": 11,
+      "score": 0.3594
+     },
+     {
+      "id": "struct:assety-po-kategoriyam:0025",
+      "doc": "assety-po-kategoriyam",
+      "title": "Ассеты по категориям",
+      "section": "UniTask",
+      "page_from": 6,
+      "page_to": 6,
+      "score": 0.3497
+     }
+    ],
+    "local": {
+     "answer": "В документах этого нет",
+     "error": "",
+     "metrics": {
+      "in": 1139,
+      "out": 6,
+      "seconds": 0.2,
+      "cost": 0.0,
+      "ttft": 0.11,
+      "tps": 83.2
+     },
+     "grade": {
+      "bad_refs": [],
+      "alien": [],
+      "cut": false,
+      "empty": false,
+      "facts": 0,
+      "of": 0,
+      "found": [],
+      "refused": true,
+      "cited": [],
+      "retrieved": false,
+      "cited_ok": false,
+      "verdict": "ok"
+     }
+    },
+    "cloud": {
+     "answer": "В документах этого нет.",
+     "error": "",
+     "metrics": {
+      "in": 1075,
+      "out": 6,
+      "seconds": 1.7,
+      "cost": 0.00033,
+      "ttft": 1.56,
+      "tps": 71.1
+     },
+     "grade": {
+      "bad_refs": [],
+      "alien": [],
+      "cut": false,
+      "empty": false,
+      "facts": 0,
+      "of": 0,
+      "found": [],
+      "refused": true,
+      "cited": [],
+      "retrieved": false,
+      "cited_ok": false,
+      "verdict": "ok"
+     }
+    }
+   },
+   {
+    "i": 0,
+    "r": 2,
+    "search_ms": 311,
+    "embed_ms": 50,
+    "hits": [
+     {
+      "id": "struct:2024-gayd-istochniki-mobi:0008",
+      "doc": "2024-gayd-istochniki-mobi",
+      "title": "2024 Гайд источники мобильного трафика",
+      "section": "Snapchat Ads",
+      "page_from": 10,
+      "page_to": 10,
+      "score": 0.6019
+     },
+     {
+      "id": "struct:15-reklamnyh-ploschadok:0003",
+      "doc": "15-reklamnyh-ploschadok",
+      "title": "15 рекламных площадок",
+      "section": "4.SNAPCHAT → 5. ASA (APP STORE ADS)",
+      "page_from": 5,
+      "page_to": 6,
+      "score": 0.4601
+     },
+     {
+      "id": "struct:2024-gayd-istochniki-mobi:0033",
+      "doc": "2024-gayd-istochniki-mobi",
+      "title": "2024 Гайд источники мобильного трафика",
+      "section": "Количество установок с глубокой оптимизаций",
+      "page_from": 31,
+      "page_to": 31,
+      "score": 0.441
+     },
+     {
+      "id": "struct:2024-gayd-istochniki-mobi:0010",
+      "doc": "2024-gayd-istochniki-mobi",
+      "title": "2024 Гайд источники мобильного трафика",
+      "section": "Telegram",
+      "page_from": 12,
+      "page_to": 12,
+      "score": 0.4397
+     },
+     {
+      "id": "struct:2024-gayd-istochniki-mobi:0004",
+      "doc": "2024-gayd-istochniki-mobi",
+      "title": "2024 Гайд источники мобильного трафика",
+      "section": "Взаимодействие",
+      "page_from": 6,
+      "page_to": 6,
+      "score": 0.4234
+     }
+    ],
+    "local": {
+     "answer": "[1] Советуют закладывать бюджет от 1000 установок на тест в Snapchat Ads.",
+     "error": "",
+     "metrics": {
+      "in": 1907,
+      "out": 24,
+      "seconds": 0.6,
+      "cost": 0.0,
+      "ttft": 0.16,
+      "tps": 54.0
+     },
+     "grade": {
+      "bad_refs": [],
+      "alien": [],
+      "cut": false,
+      "empty": false,
+      "facts": 1,
+      "of": 1,
+      "found": [
+       true
+      ],
+      "refused": false,
+      "cited": [
+       1
+      ],
+      "retrieved": true,
+      "cited_ok": true,
+      "verdict": "ok"
+     }
+    },
+    "cloud": {
+     "answer": "Советуют от 1000 установок на тест; бюджет не лимитируется [1].",
+     "error": "",
+     "metrics": {
+      "in": 1781,
+      "out": 24,
+      "seconds": 1.0,
+      "cost": 0.000563,
+      "ttft": 0.85,
+      "tps": 161.2
+     },
+     "grade": {
+      "bad_refs": [],
+      "alien": [],
+      "cut": false,
+      "empty": false,
+      "facts": 1,
+      "of": 1,
+      "found": [
+       true
+      ],
+      "refused": false,
+      "cited": [
+       1
+      ],
+      "retrieved": true,
+      "cited_ok": true,
+      "verdict": "ok"
+     }
+    }
+   },
+   {
+    "i": 1,
+    "r": 2,
+    "search_ms": 286,
+    "embed_ms": 53,
+    "hits": [
+     {
+      "id": "struct:gameanalytics-q1-2024-mob:0007",
+      "doc": "gameanalytics-q1-2024-mob",
+      "title": "gameanalytics-q1-2024-mobile-games-benchmarks",
+      "section": "Europe | Retention",
+      "page_from": 9,
+      "page_to": 9,
+      "score": 0.7146
+     },
+     {
+      "id": "struct:gameanalytics-q1-2024-mob:0020",
+      "doc": "gameanalytics-q1-2024-mob",
+      "title": "gameanalytics-q1-2024-mobile-games-benchmarks",
+      "section": "Europe | Session count",
+      "page_from": 21,
+      "page_to": 21,
+      "score": 0.6779
+     },
+     {
+      "id": "struct:gameanalytics-q1-2024-mob:0003",
+      "doc": "gameanalytics-q1-2024-mob",
+      "title": "gameanalytics-q1-2024-mobile-games-benchmarks",
+      "section": "Key takeaways",
+      "page_from": 5,
+      "page_to": 5,
+      "score": 0.6345
+     },
+     {
+      "id": "struct:gameanalytics-q1-2024-mob:0006",
+      "doc": "gameanalytics-q1-2024-mob",
+      "title": "gameanalytics-q1-2024-mobile-games-benchmarks",
+      "section": "North America | Retention",
+      "page_from": 8,
+      "page_to": 8,
+      "score": 0.6241
+     },
+     {
+      "id": "struct:gameanalytics-q1-2024-mob:0008",
+      "doc": "gameanalytics-q1-2024-mob",
+      "title": "gameanalytics-q1-2024-mobile-games-benchmarks",
+      "section": "Middle East | Retention",
+      "page_from": 10,
+      "page_to": 10,
+      "score": 0.6087
+     }
+    ],
+    "local": {
+     "answer": "[1] Casual games в Европе по данным GameAnalytics за Q1 2024 удерживают 31.79% первого дня.",
+     "error": "",
+     "metrics": {
+      "in": 2001,
+      "out": 37,
+      "seconds": 0.6,
+      "cost": 0.0,
+      "ttft": 0.12,
+      "tps": 73.8
+     },
+     "grade": {
+      "bad_refs": [],
+      "alien": [],
+      "cut": false,
+      "empty": false,
+      "facts": 1,
+      "of": 1,
+      "found": [
+       true
+      ],
+      "refused": false,
+      "cited": [
+       1
+      ],
+      "retrieved": true,
+      "cited_ok": true,
+      "verdict": "ok"
+     }
+    },
+    "cloud": {
+     "answer": "Удержание первого дня у казуальных игр в Европе — 31.79% [1].",
+     "error": "",
+     "metrics": {
+      "in": 1752,
+      "out": 23,
+      "seconds": 0.9,
+      "cost": 0.000553,
+      "ttft": 0.87,
+      "tps": 139329.0
+     },
+     "grade": {
+      "bad_refs": [],
+      "alien": [],
+      "cut": false,
+      "empty": false,
+      "facts": 1,
+      "of": 1,
+      "found": [
+       true
+      ],
+      "refused": false,
+      "cited": [
+       1
+      ],
+      "retrieved": true,
+      "cited_ok": true,
+      "verdict": "ok"
+     }
+    }
+   },
+   {
+    "i": 2,
+    "r": 2,
+    "search_ms": 305,
+    "embed_ms": 57,
+    "hits": [
+     {
+      "id": "struct:2024-gayd-istochniki-mobi:0010",
+      "doc": "2024-gayd-istochniki-mobi",
+      "title": "2024 Гайд источники мобильного трафика",
+      "section": "Telegram",
+      "page_from": 12,
+      "page_to": 12,
+      "score": 0.6467
+     },
+     {
+      "id": "struct:2024-gayd-istochniki-mobi:0011",
+      "doc": "2024-gayd-istochniki-mobi",
+      "title": "2024 Гайд источники мобильного трафика",
+      "section": "Telegram",
+      "page_from": 12,
+      "page_to": 12,
+      "score": 0.4434
+     },
+     {
+      "id": "struct:15-reklamnyh-ploschadok:0011",
+      "doc": "15-reklamnyh-ploschadok",
+      "title": "15 рекламных площадок",
+      "section": "13.META ADS (РАНЕЕ FACEBOOK ADS)",
+      "page_from": 14,
+      "page_to": 14,
+      "score": 0.373
+     },
+     {
+      "id": "struct:2024-gayd-istochniki-mobi:0002",
+      "doc": "2024-gayd-istochniki-mobi",
+      "title": "2024 Гайд источники мобильного трафика",
+      "section": "Взаимодействие",
+      "page_from": 4,
+      "page_to": 4,
+      "score": 0.3545
+     },
+     {
+      "id": "struct:15-reklamnyh-ploschadok:0000",
+      "doc": "15-reklamnyh-ploschadok",
+      "title": "15 рекламных площадок",
+      "section": "ГДЕ БРАТЬ ТРАФИК: → 1. GOOGLE ADS",
+      "page_from": 1,
+      "page_to": 2,
+      "score": 0.3403
+     }
+    ],
+    "local": {
+     "answer": "€1500 без учёта комиссий и НДС [1]",
+     "error": "",
+     "metrics": {
+      "in": 1790,
+      "out": 20,
+      "seconds": 0.4,
+      "cost": 0.0,
+      "ttft": 0.16,
+      "tps": 73.2
+     },
+     "grade": {
+      "bad_refs": [],
+      "alien": [],
+      "cut": false,
+      "empty": false,
+      "facts": 1,
+      "of": 1,
+      "found": [
+       true
+      ],
+      "refused": false,
+      "cited": [
+       1
+      ],
+      "retrieved": true,
+      "cited_ok": true,
+      "verdict": "ok"
+     }
+    },
+    "cloud": {
+     "answer": "Через посредника в среднем €1500 без учёта комиссий и НДС [1].",
+     "error": "",
+     "metrics": {
+      "in": 1679,
+      "out": 25,
+      "seconds": 0.9,
+      "cost": 0.000534,
+      "ttft": 0.68,
+      "tps": 141.4
+     },
+     "grade": {
+      "bad_refs": [],
+      "alien": [],
+      "cut": false,
+      "empty": false,
+      "facts": 1,
+      "of": 1,
+      "found": [
+       true
+      ],
+      "refused": false,
+      "cited": [
+       1
+      ],
+      "retrieved": true,
+      "cited_ok": true,
+      "verdict": "ok"
+     }
+    }
+   },
+   {
+    "i": 3,
+    "r": 2,
+    "search_ms": 284,
+    "embed_ms": 61,
+    "hits": [
+     {
+      "id": "struct:gayd-vstraivaem-chat-v-ig:0005",
+      "doc": "gayd-vstraivaem-chat-v-ig",
+      "title": "Гайд Встраиваем чат в игру",
+      "section": "Проверка онлайна игроков",
+      "page_from": 0,
+      "page_to": 0,
+      "score": 0.672
+     },
+     {
+      "id": "struct:gayd-vstraivaem-chat-v-ig:0004",
+      "doc": "gayd-vstraivaem-chat-v-ig",
+      "title": "Гайд Встраиваем чат в игру",
+      "section": "Взаимодействие в чате",
+      "page_from": 0,
+      "page_to": 0,
+      "score": 0.6435
+     },
+     {
+      "id": "struct:bystryy-sposob-dobavit-v:0000",
+      "doc": "bystryy-sposob-dobavit-v",
+      "title": "Быстрый способ добавить в игру чат",
+      "section": "Быстрый способ добавить в игру чат.",
+      "page_from": 0,
+      "page_to": 0,
+      "score": 0.4921
+     },
+     {
+      "id": "struct:gayd-vstraivaem-chat-v-ig:0007",
+      "doc": "gayd-vstraivaem-chat-v-ig",
+      "title": "Гайд Встраиваем чат в игру",
+      "section": "Добавление чата в игру на Construct 3.",
+      "page_from": 0,
+      "page_to": 0,
+      "score": 0.4874
+     },
+     {
+      "id": "struct:gayd-vstraivaem-chat-v-ig:0000",
+      "doc": "gayd-vstraivaem-chat-v-ig",
+      "title": "Гайд Встраиваем чат в игру",
+      "section": "Встраиваем чат в игру",
+      "page_from": 0,
+      "page_to": 0,
+      "score": 0.486
+     }
+    ],
+    "local": {
+     "answer": "[2]",
+     "error": "",
+     "metrics": {
+      "in": 1704,
+      "out": 4,
+      "seconds": 0.2,
+      "cost": 0.0,
+      "ttft": 0.14,
+      "tps": 104.6
+     },
+     "grade": {
+      "bad_refs": [],
+      "alien": [],
+      "cut": false,
+      "empty": true,
+      "facts": 0,
+      "of": 2,
+      "found": [
+       false,
+       false
+      ],
+      "refused": false,
+      "cited": [
+       2
+      ],
+      "retrieved": true,
+      "cited_ok": true,
+      "verdict": "bad"
+     }
+    },
+    "cloud": {
+     "answer": "Чтобы получить только онлайн-участников, нужно передать `isOnline:true` дополнительным аргументом в метод `fetchMembers` [1].",
+     "error": "",
+     "metrics": {
+      "in": 1637,
+      "out": 33,
+      "seconds": 1.2,
+      "cost": 0.000531,
+      "ttft": 1.02,
+      "tps": 216.6
+     },
+     "grade": {
+      "bad_refs": [],
+      "alien": [],
+      "cut": false,
+      "empty": false,
+      "facts": 2,
+      "of": 2,
+      "found": [
+       true,
+       true
+      ],
+      "refused": false,
+      "cited": [
+       1
+      ],
+      "retrieved": true,
+      "cited_ok": true,
+      "verdict": "ok"
+     }
+    }
+   },
+   {
+    "i": 4,
+    "r": 2,
+    "search_ms": 256,
+    "embed_ms": 52,
+    "hits": [
+     {
+      "id": "struct:obrazets-dogovor-podryada:0002",
+      "doc": "obrazets-dogovor-podryada",
+      "title": "образец Договор подряда",
+      "section": "2. Права и обязанности сторон",
+      "page_from": 1,
+      "page_to": 1,
+      "score": 0.6114
+     },
+     {
+      "id": "struct:obrazets-dogovor-podryada:0003",
+      "doc": "obrazets-dogovor-podryada",
+      "title": "образец Договор подряда",
+      "section": "2. Права и обязанности сторон",
+      "page_from": 1,
+      "page_to": 2,
+      "score": 0.5375
+     },
+     {
+      "id": "struct:obrazets-dogovor-podryada:0010",
+      "doc": "obrazets-dogovor-podryada",
+      "title": "образец Договор подряда",
+      "section": "Акт выполненных работ → ЗАКАЗЧИК:",
+      "page_from": 7,
+      "page_to": 7,
+      "score": 0.5276
+     },
+     {
+      "id": "struct:obrazets-dogovor-podryada:0004",
+      "doc": "obrazets-dogovor-podryada",
+      "title": "образец Договор подряда",
+      "section": "3. Цена и сроки",
+      "page_from": 2,
+      "page_to": 2,
+      "score": 0.5233
+     },
+     {
+      "id": "struct:obrazets-dogovor-podryada:0008",
+      "doc": "obrazets-dogovor-podryada",
+      "title": "образец Договор подряда",
+      "section": "6. Заключительные положения → ЗАКАЗЧИК:",
+      "page_from": 2,
+      "page_to": 3,
+      "score": 0.5102
+     }
+    ],
+    "local": {
+     "answer": "Исполнитель обязан согласовать с заказчиком окончательный вид и работу продукта до передачи результатов заказчику.",
+     "error": "",
+     "metrics": {
+      "in": 2108,
+      "out": 32,
+      "seconds": 0.7,
+      "cost": 0.0,
+      "ttft": 0.16,
+      "tps": 61.9
+     },
+     "grade": {
+      "bad_refs": [],
+      "alien": [],
+      "cut": false,
+      "empty": false,
+      "facts": 2,
+      "of": 2,
+      "found": [
+       true,
+       true
+      ],
+      "refused": false,
+      "cited": [],
+      "retrieved": true,
+      "cited_ok": false,
+      "verdict": "ok"
+     }
+    },
+    "cloud": {
+     "answer": "До передачи заказчику результатов услуги исполнитель обязан согласовать с ним окончательный вид и работу продукта [1].",
+     "error": "",
+     "metrics": {
+      "in": 1895,
+      "out": 28,
+      "seconds": 0.9,
+      "cost": 0.000602,
+      "ttft": 0.73,
+      "tps": 204.5
+     },
+     "grade": {
+      "bad_refs": [],
+      "alien": [],
+      "cut": false,
+      "empty": false,
+      "facts": 2,
+      "of": 2,
+      "found": [
+       true,
+       true
+      ],
+      "refused": false,
+      "cited": [
+       1
+      ],
+      "retrieved": true,
+      "cited_ok": true,
+      "verdict": "ok"
+     }
+    }
+   },
+   {
+    "i": 5,
+    "r": 2,
+    "search_ms": 366,
+    "embed_ms": 68,
+    "hits": [
+     {
+      "id": "struct:sozdanie-biznes-plana-igr:0004",
+      "doc": "sozdanie-biznes-plana-igr",
+      "title": "Создание бизнес-плана игры (3)",
+      "section": "Основные пункты финансового плана:",
+      "page_from": 6,
+      "page_to": 6,
+      "score": 0.7105
+     },
+     {
+      "id": "struct:sozdanie-biznes-plana-igr:0003",
+      "doc": "sozdanie-biznes-plana-igr",
+      "title": "Создание бизнес-плана игры (3)",
+      "section": "3. Производственный план. Бюджетирование",
+      "page_from": 5,
+      "page_to": 5,
+      "score": 0.5953
+     },
+     {
+      "id": "struct:sozdanie-biznes-plana-igr:0002",
+      "doc": "sozdanie-biznes-plana-igr",
+      "title": "Создание бизнес-плана игры (3)",
+      "section": "2. Маркетинговый план",
+      "page_from": 4,
+      "page_to": 4,
+      "score": 0.5716
+     },
+     {
+      "id": "struct:sozdanie-biznes-plana-igr:0000",
+      "doc": "sozdanie-biznes-plana-igr",
+      "title": "Создание бизнес-плана игры (3)",
+      "section": "Создание бизнес-плана → Для чего создают бизнес-план?",
+      "page_from": 1,
+      "page_to": 2,
+      "score": 0.541
+     },
+     {
+      "id": "struct:sozdanie-biznes-plana-igr:0005",
+      "doc": "sozdanie-biznes-plana-igr",
+      "title": "Создание бизнес-плана игры (3)",
+      "section": "4. Оценка рисков",
+      "page_from": 7,
+      "page_to": 7,
+      "score": 0.4573
+     }
+    ],
+    "cloud": {
+     "answer": "В финансовый план игры входят: бюджет игры и все расходы на пути; основные источники финансирования (кто дал деньги и договорённости с ними); риски и способы устранения; расчёт даты окупаемости; расчёт даты возврата инвестиций; зарплата; аренда (если есть); лицензии; стоимость продвижения игры; общая (итоговая) стоимость игры [1].",
+     "error": "",
+     "metrics": {
+      "in": 905,
+      "out": 99,
+      "seconds": 1.2,
+      "cost": 0.00039,
+      "ttft": 0.83,
+      "tps": 273.2
+     },
+     "grade": {
+      "bad_refs": [],
+      "alien": [],
+      "cut": false,
+      "empty": false,
+      "facts": 5,
+      "of": 5,
+      "found": [
+       true,
+       true,
+       true,
+       true,
+       true
+      ],
+      "refused": false,
+      "cited": [
+       1
+      ],
+      "retrieved": true,
+      "cited_ok": true,
+      "verdict": "ok"
+     }
+    },
+    "local": {
+     "answer": "Бюджет игры и все расходы на пути (для оценки успешности в будущем), основные источники финансирования (кто дал деньги и договоренности с ними), риски и способы устранения, расчет даты окупаемости, расчет даты возврата инвестиций, что еще указываем? Зарплата, аренда (если есть), лицензии, стоимость продвижения игры, общая (итоговая) стоимость игры. [1]",
+     "error": "",
+     "metrics": {
+      "in": 987,
+      "out": 118,
+      "seconds": 1.8,
+      "cost": 0.0,
+      "ttft": 0.14,
+      "tps": 72.9
+     },
+     "grade": {
+      "bad_refs": [],
+      "alien": [],
+      "cut": false,
+      "empty": false,
+      "facts": 5,
+      "of": 5,
+      "found": [
+       true,
+       true,
+       true,
+       true,
+       true
+      ],
+      "refused": false,
+      "cited": [
+       1
+      ],
+      "retrieved": true,
+      "cited_ok": true,
+      "verdict": "ok"
+     }
+    }
+   },
+   {
+    "i": 6,
+    "r": 2,
+    "search_ms": 294,
+    "embed_ms": 53,
+    "hits": [
+     {
+      "id": "struct:assety-po-kategoriyam:0001",
+      "doc": "assety-po-kategoriyam",
+      "title": "Ассеты по категориям",
+      "section": "Список:",
+      "page_from": 1,
+      "page_to": 1,
+      "score": 0.51
+     },
+     {
+      "id": "struct:assety-po-kategoriyam:0002",
+      "doc": "assety-po-kategoriyam",
+      "title": "Ассеты по категориям",
+      "section": "Список: → Список:",
+      "page_from": 1,
+      "page_to": 1,
+      "score": 0.4734
+     },
+     {
+      "id": "struct:assety-po-kategoriyam:0025",
+      "doc": "assety-po-kategoriyam",
+      "title": "Ассеты по категориям",
+      "section": "UniTask",
+      "page_from": 6,
+      "page_to": 6,
+      "score": 0.4282
+     },
+     {
+      "id": "struct:assety-po-kategoriyam:0018",
+      "doc": "assety-po-kategoriyam",
+      "title": "Ассеты по категориям",
+      "section": "PluginYG",
+      "page_from": 5,
+      "page_to": 5,
+      "score": 0.4094
+     },
+     {
+      "id": "struct:assety-po-kategoriyam:0020",
+      "doc": "assety-po-kategoriyam",
+      "title": "Ассеты по категориям",
+      "section": "Localization от Unity",
+      "page_from": 5,
+      "page_to": 5,
+      "score": 0.4087
+     }
+    ],
+    "local": {
+     "answer": "[1] Selection History – добавляет окно с историей выделения объектов в движке.",
+     "error": "",
+     "metrics": {
+      "in": 1314,
+      "out": 24,
+      "seconds": 0.4,
+      "cost": 0.0,
+      "ttft": 0.11,
+      "tps": 75.1
+     },
+     "grade": {
+      "bad_refs": [],
+      "alien": [],
+      "cut": false,
+      "empty": false,
+      "facts": 1,
+      "of": 1,
+      "found": [
+       true
+      ],
+      "refused": false,
+      "cited": [
+       1
+      ],
+      "retrieved": true,
+      "cited_ok": true,
+      "verdict": "ok"
+     }
+    },
+    "cloud": {
+     "answer": "Плагин Selection History добавляет окно с историей выделения объектов в движке [1].",
+     "error": "",
+     "metrics": {
+      "in": 1242,
+      "out": 23,
+      "seconds": 1.2,
+      "cost": 0.0004,
+      "ttft": 1.04,
+      "tps": 126.9
+     },
+     "grade": {
+      "bad_refs": [],
+      "alien": [],
+      "cut": false,
+      "empty": false,
+      "facts": 1,
+      "of": 1,
+      "found": [
+       true
+      ],
+      "refused": false,
+      "cited": [
+       1
+      ],
+      "retrieved": true,
+      "cited_ok": true,
+      "verdict": "ok"
+     }
+    }
+   },
+   {
+    "i": 7,
+    "r": 2,
+    "search_ms": 340,
+    "embed_ms": 43,
+    "hits": [
+     {
+      "id": "struct:spisok-ploschadok-dlya-re:0004",
+      "doc": "spisok-ploschadok-dlya-re",
+      "title": "Список площадок для релиза ваших игр",
+      "section": "RuStore",
+      "page_from": 7,
+      "page_to": 7,
+      "score": 0.6578
+     },
+     {
+      "id": "struct:unity-conf-2024-bonus-den:0004",
+      "doc": "unity-conf-2024-bonus-den",
+      "title": "Unity Conf 2024 - Бонус день 2 40 площадок для релиза игр",
+      "section": "RuMarket",
+      "page_from": 3,
+      "page_to": 3,
+      "score": 0.4352
+     },
+     {
+      "id": "struct:spisok-ploschadok-dlya-re:0002",
+      "doc": "spisok-ploschadok-dlya-re",
+      "title": "Список площадок для релиза ваших игр",
+      "section": "RuMarket: российский Google Play",
+      "page_from": 4,
+      "page_to": 5,
+      "score": 0.4311
+     },
+     {
+      "id": "struct:unity-conf-2024-bonus-den:0002",
+      "doc": "unity-conf-2024-bonus-den",
+      "title": "Unity Conf 2024 - Бонус день 2 40 площадок для релиза игр",
+      "section": "Начало документа",
+      "page_from": 2,
+      "page_to": 2,
+      "score": 0.4194
+     },
+     {
+      "id": "struct:2024-gayd-istochniki-mobi:0013",
+      "doc": "2024-gayd-istochniki-mobi",
+      "title": "2024 Гайд источники мобильного трафика",
+      "section": "pstore",
+      "page_from": 14,
+      "page_to": 14,
+      "score": 0.3929
+     }
+    ],
+    "cloud": {
+     "answer": "RuStore — это аналог Google Play для Android, который позволяет скачать любое приложение в РФ без ограничений [1]. Это российская платформа для приложений, созданная в ответ на растущую потребность в независимых от западных компаний цифровых решениях; она активно поддерживается правительством и крупнейшими отечественными IT-компаниями, а все заявки от разработчиков проходят ручную модерацию [4].",
+     "error": "",
+     "metrics": {
+      "in": 1465,
+      "out": 108,
+      "seconds": 1.2,
+      "cost": 0.000569,
+      "ttft": 0.8,
+      "tps": 286.4
+     },
+     "grade": {
+      "bad_refs": [],
+      "alien": [],
+      "cut": false,
+      "empty": false,
+      "facts": 2,
+      "of": 2,
+      "found": [
+       true,
+       true
+      ],
+      "refused": false,
+      "cited": [
+       1,
+       4
+      ],
+      "retrieved": true,
+      "cited_ok": true,
+      "verdict": "ok"
+     }
+    },
+    "local": {
+     "answer": "RuStore это аналог Google Play для Android, который позволяет скачать любое приложение в РФ без ограничений. Он создан в ответ на растущую потребность в независимых от западных компаний цифровых решениях и активно поддерживается правительством и крупнейшими отечественными IT-компаниями. Платформа обеспечивает ручную модерацию всех заявок от разработчиков, что позволяет поддерживать высокое качество и безопасность размещаемых приложений.",
+     "error": "",
+     "metrics": {
+      "in": 1603,
+      "out": 117,
+      "seconds": 1.7,
+      "cost": 0.0,
+      "ttft": 0.1,
+      "tps": 73.0
+     },
+     "grade": {
+      "bad_refs": [],
+      "alien": [],
+      "cut": false,
+      "empty": false,
+      "facts": 2,
+      "of": 2,
+      "found": [
+       true,
+       true
+      ],
+      "refused": false,
+      "cited": [],
+      "retrieved": true,
+      "cited_ok": false,
+      "verdict": "ok"
+     }
+    }
+   },
+   {
+    "i": 8,
+    "r": 2,
+    "search_ms": 339,
+    "embed_ms": 56,
+    "hits": [
+     {
+      "id": "struct:unity-conf-2024-bonus-den:0014",
+      "doc": "unity-conf-2024-bonus-den",
+      "title": "Unity Conf 2024 - Бонус день 2 40 площадок для релиза игр",
+      "section": "Браузерные платформы:",
+      "page_from": 8,
+      "page_to": 8,
+      "score": 0.658
+     },
+     {
+      "id": "struct:spisok-ploschadok-dlya-re:0010",
+      "doc": "spisok-ploschadok-dlya-re",
+      "title": "Список площадок для релиза ваших игр",
+      "section": "Веб площадки:",
+      "page_from": 14,
+      "page_to": 14,
+      "score": 0.6058
+     },
+     {
+      "id": "struct:spisok-ploschadok-dlya-re:0012",
+      "doc": "spisok-ploschadok-dlya-re",
+      "title": "Список площадок для релиза ваших игр",
+      "section": "Y8 Games",
+      "page_from": 16,
+      "page_to": 16,
+      "score": 0.6053
+     },
+     {
+      "id": "struct:unity-conf-2024-bonus-den:0011",
+      "doc": "unity-conf-2024-bonus-den",
+      "title": "Unity Conf 2024 - Бонус день 2 40 площадок для релиза игр",
+      "section": "Браузерные платформы:",
+      "page_from": 7,
+      "page_to": 7,
+      "score": 0.5886
+     },
+     {
+      "id": "struct:spisok-ploschadok-dlya-re:0013",
+      "doc": "spisok-ploschadok-dlya-re",
+      "title": "Список площадок для релиза ваших игр",
+      "section": "GamePix → VK Play",
+      "page_from": 17,
+      "page_to": 18,
+      "score": 0.5798
+     }
+    ],
+    "local": {
+     "answer": "Браузерные платформы:\n\n[1] Itch.io\n[2] GamePix\n[3] Яндекс Игры\n[4] CrazyGames\n[5] Одноклассники",
+     "error": "",
+     "metrics": {
+      "in": 1301,
+      "out": 47,
+      "seconds": 0.8,
+      "cost": 0.0,
+      "ttft": 0.11,
+      "tps": 73.3
+     },
+     "grade": {
+      "bad_refs": [],
+      "alien": [],
+      "cut": false,
+      "empty": false,
+      "facts": 3,
+      "of": 3,
+      "found": [
+       true,
+       true,
+       true
+      ],
+      "refused": false,
+      "cited": [
+       1,
+       2,
+       3,
+       4,
+       5
+      ],
+      "retrieved": true,
+      "cited_ok": true,
+      "verdict": "ok"
+     }
+    },
+    "cloud": {
+     "answer": "Браузерную игру можно выпустить на следующих площадках:\n\n- Itch.io [1][3]\n- GamePix [1][5]\n- Яндекс Игры [2][4]\n- CrazyGames [2][4]\n- Y8 Games [3]\n- Одноклассники [4][5]\n- Poki Games [5]\n- VK Play [5]",
+     "error": "",
+     "metrics": {
+      "in": 1187,
+      "out": 84,
+      "seconds": 1.1,
+      "cost": 0.000457,
+      "ttft": 0.84,
+      "tps": 279.5
+     },
+     "grade": {
+      "bad_refs": [],
+      "alien": [],
+      "cut": false,
+      "empty": false,
+      "facts": 3,
+      "of": 3,
+      "found": [
+       true,
+       true,
+       true
+      ],
+      "refused": false,
+      "cited": [
+       1,
+       2,
+       3,
+       4,
+       5
+      ],
+      "retrieved": true,
+      "cited_ok": true,
+      "verdict": "ok"
+     }
+    }
+   },
+   {
+    "i": 9,
+    "r": 2,
+    "search_ms": 562,
+    "embed_ms": 206,
+    "hits": [
+     {
+      "id": "struct:unity-conf-2024-bonus-den:0009",
+      "doc": "unity-conf-2024-bonus-den",
+      "title": "Unity Conf 2024 - Бонус день 2 40 площадок для релиза игр",
+      "section": "Консольные платформы:",
+      "page_from": 6,
+      "page_to": 6,
+      "score": 0.4119
+     },
+     {
+      "id": "struct:spisok-ploschadok-dlya-re:0015",
+      "doc": "spisok-ploschadok-dlya-re",
+      "title": "Список площадок для релиза ваших игр",
+      "section": "PlayStation",
+      "page_from": 21,
+      "page_to": 21,
+      "score": 0.4102
+     },
+     {
+      "id": "struct:assety-po-kategoriyam:0006",
+      "doc": "assety-po-kategoriyam",
+      "title": "Ассеты по категориям",
+      "section": "Pro builder",
+      "page_from": 2,
+      "page_to": 2,
+      "score": 0.3733
+     },
+     {
+      "id": "struct:15-reklamnyh-ploschadok:0008",
+      "doc": "15-reklamnyh-ploschadok",
+      "title": "15 рекламных площадок",
+      "section": "10. UNITY ADS",
+      "page_from": 11,
+      "page_to": 11,
+      "score": 0.3594
+     },
+     {
+      "id": "struct:assety-po-kategoriyam:0025",
+      "doc": "assety-po-kategoriyam",
+      "title": "Ассеты по категориям",
+      "section": "UniTask",
+      "page_from": 6,
+      "page_to": 6,
+      "score": 0.3497
+     }
+    ],
+    "local": {
+     "answer": "В документах этого нет",
+     "error": "",
+     "metrics": {
+      "in": 1139,
+      "out": 6,
+      "seconds": 0.4,
+      "cost": 0.0,
+      "ttft": 0.33,
+      "tps": 84.8
+     },
+     "grade": {
+      "bad_refs": [],
+      "alien": [],
+      "cut": false,
+      "empty": false,
+      "facts": 0,
+      "of": 0,
+      "found": [],
+      "refused": true,
+      "cited": [],
+      "retrieved": false,
+      "cited_ok": false,
+      "verdict": "ok"
+     }
+    },
+    "cloud": {
+     "answer": "В документах этого нет.",
+     "error": "",
+     "metrics": {
+      "in": 1075,
+      "out": 6,
+      "seconds": 1.2,
+      "cost": 0.00033,
+      "ttft": 1.13,
+      "tps": 60.3
+     },
+     "grade": {
+      "bad_refs": [],
+      "alien": [],
+      "cut": false,
+      "empty": false,
+      "facts": 0,
+      "of": 0,
+      "found": [],
+      "refused": true,
+      "cited": [],
+      "retrieved": false,
+      "cited_ok": false,
+      "verdict": "ok"
+     }
+    }
+   }
+  ],
+  "summary": {
+   "questions": 10,
+   "repeats": 3,
+   "local": {
+    "total": 30,
+    "errors": 0,
+    "ok": 28,
+    "part": 0,
+    "bad": 2,
+    "facts": 50,
+    "of": 54,
+    "outside": 3,
+    "outside_of": 3,
+    "cited_ok": 20,
+    "inside": 27,
+    "bad_refs": 0,
+    "alien": 0,
+    "cut": 0,
+    "empty": 2,
+    "ttft": 0.66,
+    "ttft_again": 0.14,
+    "seconds": 1.2,
+    "seconds_again": 0.6,
+    "worst": 2.3,
+    "tps": 73.15,
+    "tokens_in": 1585,
+    "tokens_out": 45,
+    "cost": 0.0,
+    "stable": 9,
+    "same": 3,
+    "spread": 0.6
+   },
+   "cloud": {
+    "total": 30,
+    "errors": 0,
+    "ok": 30,
+    "part": 0,
+    "bad": 0,
+    "facts": 54,
+    "of": 54,
+    "outside": 3,
+    "outside_of": 3,
+    "cited_ok": 27,
+    "inside": 27,
+    "bad_refs": 0,
+    "alien": 0,
+    "cut": 0,
+    "empty": 0,
+    "ttft": 0.98,
+    "ttft_again": 0.84,
+    "seconds": 1.2,
+    "seconds_again": 1.1,
+    "worst": 1.7,
+    "tps": 208.5,
+    "tokens_in": 1462,
+    "tokens_out": 47,
+    "cost": 0.01486,
+    "stable": 10,
+    "same": 6,
+    "spread": 0.35
+   },
+   "search": {
+    "ms": 318.0,
+    "embed_ms": 56.0,
+    "same": 10
+   }
+  }
  }
 }

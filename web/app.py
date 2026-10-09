@@ -2300,6 +2300,156 @@ def assist_probe():
     return local.probe()
 
 
+# ── День 28: локальный RAG ──────────────────────────────────────────
+# Индекс недели 5 и модель дня 26. Эмбеддинг вопроса и ответ локальной ветки
+# идут через клиентов-охранников local.py, облачная модель — колонка для
+# сравнения со своим клиентом. Фрагменты, промпт, температура и код запроса
+# (rag_column) у колонок общие: различаются адрес и модель. Провайдер «ollama»
+# — только для этой колонки: в CHAT_MODELS его нет, чаты недель 3–5 его не видят.
+
+PROVIDERS["ollama"] = {"title": "Ollama", "url": f"{local.OLLAMA}/v1/chat/completions", "key": "ollama"}
+LOCAL_RAG = {"id": local.MODEL, "title": local.MODEL, "provider": "ollama"}
+CLOUD_RAG = CHAT_BY_ID[CHAT_DEFAULT]
+
+
+class LocalRagAskIn(BaseModel):
+    q: str
+    cloud: bool = True
+
+
+async def timed(column):
+    """Колонка с часами: время до первого куска ответа и скорость генерации.
+    Длительностей /v1 не сообщает — считаем по часам стенда, одинаково для обеих."""
+    start, first, last = time.monotonic(), None, None
+    async for event in column:
+        if event["t"] == "delta":
+            first = first or time.monotonic()
+            last = time.monotonic()
+        elif event["t"] == "done":
+            out = event["metrics"]["out"]
+            event["metrics"]["ttft"] = round(first - start, 2) if first else None
+            event["metrics"]["tps"] = round((out - 1) / (last - first), 1) if out and first and last > first else None
+        yield event
+
+
+async def local_rag_run(near, far, q, cloud, seen):
+    """Вопрос → эмбеддинг и поиск через охранника → ответ локальной модели и,
+    если просили, облачной на тех же фрагментах. `seen` — журнал сети
+    локальной ветки, уходит браузеру целиком после каждого шага."""
+    started = time.monotonic()
+    with local.client(seen) as guarded:
+        hits = await asyncio.to_thread(rag.retrieve, q, "struct", rag.TOP, guarded)
+    embed_ms = next((n.get("ms") for n in reversed(seen) if n["path"] == "/api/embed"), None)
+    yield {"t": "search", "ms": round((time.monotonic() - started) * 1000), "embed_ms": embed_ms,
+           "hits": [{f: h[f] for f in ("id", "doc", "title", "section", "page_from", "page_to",
+                                       "chars", "score", "text")} for h in hits]}
+    yield {"t": "net", "net": seen}
+    messages = rag.messages(q, hits)
+    columns = [("local", near, LOCAL_RAG)] + ([("cloud", far, CLOUD_RAG)] if cloud else [])
+    queue = asyncio.Queue()
+    workers = [asyncio.create_task(drain(timed(rag_column(client, model, target, messages)), queue))
+               for target, client, model in columns]
+    left = len(workers)
+    while left:
+        event = await queue.get()
+        if event is None:
+            left -= 1
+            continue
+        if event["t"] == "done":
+            event["grade"] = local.check(q, event["answer"], hits, event["metrics"])
+        yield event
+    await asyncio.gather(*workers)
+    yield {"t": "net", "net": seen}
+
+
+def rag_clients(seen):
+    return (local.async_client(seen),
+            httpx.AsyncClient(timeout=90, default_encoding="utf-8", proxy=PROXY))
+
+
+@app.get("/localrag.js")
+def local_rag_script():
+    return FileResponse(HERE / "localrag.js")
+
+
+@app.get("/api/localrag")
+def local_rag_overview():
+    return {**local.rag_overview(), "cloud": {"id": CLOUD_RAG["id"], "title": CLOUD_RAG["title"],
+                                              "host": httpx.URL(PROVIDERS[CLOUD_RAG["provider"]]["url"]).host,
+                                              "ready": bool(PROVIDERS[CLOUD_RAG["provider"]]["key"])}}
+
+
+@app.post("/api/localrag/ask")
+def local_rag_ask(body: LocalRagAskIn):
+    if not body.q.strip():
+        raise HTTPException(status_code=400, detail="пустой вопрос")
+    local_live()
+
+    async def run():
+        seen = []
+        yield line({"t": "start", "cloud": body.cloud})
+        near, far = rag_clients(seen)
+        async with near, far:
+            try:
+                async for event in local_rag_run(near, far, body.q.strip(), body.cloud, seen):
+                    yield line(event)
+            except httpx.HTTPError as e:
+                yield line({"t": "error", "target": "search", "message": f"Ollama не ответила: {e}"})
+                yield line({"t": "net", "net": seen})
+        yield line({"t": "end"})
+
+    return StreamingResponse(run(), media_type="application/x-ndjson")
+
+
+@app.post("/api/localrag/eval")
+def local_rag_eval():
+    """Контрольный набор дня 22 REPEATS кругами, обе колонки разом. Вопросы
+    идут по одному: так локальная модель не делит видеокарту сама с собой, и
+    её время честное. Полный прогон — в снимок local.json."""
+    local_live()
+
+    async def run():
+        seen, results = [], []
+        started = time.monotonic()
+        yield line({"t": "start", "total": len(rag.QUESTIONS) * local.REPEATS, "repeats": local.REPEATS})
+        near, far = rag_clients(seen)
+        async with near, far:
+            try:
+                with local.client(seen) as guarded:
+                    warm = await asyncio.to_thread(local.warm, guarded)
+            except httpx.HTTPError as e:
+                yield line({"t": "error", "message": f"Ollama не ответила: {e}"})
+                return
+            yield line({"t": "warm", **warm, "net": seen})
+            for r in range(local.REPEATS):
+                for i, question in enumerate(rag.QUESTIONS):
+                    record = {"i": i, "r": r}
+                    try:
+                        async for event in local_rag_run(near, far, question["q"], True, seen):
+                            if event["t"] == "search":
+                                record.update(search_ms=event["ms"], embed_ms=event["embed_ms"],
+                                              hits=[{f: h[f] for f in ("id", "doc", "title", "section",
+                                                                       "page_from", "page_to", "score")}
+                                                    for h in event["hits"]])
+                            elif event["t"] == "done":
+                                record[event["target"]] = {f: event.get(f) for f in
+                                                           ("answer", "error", "metrics", "grade")}
+                    except httpx.HTTPError as e:
+                        record["error"] = f"Ollama не ответила: {e}"
+                    results.append(record)
+                    yield line({"t": "result", **record, "net": seen})
+        summary = local.summary28(results)
+        saved = all(r.get("local") and r.get("cloud") and not r.get("error") for r in results)
+        seconds = round(time.monotonic() - started)
+        if saved:
+            local.keep("rag", {"at": local.now(), "model": local.MODEL, "cloud": CLOUD_RAG["id"],
+                               "repeats": local.REPEATS, "warm": warm, "seconds": seconds,
+                               "net": seen, "results": results, "summary": summary})
+        yield line({"t": "done", "summary": summary, "saved": saved, "seconds": seconds})
+
+    return StreamingResponse(run(), media_type="application/x-ndjson")
+
+
 @app.get("/chat.js")
 def chat_script():
     return FileResponse(HERE / "chat.js")
