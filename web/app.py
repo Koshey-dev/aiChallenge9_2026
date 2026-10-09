@@ -14,6 +14,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel
 
+import local
 import pipeline
 import rag
 import scheduler
@@ -2166,6 +2167,65 @@ def talk_send(body: TalkSendIn):
         yield line({"t": "end"})
 
     return StreamingResponse(run(), media_type="application/x-ndjson")
+
+
+# ── День 26: локальная LLM ──────────────────────────────────────────
+# Всё общение с Ollama — в local.py; здесь только маршруты. Модели нет на
+# этой машине — запросы закрыты, вкладка показывает снимок из local.json.
+
+class LocalAskIn(BaseModel):
+    door: str
+    prompt: str = local.PROMPT
+
+
+def local_live():
+    if not local.status()["live"]:
+        raise HTTPException(status_code=409, detail=f"модели {local.MODEL} на этой машине нет")
+
+
+@app.get("/local.js")
+def local_script():
+    return FileResponse(HERE / "local.js")
+
+
+@app.get("/api/local")
+def local_overview():
+    return local.overview()
+
+
+@app.post("/api/local/load")
+def local_load():
+    local_live()
+    try:
+        return local.load()
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=503, detail=f"Ollama не ответила: {e}")
+
+
+@app.post("/api/local/unload")
+def local_unload():
+    local_live()
+    try:
+        return local.unload()
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=503, detail=f"Ollama не ответила: {e}")
+
+
+@app.post("/api/local/ask")
+def local_ask(body: LocalAskIn):
+    if body.door not in local.DOORS:
+        raise HTTPException(status_code=400, detail="дверь — cli, api или openai")
+    if not body.prompt.strip():
+        raise HTTPException(status_code=400, detail="пустой вопрос")
+    local_live()
+    return StreamingResponse((line(e) for e in local.door(body.door, body.prompt.strip())),
+                             media_type="application/x-ndjson")
+
+
+@app.post("/api/local/ladder")
+def local_ladder():
+    local_live()
+    return StreamingResponse((line(e) for e in local.ladder()), media_type="application/x-ndjson")
 
 
 @app.get("/chat.js")

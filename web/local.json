@@ -1,0 +1,162 @@
+{
+ "ladder": {
+  "at": "2026-10-09 11:25:28",
+  "results": [
+   {
+    "answer": "17 × 23 будет равно 391.",
+    "metrics": {
+     "load": 0.0,
+     "in": 41,
+     "out": 14,
+     "tps": 78.6,
+     "ttft": 0.6,
+     "seconds": 0.78
+    },
+    "grade": {
+     "mark": "ok",
+     "note": "есть 391"
+    }
+   },
+   {
+    "answer": "[\"Венера\", \"Меркурий\", \"Земля\"]",
+    "metrics": {
+     "load": 0.0,
+     "in": 77,
+     "out": 18,
+     "tps": 79.1,
+     "ttft": 0.43,
+     "seconds": 0.66
+    },
+    "grade": {
+     "mark": "part",
+     "note": "JSON, планеты те, но порядок не тот"
+    }
+   },
+   {
+    "answer": "1. Начальное количество яблок в корзине: 12\n2. Треть яблок отдали соседу: \\( \\frac{12}{3} = 4 \\) яблок отдано, осталось \\( 12 - 4 = 8 \\) яблок\n3. Съели половину оставшихся: \\( \\frac{8}{2} = 4 \\) яблок съедено, осталось \\( 8 - 4 = 4 \\) яблок\n4. Купили ещё 5 яблок: \\( 4 + 5 = 9 \\) яблок\n\nОтвет: 9",
+    "metrics": {
+     "load": 0.0,
+     "in": 104,
+     "out": 149,
+     "tps": 77.1,
+     "ttft": 0.44,
+     "seconds": 2.38
+    },
+    "grade": {
+     "mark": "ok",
+     "note": "ответ 9"
+    }
+   },
+   {
+    "answer": "У Алисы 3 брата и 2 сестры, значит у нее всего 5 сестер и братьев вместе. Поскольку Алиса имеет 2 сестры, это значит, что у каждого из ее братьев также 2 сестры (Алиса и остальные сестры). \n\nОтвет: 2",
+    "metrics": {
+     "load": 0.0,
+     "in": 77,
+     "out": 82,
+     "tps": 77.9,
+     "ttft": 0.45,
+     "seconds": 1.5
+    },
+    "grade": {
+     "mark": "bad",
+     "note": "ответ 2, верно 3"
+    }
+   }
+  ]
+ },
+ "status": {
+  "url": "http://127.0.0.1:11434",
+  "model": "qwen2.5:3b",
+  "live": true,
+  "at": "2026-10-09 11:25:28",
+  "version": "0.33.3",
+  "disk": 1929912432,
+  "details": {
+   "parent_model": "",
+   "format": "gguf",
+   "family": "qwen2",
+   "families": [
+    "qwen2"
+   ],
+   "parameter_size": "3.1B",
+   "quantization_level": "Q4_K_M"
+  },
+  "context": 32768,
+  "loaded": {
+   "size": 2159374499,
+   "vram": 2159374499,
+   "context": 4096,
+   "left": 300
+  },
+  "gpu": {
+   "name": "NVIDIA GeForce RTX 3050 Ti Laptop GPU",
+   "total": 4294967296,
+   "used": 2259681280
+  }
+ },
+ "doors": {
+  "cli": {
+   "at": "2026-10-09 11:24:41",
+   "prompt": "Кто ты? Ответь одним предложением.",
+   "command": "ollama run qwen2.5:3b --verbose --nowordwrap \"Кто ты? Ответь одним предложением.\"",
+   "answer": "Я Qwen, создан для помогать с различными запросами и задачами.",
+   "metrics": {
+    "load": 0.0,
+    "in": 41,
+    "out": 18,
+    "tps": 73.82,
+    "ttft": 0.3,
+    "seconds": 0.55
+   },
+   "raw": [
+    "total duration:       496.5543ms",
+    "load duration:        550.6µs",
+    "prompt eval count:    41 token(s)",
+    "prompt eval duration: 249.628ms",
+    "prompt eval rate:     164.24 tokens/s",
+    "eval count:           18 token(s)",
+    "eval duration:        243.839ms",
+    "eval rate:            73.82 tokens/s"
+   ]
+  },
+  "api": {
+   "at": "2026-10-09 11:24:47",
+   "prompt": "Кто ты? Ответь одним предложением.",
+   "command": "curl http://127.0.0.1:11434/api/chat -d '{\"model\": \"qwen2.5:3b\", \"messages\": [{\"role\": \"user\", \"content\": \"Кто ты? Ответь одним предложением.\"}], \"options\": {\"temperature\": 0}}'",
+   "answer": "Я Qwen, созданный Alibaba Cloud, для помощи вам в поисках информации и выполнении задач.",
+   "metrics": {
+    "load": 0.0,
+    "in": 41,
+    "out": 24,
+    "tps": 63.1,
+    "ttft": 0.5,
+    "seconds": 0.89
+   },
+   "raw": [
+    "{\"model\":\"qwen2.5:3b\",\"created_at\":\"2026-10-09T08:24:46.8205355Z\",\"message\":{\"role\":\"assistant\",\"content\":\"Я\"},\"done\":false}",
+    "… ещё 22 строк потока …",
+    "{\"model\":\"qwen2.5:3b\",\"created_at\":\"2026-10-09T08:24:47.2008075Z\",\"message\":{\"role\":\"assistant\",\"content\":\"\"},\"done\":true,\"done_reason\":\"stop\",\"total_duration\":490453800,\"load_duration\":569200,\"prompt_eval_count\":41,\"prompt_eval_cached_count\":40,\"prompt_eval_duration\":107253000,\"eval_count\":24,\"eval_duration\":380416000}"
+   ]
+  },
+  "openai": {
+   "at": "2026-10-09 11:24:52",
+   "prompt": "Кто ты? Ответь одним предложением.",
+   "command": "curl http://127.0.0.1:11434/v1/chat/completions -H \"Content-Type: application/json\" -d '{\"model\": \"qwen2.5:3b\", \"messages\": [{\"role\": \"user\", \"content\": \"Кто ты? Ответь одним предложением.\"}], \"temperature\": 0, \"stream\": true, \"stream_options\": {\"include_usage\": true}}'",
+   "answer": "Я Qwen, созданный Alibaba Cloud, для помощи вам в поисках информации и выполнении задач.",
+   "metrics": {
+    "load": null,
+    "in": 41,
+    "out": 24,
+    "tps": 59.4,
+    "ttft": 0.46,
+    "seconds": 0.86
+   },
+   "raw": [
+    "data: {\"id\":\"chatcmpl-490\",\"object\":\"chat.completion.chunk\",\"created\":1791534291,\"model\":\"qwen2.5:3b\",\"system_fingerprint\":\"fp_ollama\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"Я\"},\"finish_reason\":null}]}",
+    "… ещё 23 строк потока …",
+    "data: {\"id\":\"chatcmpl-490\",\"object\":\"chat.completion.chunk\",\"created\":1791534291,\"model\":\"qwen2.5:3b\",\"system_fingerprint\":\"fp_ollama\",\"choices\":[],\"usage\":{\"prompt_tokens\":41,\"prompt_tokens_details\":{\"cached_tokens\":40},\"completion_tokens\":24,\"total_tokens\":65}}",
+    "data: [DONE]"
+   ]
+  }
+ }
+}

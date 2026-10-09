@@ -239,6 +239,7 @@
   <button class="tab" data-pane="week3">Неделя 3</button>
   <button class="tab" data-pane="week4">Неделя 4</button>
   <button class="tab" data-pane="week5">Неделя 5</button>
+  <button class="tab" data-pane="week6">Неделя 6</button>
 </nav>
 
 <!-- Неделя 4 продолжает того же ассистента, поэтому панель чата у недель 3 и 4
@@ -1079,6 +1080,62 @@
 
 </section>
 
+<!-- Неделя 6 — локальные модели: вкладка с подвкладками по дням, как у недели 5
+     (#week6/26). День 26 — запуск локальной LLM (local.js). Стили — rag.css,
+     данные — /api/local/*. -->
+<section class="pane rag" id="week6" hidden>
+
+<nav class="rag-days" id="w6Days">
+  <button class="rag-daytab" data-day="26">День 26 · локальная LLM</button>
+</nav>
+
+<div class="rag-day" data-day="26" hidden>
+
+<h1>Локальная LLM: Ollama на машине стенда</h1>
+<p class="sub">Модель считает на этом же компьютере: без ключа, без внешней сети и без платы за токены.
+  Ниже — где она живёт, три способа к ней обратиться и четыре вопроса растущей сложности.</p>
+<p class="lc-snap" id="lcSnap" hidden></p>
+
+<section class="rag-card" id="lcServer">
+  <h2>Модель на машине</h2>
+  <p class="rag-note" id="lcServerNote">Спрашиваю Ollama…</p>
+  <div class="ct-tiles" id="lcTiles"></div>
+  <div class="lc-vram" id="lcVram" hidden></div>
+  <div class="rag-bar">
+    <button class="main" id="lcLoad">Загрузить в память</button>
+    <button id="lcUnload">Выгрузить</button>
+    <span class="hint" id="lcLoadNote"></span>
+  </div>
+</section>
+
+<section class="rag-card" id="lcDoorsCard">
+  <h2>Три двери к одной модели</h2>
+  <p class="rag-note">Один вопрос по очереди уходит через командную строку, родной HTTP API Ollama и
+    OpenAI-совместимый API — тот же протокол, по которому стенд ходит к облачным моделям. У каждой двери —
+    команда, которую стенд выполнил, ответ и сырой вывод.</p>
+  <div class="rag-bar">
+    <input id="lcPrompt" aria-label="Вопрос">
+    <button class="main" id="lcAsk">Спросить через все три</button>
+  </div>
+  <div class="lc-doors" id="lcDoors"></div>
+</section>
+
+<section class="rag-card" id="lcLadderCard">
+  <h2>Четыре вопроса растущей сложности</h2>
+  <p class="rag-note">Через родной API, temperature 0, по одному. Ответ проверяет код: число в ответе,
+    JSON-массив в нужном порядке, итог в строке «Ответ: …».</p>
+  <div class="rag-bar">
+    <button class="main" id="lcRun">Прогнать лестницу</button>
+    <span class="hint" id="lcRunNote"></span>
+  </div>
+  <div class="ct-tiles" id="lcSum"></div>
+  <div class="lc-steps" id="lcSteps"></div>
+</section>
+
+</div>
+
+</section>
+
 <template id="chatHead">
   <div class="col">
     <h2 class="title"></h2>
@@ -1432,7 +1489,7 @@ const node = name => $("#" + stand.ids[name]);
 // Какую секцию показывает вкладка. Панель чата одна, и недели 3 и 4 открывают
 // её же: неделя 4 — тот же ассистент, но с заданиями своих дней.
 const PANES = { week1: "week1", week2: "week2",
-                week3: "chatpane", week4: "chatpane", week5: "week5" };
+                week3: "chatpane", week4: "chatpane", week5: "week5", week6: "week6" };
 
 function showPane(name) {
   shown = name;
@@ -1447,6 +1504,7 @@ function showPane(name) {
     .forEach(t => t.classList.toggle("on", t.dataset.pane === name));
   // Индекс недели 5 рисует полосы по ширине экрана — только когда виден.
   if (name === "week5") window.ragShow?.();
+  if (name === "week6") window.localShow?.();
   if (!STANDS[name]) {
     $("#cues").hidden = true;
     return;
@@ -1461,7 +1519,7 @@ document.querySelectorAll(".tab").forEach(tab => {
     showPane(tab.dataset.pane);
   });
 });
-// У недели 5 после имени вкладки — подвкладка дня: #week5/22.
+// У недель 5 и 6 после имени вкладки — подвкладка дня: #week5/22.
 const opened = location.hash.slice(1).split("/")[0];
 showPane(opened in PANES ? opened : "week1");
 
@@ -2325,5 +2383,6 @@ $("#modal").addEventListener("click", event => {
 <script src="/rerank.js"></script>
 <script src="/cite.js"></script>
 <script src="/talk.js"></script>
+<script src="/local.js"></script>
 </body>
 </html>

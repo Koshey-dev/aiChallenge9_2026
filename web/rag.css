@@ -396,3 +396,51 @@
   .tk-main { height: 640px; }
   .tk-chats { max-height: 180px; }
 }
+
+/* День 26. Локальная LLM: плитки машины, полоса видеопамяти, три двери и
+   лестница вопросов. Классы lc-, плитки и метрики — от дней 22 и 24. */
+.lc-snap { border: 1px solid #5a4630; background: #221d14; border-radius: 10px; padding: 10px 14px;
+           color: var(--warn); margin: -8px 0 18px; }
+.lc-snap[hidden], .lc-vram[hidden] { display: none; }
+.lc-vram { margin: 0 0 14px; font-size: 13px; color: var(--dim); }
+.lc-bar { display: flex; height: 12px; background: var(--line); border-radius: 6px; overflow: hidden; margin: 6px 0; }
+.lc-bar i { display: block; height: 100%; transition: width .3s; }
+.lc-bar i.m, .lc-legend b.m { background: var(--accent); }
+.lc-bar i.o, .lc-legend b.o { background: #4d5163; }
+.lc-legend { display: flex; gap: 16px; flex-wrap: wrap; }
+.lc-legend b { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; }
+#lcPrompt { flex: 1; min-width: 240px; }
+
+.lc-doors { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.lc-door { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; min-width: 0; }
+.lc-door.run { border-color: var(--warn); }
+.lc-door.done { border-color: #2c4436; }
+.lc-door.fail { border-color: var(--bad); }
+.lc-door h3 { margin: 0 0 8px; font-size: 15px; display: flex; gap: 8px; align-items: baseline; }
+.lc-door h3 span { color: var(--dim); font-weight: 400; font: 13px ui-monospace, Consolas, monospace; }
+.lc-door h3 em { margin-left: auto; font-style: normal; font-weight: 400; font-size: 12.5px; color: var(--dim);
+                 white-space: nowrap; }
+.lc-door.run h3 em { color: var(--warn); }
+.lc-door.done h3 em { color: var(--accent); }
+.lc-door.fail h3 em { color: var(--bad); }
+.lc-cmd { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0 0 10px; min-height: 1.45em;
+          background: #14151d; border-radius: 8px; padding: 8px 10px; color: #cfd3e0;
+          font: 12.5px/1.45 ui-monospace, Consolas, monospace; }
+.lc-door .ask-prompt pre { overflow-wrap: anywhere; font-family: ui-monospace, Consolas, monospace; }
+
+.lc-steps { display: grid; gap: 10px; }
+.lc-step { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 16px;
+           border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+.lc-step.run { border-color: var(--warn); }
+.lc-step.ok { border-color: #2c4436; }
+.lc-step.part { border-color: #5a4630; }
+.lc-step.bad { border-color: #5a3030; }
+.lc-side { display: grid; gap: 4px; align-content: start; font-size: 13px; color: var(--dim); }
+.lc-side b { color: var(--text); font-size: 15px; }
+.lc-side .ask-mark { white-space: normal; font-size: 14px; }
+.lc-q { font-weight: 600; margin-bottom: 6px; }
+.lc-step .ask-answer { min-height: 0; }
+
+@media (max-width: 900px) {
+  .lc-doors, .lc-step { grid-template-columns: minmax(0, 1fr); }
+}
